@@ -4,7 +4,7 @@ import { isServer } from '@dcl/sdk/network'
 import { game } from '~runtime/game'
 import { sceneUiTheme } from '~runtime/uiTheme'
 import { UiNotice } from '~runtime/uiComponents'
-import { addHudItem } from '~runtime/hudLayout'
+import { addHudItem, HUD_NOTICE_WIDTH } from '~runtime/hudLayout'
 import { onZone } from '~runtime/zoneBus'
 import type { ZoneName } from '~runtime/authoring'
 import { clampHold, toastText } from './pure/toast'
@@ -29,7 +29,7 @@ export class Announcer {
 
   start(): void {
     if (isServer()) { return }
-    addHudItem('top', () => this.render(), { order: 40 })
+    addHudItem('bottom', () => this.render())
     game.onBroadcast(ANNOUNCE, (data: unknown) => this.show(data))
     if (this.zone !== '') onZone(this.zone, this.when, (event) => {
       if (event.local) this.show({ text: this.message })
@@ -52,6 +52,6 @@ export class Announcer {
 
   private render(): ReactEcs.JSX.Element | null {
     if (this.text === '') return null
-    return <UiNotice theme={sceneUiTheme()} text={this.text} fontSize={this.fontSize} uiTransform={{ width: 520, maxWidth: '100%' }} />
+    return <UiNotice theme={sceneUiTheme()} text={this.text} fontSize={this.fontSize} uiTransform={{ width: HUD_NOTICE_WIDTH }} />
   }
 }

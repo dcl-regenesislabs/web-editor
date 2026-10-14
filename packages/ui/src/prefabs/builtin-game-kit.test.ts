@@ -254,7 +254,7 @@ describe('the announcer', () => {
   // the shared HUD layout and addUiRenderer are additive, so two UI prefabs in one scene both
   // draw. setUiRenderer is the single-owner call that used to need a claim.
   it('draws alongside the other UI prefabs instead of claiming the renderer', () => {
-    expect(read(`${FOLDER}/scripts/announcer.tsx`)).toContain("addHudItem('top'")
+    expect(read(`${FOLDER}/scripts/announcer.tsx`)).toContain("addHudItem('bottom'")
     expect(read('admin-tools/scripts/admin.tsx')).toContain('ReactEcsRenderer.addUiRenderer(this.entity')
     for (const file of [`${FOLDER}/scripts/announcer.tsx`, 'admin-tools/scripts/admin.tsx']) expect(read(file)).not.toContain('setUiRenderer')
   })

@@ -5,7 +5,7 @@ import type { Color4 } from '@dcl/sdk/math'
 import { sceneUiTheme } from './uiTheme'
 import { ThemedEntity as UiEntity, ProgressPips, UiButton, UiNotice, UiPanel, UiText } from './uiComponents'
 import type { UiTheme } from './pure/uiTheme'
-import { addHudItem, controlsHint, HUD_COLUMN_WIDTH } from './hudLayout'
+import { addHudItem, controlsHint, HUD_COLUMN_WIDTH, HUD_NOTICE_WIDTH } from './hudLayout'
 
 export function formatRunTime(ms: number): string {
   const tenths = Math.floor(Math.max(0, ms) / 100)
@@ -122,8 +122,42 @@ function Completion(props: { run: RunHudProps; theme: UiTheme }) {
   </UiEntity>
 }
 
+/** The run HUD as one screen for a Run Progress copy placed before the shared layout: the same panels in the same
+ *  places, without stacking with other HUDs. Update the prefab to use mountRunHud. */
+export function RunHud(props: RunHudProps) {
+  const theme = sceneUiTheme(props.accentColor)
+  const full = props.hud !== 'Big timer'
+  if (props.phase === 'finished') {
+    return <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
+      <Completion run={props} theme={theme} />
+    </UiEntity>
+  }
+  const column = (side: 'left' | 'right') => ({ positionType: 'absolute' as const, position: { top: 20, [side]: 20 }, width: HUD_COLUMN_WIDTH,
+    height: '100%' as const, flexDirection: 'column' as const, alignItems: side === 'left' ? 'flex-start' as const : 'flex-end' as const, pointerFilter: 'none' as const })
+  return <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
+    <UiEntity uiTransform={column('left')}>
+      {full && <RunPanel run={props} theme={theme} />}
+      <UiEntity uiTransform={{ width: 1, height: 12, pointerFilter: 'none' }} />
+      {(full || props.health !== null || props.respawnSeconds > 0) && <LifePanel run={props} theme={theme} hint={full} />}
+    </UiEntity>
+    <UiEntity uiTransform={column('right')}>
+      {full && <UiPanel theme={theme} uiTransform={{ width: 208, height: 120 }}>
+        <Metric label="TIME" value={formatRunTime(props.elapsedMs)} accent={theme.text} />
+      </UiPanel>}
+      <UiEntity uiTransform={{ width: 1, height: 12, pointerFilter: 'none' }} />
+      <UiButton theme={theme} label="Restart run" secondary onClick={props.restart} uiTransform={{ width: 172 }} />
+    </UiEntity>
+    {!full && <UiEntity uiTransform={{ positionType: 'absolute', position: { top: 20 }, width: '100%', justifyContent: 'center', pointerFilter: 'none' }}>
+      <BigTimer run={props} theme={theme} />
+    </UiEntity>}
+    {props.notice !== '' && <UiEntity uiTransform={{ positionType: 'absolute', position: { bottom: 20 }, width: '100%', height: 64, justifyContent: 'center', pointerFilter: 'none' }}>
+      <UiNotice theme={theme} text={props.notice} uiTransform={{ width: HUD_NOTICE_WIDTH }} />
+    </UiEntity>}
+  </UiEntity>
+}
+
 /** Places the run HUD in the shared layout: the run panel and health on the left, the clock and Restart top right,
- *  the big timer and notices top centre, and the completion screen as a modal. Returns its removal. */
+ *  the big timer top centre, notices bottom centre, and the completion screen as a modal. Returns its removal. */
 export function mountRunHud(read: () => RunHudProps): () => void {
   let run = read()
   const refresh = () => { run = read() }
@@ -141,7 +175,7 @@ export function mountRunHud(read: () => RunHudProps): () => void {
     </UiPanel> : null, { order: -100 }),
     addHudItem('right', () => playing() ? <UiButton theme={theme()} label="Restart run" secondary onClick={run.restart}
       uiTransform={{ width: 172 }} /> : null, { order: -90 }),
-    addHudItem('top', () => playing() && run.notice !== '' ? <UiNotice theme={theme()} text={run.notice} uiTransform={{ width: 520, maxWidth: '100%' }} /> : null, { order: 40 }),
+    addHudItem('bottom', () => playing() && run.notice !== '' ? <UiNotice theme={theme()} text={run.notice} uiTransform={{ width: HUD_NOTICE_WIDTH }} /> : null),
     addHudItem('modal', () => playing() ? null : <Completion run={run} theme={theme()} />, { open: () => !playing() })
   ]
   return () => {

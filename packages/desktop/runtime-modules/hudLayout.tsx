@@ -5,11 +5,12 @@
 // addHudItem(slot, render, { order }) adds a panel and returns a function that removes it:
 // - 'left' / 'right': columns stacked from the top, at most HUD_COLUMN_WIDTH wide;
 // - 'top': status and notifications at the top centre, at most HUD_COLUMN_WIDTH wide;
-// - 'bottom': short hints and notices above the bottom centre, never interactive;
+// - 'bottom': short hints and notices above the bottom centre, at most HUD_NOTICE_WIDTH wide, never interactive;
 // - 'modal': a centred dialog over a dimmed screen. While its `open()` answers true the phone's
 //   touch controls are hidden, because they are drawn over the dialog.
 // Lower `order` sits closer to the screen edge. Nothing is placed in the bottom corners: on phones the
 // joystick and the jump/E/F buttons are there. Every item needs an explicit width and height.
+// render() returns an element and calls no hooks (it runs inside the layout); state lives in the component it returns.
 import ReactEcs, { ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine, TouchScreenControls } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
@@ -18,6 +19,8 @@ import { UI_CANVAS } from './uiTheme'
 export type HudSlot = 'left' | 'top' | 'right' | 'bottom' | 'modal'
 export const HUD_COLUMN_WIDTH = 340
 export const HUD_GAP = 12
+// clear of the phone's E/F/pointer buttons beside the bottom centre
+export const HUD_NOTICE_WIDTH = 440
 // clear of the explorer's own edge controls inside the interactable area
 const HUD_MARGIN = 20
 
