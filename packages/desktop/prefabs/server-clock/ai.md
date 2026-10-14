@@ -40,8 +40,8 @@ Params of the prefab's script — set them in the placePrefab request:
 - position: where the 2D overlay sits — 'top' (default), 'top left', 'top right'
   or 'bottom'. Ignored for '3D text'.
 
-The overlay uses UI Theme. Multiple placed clocks keep their own label, time and
-position; choose different corners so they remain visible.
+The overlay uses UI Theme and the shared HUD layout: HUDs in the same position
+stack instead of overlapping. Multiple placed clocks keep their own label and time.
 
 ## Shared deadlines
 

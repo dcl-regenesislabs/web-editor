@@ -1,9 +1,10 @@
-import ReactEcs, { ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
+import ReactEcs from '@dcl/sdk/react-ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { isServer } from '@dcl/sdk/network'
 import { game } from '~runtime/game'
-import { UI_CANVAS, sceneUiTheme } from '~runtime/uiTheme'
+import { sceneUiTheme } from '~runtime/uiTheme'
 import { UiNotice } from '~runtime/uiComponents'
+import { addHudItem } from '~runtime/hudLayout'
 import { onZone } from '~runtime/zoneBus'
 import type { ZoneName } from '~runtime/authoring'
 import { clampHold, toastText } from './pure/toast'
@@ -28,7 +29,7 @@ export class Announcer {
 
   start(): void {
     if (isServer()) { return }
-    ReactEcsRenderer.addUiRenderer(this.entity, () => this.render(), UI_CANVAS)
+    addHudItem('top', () => this.render(), { order: 40 })
     game.onBroadcast(ANNOUNCE, (data: unknown) => this.show(data))
     if (this.zone !== '') onZone(this.zone, this.when, (event) => {
       if (event.local) this.show({ text: this.message })
@@ -51,8 +52,6 @@ export class Announcer {
 
   private render(): ReactEcs.JSX.Element | null {
     if (this.text === '') return null
-    return <UiEntity uiTransform={{ width: '100%', height: '100%', positionType: 'absolute', justifyContent: 'center', pointerFilter: 'none' }}>
-      <UiNotice theme={sceneUiTheme()} text={this.text} fontSize={this.fontSize} uiTransform={{ positionType: 'absolute', position: { bottom: 120 }, maxWidth: '90%' }} />
-    </UiEntity>
+    return <UiNotice theme={sceneUiTheme()} text={this.text} fontSize={this.fontSize} uiTransform={{ width: 520, maxWidth: '100%' }} />
   }
 }

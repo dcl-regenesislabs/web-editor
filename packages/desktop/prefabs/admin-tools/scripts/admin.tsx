@@ -31,7 +31,8 @@ import { smartItemActionsTab } from './tabs/SmartItemActions'
 import { AnnouncementOverlay, textAnnouncementsTab } from './tabs/TextAnnouncements'
 import { videoControlTab } from './tabs/VideoControl'
 
-const VIRTUAL_CANVAS = { virtualWidth: 1920, virtualHeight: 1080 }
+// inside the area the explorer leaves free of its own controls, on desktop and phones
+const VIRTUAL_CANVAS = { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'interactable' as const }
 
 // The panel is scene-wide, and so is everything start() registers: one comms
 // bus, one synced video state under a fixed sync id, one drain system that the
@@ -149,7 +150,7 @@ export class AdminToolsScript {
     const player = toAdminPlayer()
 
     return (
-      <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%' }}>
+      <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
         <AnnouncementOverlay
           self={this.entity}
           config={config}
