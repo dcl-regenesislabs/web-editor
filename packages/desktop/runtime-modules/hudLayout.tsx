@@ -78,8 +78,7 @@ function itemsIn(slot: HudSlot): HudItem[] {
   return layout().items.filter((item) => item.slot === slot).sort((a, b) => a.order - b.order || a.id - b.id)
 }
 
-// render() returns elements and calls no hooks, so it runs here and an item that draws nothing takes no space;
-// the SDK has no flex gap, so a fixed spacer keeps the rest apart
+// an item that draws nothing takes no space; the SDK has no flex gap, so a fixed spacer keeps the rest apart
 function drawn(items: HudItem[]): ReactEcs.JSX.Element[] {
   const out: ReactEcs.JSX.Element[] = []
   for (const item of items) {
