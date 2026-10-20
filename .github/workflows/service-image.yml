@@ -47,7 +47,7 @@ jobs:
         env:
           OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY: ${{ runner.temp }}/osv-db
         run: |
-          npm sbom --workspace @dcl-editor/service --omit=dev --sbom-format=cyclonedx > "$RUNNER_TEMP/service.cdx.json"
+          npm sbom --workspace @dcl-editor/service --omit=dev --package-lock-only --sbom-format=cyclonedx > "$RUNNER_TEMP/service.cdx.json"
           mkdir -p "$OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY/osv-scalibr/npm"
           curl -fLsS --retry 3 https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip -o "$OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY/osv-scalibr/npm/all.zip"
           curl -fLsS --retry 3 https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
