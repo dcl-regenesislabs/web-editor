@@ -21,12 +21,17 @@ export function encodeBatch(batch: TrackedEvent[]): string {
   return btoa(binary)
 }
 
+// The engine stamps `is_local_scene` from the realm, and the editor's preview realm
+// counts as local: rows from inside a project read as previews, the ones before it
+// don't. `surface` names the editor's rows whatever that flag says.
+const SURFACE = 'web_editor'
+
 export function trackCreator(action: CreatorAction, properties: CreatorProps = {}): void {
   const host = getHost()
   if (host === null) return
   const timestamp = new Date().toISOString()
   const project = hostedRoute.project
-  const props: CreatorProps = { action, ...(project === null ? {} : { project_id: project }), ...properties }
+  const props: CreatorProps = { action, surface: SURFACE, ...(project === null ? {} : { project_id: project }), ...properties }
   try {
     const v1 = hostV1(host)
     if (typeof v1?.track === 'function') {

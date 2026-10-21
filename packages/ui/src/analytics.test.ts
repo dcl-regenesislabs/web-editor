@@ -35,7 +35,7 @@ it('sends through host.track when the host has it', () => {
   setHost(host)
   hostedRoute.project = 'p1'
   trackCreator('play_started', { forced: false })
-  expect(track).toHaveBeenCalledWith(CREATOR_ACTION_EVENT, { action: 'play_started', project_id: 'p1', forced: false })
+  expect(track).toHaveBeenCalledWith(CREATOR_ACTION_EVENT, { action: 'play_started', surface: 'web_editor', project_id: 'p1', forced: false })
   expect(host.engineConsole).not.toHaveBeenCalled()
 })
 
@@ -49,7 +49,7 @@ it('falls back to the engine console with one base64 token of the batch', () => 
   expect(decode(line)).toEqual([
     {
       event: CREATOR_ACTION_EVENT,
-      properties: { action: 'project_created', project_id: 'ñandú-🦤', source: 'template', template: 'café' },
+      properties: { action: 'project_created', surface: 'web_editor', project_id: 'ñandú-🦤', source: 'template', template: 'café' },
       timestamp: '2026-10-21T12:00:00.000Z'
     }
   ])
