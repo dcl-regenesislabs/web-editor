@@ -1,4 +1,4 @@
-FROM node:24-alpine AS dependencies
+FROM node:24.22.1-alpine AS dependencies
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -9,7 +9,7 @@ RUN npm ci --workspace @dcl-editor/service --include-workspace-root=false --omit
     && mkdir -p packages/service/node_modules packages/contract/node_modules \
     && npm cache clean --force
 
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 
 # the release tag, reported by /health so a deploy can be checked
 ARG SERVICE_VERSION=
