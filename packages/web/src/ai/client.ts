@@ -25,7 +25,7 @@ export function createBrowserAssistant(options: {
   let connectionGeneration = 0
   let active: {
     id: string; projectId: string; wallet: string; controller: AbortController; calls: Set<string>; execute: ReturnType<typeof createBrowserTools>
-    // for analytics: when it started, which model, and why it failed if the service said so
+    // for analytics: when it started, which model, and the code of the service's last error event
     started: number; model: string | null; error: string | null
   } | null = null
   let toolQueue: Promise<void> = Promise.resolve()
@@ -51,7 +51,7 @@ export function createBrowserAssistant(options: {
       model: turn.model,
       duration_ms: Date.now() - turn.started,
       tool_calls: turn.calls.size,
-      ...(ok ? {} : { error: turn.error ?? error })
+      ...(ok ? {} : { error })
     })
   }
 
@@ -156,7 +156,7 @@ export function createBrowserAssistant(options: {
       active.error = resumable ? 'limit' : 'assistant_error'
       emit({ kind: 'error', turnId: active.id, message: event.message, ...(resumable ? { resumable } : {}) })
     }
-    if (event.kind === 'done' && typeof event.ok === 'boolean') finish(event.ok, undefined, 'assistant_error')
+    if (event.kind === 'done' && typeof event.ok === 'boolean') finish(event.ok, undefined, active.error ?? 'assistant_error')
   }
 
   async function connect(): Promise<WebSocket> {

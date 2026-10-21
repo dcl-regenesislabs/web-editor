@@ -42,6 +42,7 @@ vi.mock('@scene/state', () => ({
   setComponentExpanded: () => {}
 }))
 vi.mock('@scene/reactive', () => ({ notify: () => {} }))
+vi.mock('../analytics', () => ({ trackCreator: () => {} }))
 vi.mock('@scene/custom-components', () => ({ NAME_COMPONENT: 'core-schema::Name', entityName: () => undefined }))
 vi.mock('@scene/world-pos', () => ({ rootLocalForWorld: () => null }))
 vi.mock('@scene/inspector', () => {
@@ -166,7 +167,7 @@ describe('undoing a copy or a placed prefab', () => {
   it.each([
     ['Duplicate', () => (seedTable(), uiDuplicateEntity('512'))],
     ['Paste', () => (seedTable(), uiCopyEntity('512'), uiPasteEntity())],
-    ['Place a prefab', () => uiPlacePrefab('custom/gate')]
+    ['Place a prefab', () => uiPlacePrefab('custom/gate', 'prefabs_panel')]
   ])('%s: one undo removes every created entity and redo brings them back', async (_label, create) => {
     await create()
     const created = scene.created.map((id) => [id, structuredClone(scene.state.snapshot[id])] as const)

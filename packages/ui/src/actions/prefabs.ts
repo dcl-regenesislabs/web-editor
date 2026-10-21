@@ -5,6 +5,7 @@ import { writeComponent } from '@scene/inspector'
 import { NAME_COMPONENT, entityName } from '@scene/custom-components'
 import { TRIGGER_AREA } from '@scene/allowed-components'
 import { rootLocalForWorld } from '@scene/world-pos'
+import { trackCreator } from '../analytics'
 import { sendToScene } from '../engine/bus'
 import { dataLayerListFiles, dataLayerReadFile } from '../engine/datalayer'
 import { dropPosition, uniqueEntityName } from '../assets'
@@ -96,8 +97,16 @@ async function applyPlacement(rootId: string, placement: PrefabPlacement): Promi
 // the project first without repeating any of this.
 // Answers with the placed root's entity id (null if nothing was placed), so a
 // caller can follow the placement up without re-deriving what landed.
+// Which gesture placed a prefab, for analytics. Required, so a new call site
+// says what it is instead of going uncounted; the assistant's are filtered out
+// in the warehouse, not here.
+export type PrefabVia = 'prefabs_panel' | 'sdk_gate' | 'spawner' | 'zone_message' | 'assistant'
+
 const placePrefab = async (
   resolve: () => Promise<{ folder: string; notes: string[] }>,
+  via: PrefabVia,
+  source: 'project' | 'user' | 'builtin',
+  ref: string,
   placement?: PrefabPlacement
 ): Promise<string | null> => {
   state.assetBusy = true
@@ -122,7 +131,11 @@ const placePrefab = async (
     })
     if (placed === null) return null
     rootId = placed.rootId
-    if (rootId !== null) pushHistory(treeCreationEntries(rootId))
+    if (rootId !== null) {
+      pushHistory(treeCreationEntries(rootId))
+      // a built-in's ref is ours to name; a creator's own prefab is theirs
+      trackCreator('asset_added', { source, kind: 'prefab', via, ...(source === 'builtin' ? { asset_id: ref } : {}) })
+    }
     focusPlaced()
     notes.push(...placed.warnings)
     if (placed.permissionsAdded.length > 0) {
@@ -150,8 +163,9 @@ const placePrefab = async (
 
 export const uiPlacePrefab = async (
   folder: string,
+  via: PrefabVia,
   placement?: PrefabPlacement
-): Promise<string | null> => placePrefab(async () => ({ folder, notes: [] }), placement)
+): Promise<string | null> => placePrefab(async () => ({ folder, notes: [] }), via, 'project', folder, placement)
 
 // What the create gesture answers in one submit: "When spawned" leaves what you
 // built in the scene, marked so the built game skips it — the tree shows it in
@@ -234,6 +248,7 @@ export const uiCreatePrefabFromSelection = async (
 // project copy is instantiated like any other.
 export const uiPlaceLibraryPrefab = async (
   ref: string,
+  via: PrefabVia,
   placement?: PrefabPlacement
 ): Promise<string | null> =>
   placePrefab(async () => {
@@ -270,7 +285,7 @@ export const uiPlaceLibraryPrefab = async (
       notes.push('a newer version of this prefab exists — update it from the Prefabs tab')
     }
     return { folder: copied.folder, notes }
-  }, placement)
+  }, via, ref.startsWith('builtin:') ? 'builtin' : 'user', ref, placement)
 
 // A TriggerArea's Transform IS its volume, and the box is centred on the entity —
 // so dropping one on the ground buries its bottom half. Lift a placed volume root
@@ -350,7 +365,7 @@ export const uiAddSpawnerFor = async (entityId: string): Promise<string | null> 
     return null
   }
   const rootId =
-    source.kind === 'library' ? await uiPlaceLibraryPrefab(source.ref) : await uiPlacePrefab(source.folder)
+    source.kind === 'library' ? await uiPlaceLibraryPrefab(source.ref, 'spawner') : await uiPlacePrefab(source.folder, 'spawner')
   if (rootId === null) return null
   const placedNotes = carriedNotes(state.saveStatus)
 

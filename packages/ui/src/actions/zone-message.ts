@@ -12,7 +12,7 @@ export async function uiAddZoneMessage(zoneId: string): Promise<string | null> {
   try {
     await withHistorySuppressed(async () => {
       const placement = { name: `${zone} Message` }
-      created = await uiPlaceLibraryPrefab('builtin:announcer', placement)
+      created = await uiPlaceLibraryPrefab('builtin:announcer', 'zone_message', placement)
       if (created === null) return
       const problems: string[] = []
       await writeScriptParamValues(created, { zone, when: 'enter' }, problems)

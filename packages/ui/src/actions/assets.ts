@@ -44,7 +44,7 @@ export const uiImportAsset = async (assetId: string, _name: string): Promise<voi
   state.assetBusy = true
   try {
     await importModel(asset, await dropPosition())
-    trackCreator('asset_added', { source: 'catalog', kind: 'model', asset_id: asset.id })
+    trackCreator('asset_added', { source: 'catalog', kind: 'model', via: 'assets_panel', asset_id: asset.id })
     focusPlaced()
     state.saveStatus = `Imported ${asset.name}`
   } catch (e) {
@@ -71,7 +71,7 @@ const placeFile = async (rel: string, place: typeof placeLocalModel, kind: 'mode
   try {
     const name = rel.split('/').pop()?.replace(/\.[^.]+$/, '') ?? rel
     await place(rel, name, await dropPosition())
-    trackCreator('asset_added', { source: 'project', kind })
+    trackCreator('asset_added', { source: 'project', kind, via: 'assets_panel' })
     focusPlaced()
     state.saveStatus = `Placed ${name}`
   } catch (e) {
@@ -102,7 +102,7 @@ export const uiImportFiles = async (files: File[]): Promise<void> => {
   try {
     const { placed, added, missing, skipped } = await importFiles(files, await dropPosition())
     if (placed !== null || added.length > 0) {
-      trackCreator('asset_added', { source: 'upload', kind: placed === null ? 'file' : 'model', files: added.length + (placed === null ? 0 : 1) })
+      trackCreator('asset_added', { source: 'upload', via: 'assets_panel', kind: placed === null ? 'file' : 'model', files: added.length + (placed === null ? 0 : 1) })
     }
     const parts: string[] = []
     if (placed !== null) parts.push(`Added ${placed}`)

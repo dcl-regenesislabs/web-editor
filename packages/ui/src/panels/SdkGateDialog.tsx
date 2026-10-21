@@ -11,7 +11,7 @@ export function SdkGateDialog(): JSX.Element | null {
 
   const install = async (): Promise<void> => {
     const folder = await installSdkForGate()
-    if (folder !== null) await uiPlacePrefab(folder)
+    if (folder !== null) await uiPlacePrefab(folder, 'sdk_gate')
   }
 
   return (

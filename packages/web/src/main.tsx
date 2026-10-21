@@ -123,8 +123,8 @@ function routed(shell: EditorShell, host: DclEditorHost): EditorShell {
       host.setMode('edit')
       hostedRoute.project = id
       hostedRoute.opens++
-      trackCreator('project_opened')
       await shell.openProject(id)
+      trackCreator('project_opened')
     }
   }
 }

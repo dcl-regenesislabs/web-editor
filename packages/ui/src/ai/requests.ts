@@ -92,8 +92,8 @@ async function runPlace(
   }
   const rootId =
     source.kind === 'library'
-      ? await uiPlaceLibraryPrefab(source.ref, placement)
-      : await uiPlacePrefab(source.folder, placement)
+      ? await uiPlaceLibraryPrefab(source.ref, 'assistant', placement)
+      : await uiPlacePrefab(source.folder, 'assistant', placement)
   if (rootId === null) {
     out.problems.push(`"${request.slug}" could not be placed`)
     return
