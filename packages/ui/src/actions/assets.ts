@@ -13,6 +13,7 @@ import {
   importFiles,
   missingModelRefs
 } from '../assets'
+import { trackCreator } from '../analytics'
 import { sendToScene } from '../engine/bus'
 import { syncSelectionToScene, ensureTransformTool, focusPlaced } from './selection'
 
@@ -43,6 +44,7 @@ export const uiImportAsset = async (assetId: string, _name: string): Promise<voi
   state.assetBusy = true
   try {
     await importModel(asset, await dropPosition())
+    trackCreator('asset_added', { source: 'catalog', kind: 'model', asset_id: asset.id })
     focusPlaced()
     state.saveStatus = `Imported ${asset.name}`
   } catch (e) {
@@ -64,11 +66,12 @@ export const uiLoadLocalModels = async (): Promise<string[]> => {
 }
 
 // Place a model that's already in the project content into the scene.
-const placeFile = async (rel: string, place: typeof placeLocalModel): Promise<void> => {
+const placeFile = async (rel: string, place: typeof placeLocalModel, kind: 'model' | 'sound'): Promise<void> => {
   state.assetBusy = true
   try {
     const name = rel.split('/').pop()?.replace(/\.[^.]+$/, '') ?? rel
     await place(rel, name, await dropPosition())
+    trackCreator('asset_added', { source: 'project', kind })
     focusPlaced()
     state.saveStatus = `Placed ${name}`
   } catch (e) {
@@ -80,8 +83,8 @@ const placeFile = async (rel: string, place: typeof placeLocalModel): Promise<vo
     ensureTransformTool()
   }
 }
-export const uiPlaceLocalModel = (rel: string): Promise<void> => placeFile(rel, placeLocalModel)
-export const uiPlaceLocalSound = (rel: string): Promise<void> => placeFile(rel, placeLocalSound)
+export const uiPlaceLocalModel = (rel: string): Promise<void> => placeFile(rel, placeLocalModel, 'model')
+export const uiPlaceLocalSound = (rel: string): Promise<void> => placeFile(rel, placeLocalSound, 'sound')
 
 // Referenced files the picked set doesn't satisfy — checked before importing so
 // the panel can warn first. Fail-open: the post-upload status warning backstops.
@@ -98,6 +101,9 @@ export const uiImportFiles = async (files: File[]): Promise<void> => {
   state.assetBusy = true
   try {
     const { placed, added, missing, skipped } = await importFiles(files, await dropPosition())
+    if (placed !== null || added.length > 0) {
+      trackCreator('asset_added', { source: 'upload', kind: placed === null ? 'file' : 'model', files: added.length + (placed === null ? 0 : 1) })
+    }
     const parts: string[] = []
     if (placed !== null) parts.push(`Added ${placed}`)
     if (added.length > 0) parts.push(`${placed === null ? 'Added' : 'and'} ${added.length === 1 ? added[0] : `${added.length} files under assets/`}`)

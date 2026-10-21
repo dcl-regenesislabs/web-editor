@@ -70,6 +70,9 @@ export interface DclEditorHostV1 extends Omit<DclEditorHostV0, 'version'> {
   previewServerLogs?(after: number): ServerLogLine[]
   // contract v1.3: a build landed in the open preview, so the host restarts its scene server on it
   previewChanged?(): void
+  // the explorer's Segment pipeline, which adds its common fields and waits for the terms to be accepted;
+  // without it, analytics.ts falls back to the engine console's `/track`
+  track?(event: string, properties?: Record<string, unknown>): void
 }
 
 export interface ServerLogLine {

@@ -1,5 +1,6 @@
 import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, isCatalogSearch, object } from '@dcl-editor/contract'
 import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, AssistantMemoryRef, BrowserToolCall, EditorShell, PhonePreviewState } from '@dcl-editor/contract'
+import { trackCreator } from '@ui/analytics'
 import type { HostFetchInit } from '@ui/engine/hosted'
 import { createBrowserTools } from './tools'
 import type { BrowserProject } from './tools'
@@ -22,7 +23,11 @@ export function createBrowserAssistant(options: {
   let socket: WebSocket | null = null
   let connecting: Promise<WebSocket> | null = null
   let connectionGeneration = 0
-  let active: { id: string; projectId: string; wallet: string; controller: AbortController; calls: Set<string>; execute: ReturnType<typeof createBrowserTools> } | null = null
+  let active: {
+    id: string; projectId: string; wallet: string; controller: AbortController; calls: Set<string>; execute: ReturnType<typeof createBrowserTools>
+    // for analytics: when it started, which model, and why it failed if the service said so
+    started: number; model: string | null; error: string | null
+  } | null = null
   let toolQueue: Promise<void> = Promise.resolve()
   // the connection whose service still holds a conversation a limit paused
   let paused: WebSocket | null = null
@@ -33,13 +38,21 @@ export function createBrowserAssistant(options: {
   const send = (message: AssistantClientMessage) => {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
   }
-  function finish(ok: boolean, message?: string): void {
+  // `error`: a short code for analytics, never the message
+  function finish(ok: boolean, message?: string, error = 'stopped'): void {
     const turn = active
     if (turn === null) return
     active = null
     turn.controller.abort()
     if (message !== undefined) emit({ kind: 'error', turnId: turn.id, message })
     emit({ kind: 'done', turnId: turn.id, ok })
+    trackCreator(ok ? 'prompt_completed' : 'prompt_failed', {
+      project_id: turn.projectId,
+      model: turn.model,
+      duration_ms: Date.now() - turn.started,
+      tool_calls: turn.calls.size,
+      ...(ok ? {} : { error: turn.error ?? error })
+    })
   }
 
   // null when the row needs the result; write_file too, since the panel refreshes the file rail on its row
@@ -115,9 +128,9 @@ export function createBrowserAssistant(options: {
 
   function receive(raw: string): void {
     let message: unknown
-    try { message = JSON.parse(raw) } catch { finish(false, 'Invalid assistant response.'); return }
+    try { message = JSON.parse(raw) } catch { finish(false, 'Invalid assistant response.', 'invalid_response'); return }
     if (!object(message)) return
-    if (message.kind === 'failure' && typeof message.message === 'string') { finish(false, message.message); return }
+    if (message.kind === 'failure' && typeof message.message === 'string') { finish(false, message.message, 'service_failure'); return }
     if (message.kind === 'call' && typeof message.turnId === 'string' && typeof message.callId === 'string' &&
       ASSISTANT_ID.test(message.callId) && ['list_files', 'read_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest'].includes(String(message.tool)) && object(message.args)) {
       const { label, ...rest } = message as unknown as Omit<BrowserToolCall, 'label'> & { label?: unknown }
@@ -128,7 +141,7 @@ export function createBrowserAssistant(options: {
       const result = (parallel ? Promise.resolve() : toolQueue)
         .then(() => runTool(call)).catch((error: unknown) => {
           console.error('[assistant] browser tool failed', call.tool, error)
-          if (active?.id === call.turnId) finish(false, 'The browser tool failed.')
+          if (active?.id === call.turnId) finish(false, 'The browser tool failed.', 'tool_failed')
         })
       if (!parallel) toolQueue = result
       return
@@ -140,9 +153,10 @@ export function createBrowserAssistant(options: {
     if (event.kind === 'error' && typeof event.message === 'string') {
       const resumable = event.resumable === true
       if (resumable) paused = socket
+      active.error = resumable ? 'limit' : 'assistant_error'
       emit({ kind: 'error', turnId: active.id, message: event.message, ...(resumable ? { resumable } : {}) })
     }
-    if (event.kind === 'done' && typeof event.ok === 'boolean') finish(event.ok)
+    if (event.kind === 'done' && typeof event.ok === 'boolean') finish(event.ok, undefined, 'assistant_error')
   }
 
   async function connect(): Promise<WebSocket> {
@@ -180,7 +194,7 @@ export function createBrowserAssistant(options: {
           clearTimeout(timer)
           if (socket === ws) {
             socket = null
-            finish(false, 'Assistant connection closed. Your edits are saved; the next message starts a new conversation.')
+            finish(false, 'Assistant connection closed. Your edits are saved; the next message starts a new conversation.', 'connection_closed')
           }
           reject(new Error('Assistant connection closed.'))
         }
@@ -242,9 +256,19 @@ export function createBrowserAssistant(options: {
       if (wallet === null) throw new Error('Sign in to use the assistant.')
       paused = null
       const project = options.project()
-      const turn = { id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(), execute: createBrowserTools(project.tools) }
+      const turn = {
+        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(), execute: createBrowserTools(project.tools),
+        started: Date.now(), model: params.model ?? null, error: null
+      }
       active = turn
       emit({ kind: 'started', turnId: turn.id })
+      trackCreator('prompt_sent', {
+        project_id: project.id,
+        provider: params.provider,
+        model: turn.model,
+        prompt_length: params.text.length,
+        images: params.images?.length ?? 0
+      })
       try {
         await connect()
         turn.controller.signal.throwIfAborted()
@@ -257,7 +281,7 @@ export function createBrowserAssistant(options: {
         ].filter(Boolean).join('\n\n')
         send({ kind: 'prompt', turnId: turn.id, projectId: project.id, params: { ...params, context }, memory })
       } catch (error) {
-        if (active === turn) finish(false, error instanceof Error ? error.message : 'Could not start the assistant.')
+        if (active === turn) finish(false, error instanceof Error ? error.message : 'Could not start the assistant.', 'start_failed')
       }
       return { turnId: turn.id }
     },

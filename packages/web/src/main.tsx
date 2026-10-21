@@ -7,6 +7,7 @@
 // a stylesheet does not. The build emits it as editor.css next to this module.
 import '@fontsource-variable/inter/index.css'
 import type { EditorShell } from '@dcl-editor/contract'
+import { trackCreator } from '@ui/analytics'
 import { flushPendingSave } from '@ui/core/autosave'
 import { setConsoleTransport } from '@ui/engine/console'
 import { setDataLayerClient } from '@ui/engine/datalayer'
@@ -87,10 +88,33 @@ function closeHome(): void {
 }
 
 // Desktop's shell navigates the page to open a project. Here the Create page
-// closes and the docked editor takes over in place.
+// closes and the docked editor takes over in place. Also where the Create page's
+// project actions are tracked.
 function routed(shell: EditorShell, host: DclEditorHost): EditorShell {
+  const { createScene, importProject, duplicateProject } = shell
   return {
     ...shell,
+    ...(createScene === undefined ? {} : {
+      createScene: async (parent, name, template) => {
+        const id = await createScene(parent, name, template)
+        if (id !== null) trackCreator('project_created', { project_id: id, source: 'template', template })
+        return id
+      }
+    }),
+    ...(importProject === undefined ? {} : {
+      importProject: async (kind) => {
+        const result = await importProject(kind)
+        if (result?.ok === true) trackCreator('project_created', { project_id: result.report.id, source: 'import', import_kind: kind })
+        return result
+      }
+    }),
+    ...(duplicateProject === undefined ? {} : {
+      duplicateProject: async (id) => {
+        const copy = await duplicateProject(id)
+        if (copy !== null) trackCreator('project_created', { project_id: copy, source: 'duplicate', from_project_id: id })
+        return copy
+      }
+    }),
     openProject: async (id) => {
       const page = home
       closeHome()
@@ -99,6 +123,7 @@ function routed(shell: EditorShell, host: DclEditorHost): EditorShell {
       host.setMode('edit')
       hostedRoute.project = id
       hostedRoute.opens++
+      trackCreator('project_opened')
       await shell.openProject(id)
     }
   }
@@ -124,6 +149,7 @@ function mountHome(el: HTMLElement, api: HomeApi): () => void {
 
   const wanted = deepLinkTaken ? null : (hostV1(s.host)?.openProject ?? null)
   deepLinkTaken = true
+  trackCreator('editor_opened', { deep_link: wanted !== null })
   if (wanted !== null) {
     void s.web.projects
       .find(wanted)

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { state } from '@scene/state'
 import { uiDeleteLibraryPrefab, uiDeletePrefab, uiPlaceLibraryPrefab, uiPlacePrefab, uiRenamePrefab, uiSavePrefabToLibrary } from '../actions/prefabs'
+import { trackCreator } from '../analytics'
 import { useStore } from '../core/store'
 import { Button, ContextMenu, ControlButton, IconButton, LinkButton, Modal, Notice, SearchField, Shelf } from '../ds'
 import { IconDots, IconEdit, IconExport, IconGear, IconImport, IconPlus, IconPrefab, IconRefresh, IconTrash } from '../icons'
@@ -433,8 +434,10 @@ function cardTip(card: PrefabCardModel): string {
 }
 
 function placePrefab(source: PrefabSource, id: string): void {
-  if (source === 'project') void uiPlacePrefab(id)
-  else void uiPlaceLibraryPrefab(id)
+  void (source === 'project' ? uiPlacePrefab(id) : uiPlaceLibraryPrefab(id)).then((root) => {
+    // a built-in's ref is ours to name; a creator's own prefab is theirs
+    if (root !== null) trackCreator('asset_added', { source, kind: 'prefab', ...(source === 'builtin' ? { asset_id: id } : {}) })
+  })
 }
 
 function CardArt(props: { thumbnail: string | undefined }): JSX.Element {
