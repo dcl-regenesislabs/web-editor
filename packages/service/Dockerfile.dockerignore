@@ -15,6 +15,16 @@
 !packages/contract/package.json
 !packages/contract/src/
 !packages/contract/src/**
+!packages/mobile-preview/
+!packages/mobile-preview/package.json
+!packages/mobile-preview/src/
+!packages/mobile-preview/src/server.ts
+!packages/mobile-preview/src/bridge.js
+!packages/mobile-preview/src/realm-fetch.js
+!packages/mobile-preview/src/capture.js
+!packages/mobile-preview/scripts/
+!packages/mobile-preview/scripts/build.mjs
+!packages/mobile-preview/scripts/check-dist.mjs
 **/*.test.ts
 **/testing/
 **/.env*

@@ -145,7 +145,7 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
           Publish
         </Button>
       )}
-      {window.editorShell?.mobilePreview !== undefined && (
+      {(window.editorShell?.mobilePreview !== undefined || window.editorShell?.phonePreview !== undefined) && (
         <div className="eui-topbar-menu-wrap">
           <button
             className={`eui-topbar-btn wide ${previewOpen ? 'on' : ''}`}
@@ -166,15 +166,22 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
                     In your browser
                   </MenuItem>
                 )}
-                <MenuItem
-                  icon={<PhoneIcon />}
-                  onClick={() => {
-                    setPreviewOpen(false)
-                    setMobilePreview(true)
-                  }}
-                >
-                  On your phone…
-                </MenuItem>
+                {window.editorShell?.phonePreview !== undefined && (
+                  <MenuItem icon={<PhoneIcon />} onClick={() => runPreview(window.editorShell?.phonePreview)}>
+                    As a phone
+                  </MenuItem>
+                )}
+                {window.editorShell?.mobilePreview !== undefined && (
+                  <MenuItem
+                    icon={<PhoneIcon />}
+                    onClick={() => {
+                      setPreviewOpen(false)
+                      setMobilePreview(true)
+                    }}
+                  >
+                    On your phone…
+                  </MenuItem>
+                )}
                 {window.editorShell?.unityPreview !== undefined && (
                   <MenuItem icon={<MonitorIcon />} onClick={() => runPreview(window.editorShell?.unityPreview)}>
                     In Decentraland Desktop
@@ -182,6 +189,9 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
                 )}
                 {previewFail === 'no-scene' && (
                   <span className="eui-menu-note eui-topbar-note">The scene server is still starting — try again in a moment.</span>
+                )}
+                {previewFail === 'unavailable' && (
+                  <span className="eui-menu-note eui-topbar-note">The phone preview couldn't open on this page.</span>
                 )}
                 {previewFail === 'no-client' && (
                   <span className="eui-menu-note eui-topbar-note">

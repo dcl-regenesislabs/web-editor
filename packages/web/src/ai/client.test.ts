@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import type { AiEvent, AssistantClientMessage, AssistantMemoryRef } from '@dcl-editor/contract'
+import type { AiEvent, AssistantClientMessage, AssistantMemoryRef, PhonePreviewState } from '@dcl-editor/contract'
 import { ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX } from '@dcl-editor/contract'
 import { createBrowserAssistant } from './client'
 
@@ -37,10 +37,11 @@ function setup(fetch = async () => new Response(JSON.stringify({ token: 'test-ti
   let projectId = 'first'
   const scene = vi.fn(async (_request: unknown, _signal: AbortSignal): Promise<unknown> => ({ id: '512' }))
   const assets = vi.fn(async () => ({ results: [{ ref: 'builtin:game-flow' }] }))
+  const mobilePreview = vi.fn((): PhonePreviewState => ({ mode: 'closed', ready: false, url: null }))
   const kept = new Map<string, AssistantMemoryRef>()
   const read = vi.fn(async (id: string, wallet: string) => kept.get(`${id}@${wallet}`) ?? null)
   const assistant = createBrowserAssistant({
-    service: 'http://service.test', fetch, wallet: () => 'wallet',
+    service: 'http://service.test', fetch, wallet: () => 'wallet', mobilePreview,
     memory: {
       read,
       write: async (id, wallet, ref) => { if (ref === null) kept.delete(`${id}@${wallet}`); else kept.set(`${id}@${wallet}`, ref) }
@@ -51,10 +52,31 @@ function setup(fetch = async () => new Response(JSON.stringify({ token: 'test-ti
   })
   const events: AiEvent[] = []
   assistant.shell.onAiEvent((event) => events.push(event))
-  return { assistant, events, scene, assets, kept, read, switchProject() { projectId = 'second' } }
+  return { assistant, events, scene, assets, kept, read, mobilePreview, switchProject() { projectId = 'second' } }
 }
 
 afterEach(() => { Socket.instances = []; vi.unstubAllGlobals() })
+
+it('sends fresh mobile availability on each turn without its launch URL', async () => {
+  const { assistant, mobilePreview, events } = setup()
+  const params = { provider: 'claude' as const, text: 'Fix the HUD', context: 'Selected: Score' }
+  try {
+    await assistant.shell.aiSend(params)
+    const socket = Socket.instances[0]
+    expect(socket.sent.find((message) => message.kind === 'prompt')?.params.context)
+      .toBe('Selected: Score\n\n[Mobile preview] {"mode":"closed","ready":false}')
+    await assistant.reset()
+    mobilePreview.mockReturnValue({ mode: 'tab', ready: true, url: 'http://editor.test/godot/?previewSession=private-session' })
+    const { turnId } = await assistant.shell.aiSend(params)
+    const next = Socket.instances[1]
+    expect(next.sent.find((message) => message.kind === 'prompt')?.params.context)
+      .toBe('Selected: Score\n\n[Mobile preview] {"mode":"tab","ready":true}')
+    next.receive({ kind: 'call', turnId, callId: 'mobile-shot', tool: 'view', args: { target: 'mobile' }, label: 'Checking mobile UI' })
+    await vi.waitFor(() => expect(events).toContainEqual({
+      kind: 'tool', turnId, tool: 'View', detail: 'Mobile preview', label: 'Checking mobile UI'
+    }))
+  } finally { assistant.dispose() }
+})
 
 it('dispatches asset tools through the signed assistant connection', async () => {
   const { assistant, assets } = setup()

@@ -95,5 +95,14 @@ describe('assistant browser tools', () => {
     expect(JSON.parse(await run('view', { entity: '  ', from: { x: 8, y: 20, z: 8 }, lookAt: { x: 8, y: 'up', z: 8 } }))).toMatchObject({ framed: null })
     expect(view).toHaveBeenLastCalledWith({ entity: null, from: { x: 8, y: 20, z: 8 }, lookAt: null }, expect.any(AbortSignal))
   })
-})
 
+  it('routes mobile pictures explicitly and rejects unknown capture targets', async () => {
+    const { run, view } = setup()
+    await run('view', { target: 'mobile' })
+    expect(view).toHaveBeenCalledWith({ target: 'mobile', entity: null, from: null, lookAt: null }, expect.any(AbortSignal))
+    await run('view', { target: 'mobile', openIfClosed: true })
+    expect(view).toHaveBeenLastCalledWith({ target: 'mobile', openIfClosed: true, entity: null, from: null, lookAt: null }, expect.any(AbortSignal))
+    await expect(run('view', { target: 'unknown' })).rejects.toThrow('target')
+    expect(view).toHaveBeenCalledTimes(2)
+  })
+})

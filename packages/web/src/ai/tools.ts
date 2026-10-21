@@ -61,7 +61,10 @@ export function createBrowserTools(project: BrowserProject) {
     }
     if (tool === 'build') return JSON.stringify(await project.build(signal))
     if (tool === 'view') {
+      if (args.target !== undefined && args.target !== 'editor' && args.target !== 'mobile') throw new Error('Unknown view target.')
       return JSON.stringify(await project.view({
+        ...(args.target === undefined ? {} : { target: args.target }),
+        ...(args.openIfClosed === true ? { openIfClosed: true } : {}),
         entity: typeof args.entity === 'string' && args.entity.trim() !== '' ? args.entity : null,
         from: point(args.from),
         lookAt: point(args.lookAt)

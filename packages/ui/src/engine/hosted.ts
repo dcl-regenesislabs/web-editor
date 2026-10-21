@@ -12,6 +12,7 @@ export interface DclEditorHostV0 {
   engineConsole(line: string): Promise<string>
   identity(): { address: string | null; isGuest: boolean }
   setMode(mode: 'edit' | 'play' | 'off'): void
+  setViewportActive?(active: boolean): void
   openPreview(projectId: string, position: string): Promise<void>
   spawnEditorScene(): Promise<{ hash: string }>
   exit(): void

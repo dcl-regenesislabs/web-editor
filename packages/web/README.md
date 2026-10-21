@@ -143,7 +143,16 @@ and its `dataLayer` is the open project's files.
 - **Publish** (`src/publish/`): see Publish.
 - **Assistant** (`src/ai/`): see Assistant.
 
-Left undefined, so the editor hides the entry point: updates, phone and desktop-client
+The phone preview (`src/shell/phone-preview.ts`) loads the separate
+[`mobile-preview-runtime`](../mobile-preview/README.md) npm package from the editor service's
+`/mobile-preview/` endpoint, or the editor's standalone server on `127.0.0.1:8788` in development.
+Its own origin isolates startup. `phone-preview-transport.ts` relays browser-local realm requests,
+hot reload, lifecycle and captures with origin/window/session/instance checks. Closing the project
+disposes the preview. The explorer has no runtime package or mobile hosting configuration.
+Minimizing keeps the iframe mounted and sends a visibility message to pause its engine;
+restoring resumes it without reloading. The minimized preview retains memory and rejects captures.
+
+Left undefined, so the editor hides the entry point: updates, physical-phone QR and desktop-client
 previews, and prefab imports (folder, zip, GitHub).
 
 `createWebShell` also returns `projects` (`WebProjects` in `src/seam.ts`), for the parts of the

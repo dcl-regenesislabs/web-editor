@@ -103,6 +103,8 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
           y: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })), label
         }),
         view: Type.Object({
+          target: Type.Optional(Type.Union([Type.Literal('editor'), Type.Literal('mobile')])),
+          openIfClosed: Type.Optional(Type.Boolean({ description: 'Open the mobile preview if closed. Use only when the creator asks to see or check mobile UI.' })),
           entity: Type.Optional(Type.String()),
           from: Type.Optional(Type.Object({ x: Type.Number(), y: Type.Number(), z: Type.Number() })),
           lookAt: Type.Optional(Type.Object({ x: Type.Number(), y: Type.Number(), z: Type.Number() })),
@@ -115,9 +117,9 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
         asset_request: 'Search the prefab library, import a returned ref into the project without placing it, or inspect a local model for dimensions, pivot, animation names, colliders and dependencies. Search results have nextOffset.',
         write_file: 'Create or replace source code, only if its revision still matches.',
         scene_request: 'Inspect or change the live scene using the editor actions documented in the system prompt.',
-        build: 'Compile and run the browser project once. Return compiler diagnostics and runtime errors; does not publish it.',
+        build: 'Compile and run the browser project once. Return compiler diagnostics, runtime errors and mobilePreview status; does not publish it. After visual UI changes, inspect an open mobile preview with view target: mobile.',
         playtest: 'Check the running game with the real player controller and UI: a quick run after a build, or reproducing what the creator reports. start reloads the client scene at spawn and plays; stop restores edit mode and discards client runtime changes. The multiplayer server can retain progress across reloads: click the game restart button and verify its initial HUD before a fresh attempt. status reports player world position, HUD text and runtime errors. input holds the interaction keys E/F for durationMs (0–5000); wait advances time; walk uses the controller towards to in world metres, on the ground only. click presses the scene UI at x/y fractions of the viewport. Does not grant progress. Use view during play to see the HUD and route.',
-        view: 'A picture of the scene. As is; or framed on entity (an id or unique name); or from a world position `from` looking at `lookAt`, in metres (16 per parcel), for a plan view from above, a facade or a close-up. Use it to check what you placed, moved or built.'
+        view: 'A picture of the scene. Use target: mobile when asked how mobile controls or UI look; set openIfClosed: true for that request to open the preview if needed. Mobile captures include touch controls and scene UI, embedded or in another tab. A minimized preview briefly resumes for the picture and pauses again afterward. Loading previews are awaited. It uses the current player camera and cannot frame an entity. With no target or camera arguments, the embedded mobile preview is captured when open. target: editor captures the editor camera, optionally framed on entity or from a world position from looking at lookAt, in metres (16 per parcel). Use it to check what you placed, moved or built.'
       }
       const tools: ToolDefinition[] = (Object.keys(schema) as BrowserToolName[]).map((name) => ({
         name, label: name, description: descriptions[name], parameters: schema[name],

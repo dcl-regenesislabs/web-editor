@@ -23,7 +23,9 @@ import { renameRequested } from './panels/reveal'
 import { assetsReview } from './panels/assets-review'
 import { storedValue, usePersistentEnum, usePersistentFlag, usePersistentNum } from './core/persist'
 import { autoSaveStatus } from './core/autosave'
-import { Splitter, Toast as DsToast } from './ds'
+import { IconButton, Splitter, Toast as DsToast } from './ds'
+import { IconSidebarLeft, IconSidebarRight } from './icons'
+import { PhonePreviewPane } from './features/preview/PhonePreviewPane'
 
 // Draggable right edge of the left dock.
 function LeftResize(props: { width: number; onResize: (w: number) => void }): JSX.Element {
@@ -197,6 +199,18 @@ export function App(props: { playing?: boolean }): JSX.Element {
   return (
     <>
       {rightCol}
+      <PhonePreviewPane
+        left={leftOpen && ready ? leftWidth + 24 : 12}
+        right={rightOpen ? rightWidth + 24 : 12}
+        panelControls={<>
+          <IconButton tip={leftOpen ? 'Hide hierarchy' : 'Show hierarchy'} active={leftOpen} aria-pressed={leftOpen} onClick={() => setLeftOpen(!leftOpen)}>
+            <IconSidebarLeft />
+          </IconButton>
+          <IconButton tip={rightOpen ? 'Hide inspector & assistant' : 'Show inspector & assistant'} active={rightOpen} aria-pressed={rightOpen} onClick={toggleRightPanel}>
+            <IconSidebarRight />
+          </IconButton>
+        </>}
+      />
       {!ready ? (
         <div className="eui-boot">
           {phase === 'waiting-engine'

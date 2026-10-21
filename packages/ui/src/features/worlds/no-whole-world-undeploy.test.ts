@@ -83,7 +83,9 @@ const UNDEPLOY_URL = [
 ]
 
 export function buildsWholeWorldUndeploy(line: string): boolean {
-  return UNDEPLOY_URL.some((r) => r.test(line))
+  // The content lookup endpoint cannot undeploy a world.
+  const source = line.replace(/(['"`])\/content\/entities\/active\1/g, '')
+  return UNDEPLOY_URL.some((r) => r.test(source))
 }
 
 // The two files that may spell the path, and what keeps each from being the
@@ -163,6 +165,7 @@ describe('the guard itself', () => {
       'const path = `/entities/${name}`'
     ]
     for (const line of forbidden) expect(buildsWholeWorldUndeploy(line), line).toBe(true)
+    expect(buildsWholeWorldUndeploy("const paths = ['/content/entities/active', '/entities/world']")).toBe(true)
   })
 
   it('U1 leaves ECS entities, module paths and assertions alone', () => {
@@ -170,6 +173,7 @@ describe('the guard itself', () => {
       "import { uiDeleteSelected } from './actions/entities'",
       'for (const entity of snapshot.entities) render(entity)',
       "expect(url).not.toContain('/entities')",
+      "if (method === 'POST') return path === '/content/entities/active'",
       'const url = `${worldsServer()}/world/${name}/scenes/${coordinate}`'
     ]
     for (const line of fine) expect(buildsWholeWorldUndeploy(line), line).toBe(false)

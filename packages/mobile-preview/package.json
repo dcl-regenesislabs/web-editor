@@ -1,0 +1,28 @@
+{
+  "name": "@dcl-editor/mobile-preview",
+  "version": "0.1.0",
+  "description": "Editor hosting and transport adapter for the published mobile preview runtime",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./server": "./src/server.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "node scripts/check-dist.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "^20.19.0"
+  },
+  "private": true,
+  "dependencies": {
+    "@dcl-regenesislabs/mobile-preview-runtime": "0.1.0"
+  }
+}

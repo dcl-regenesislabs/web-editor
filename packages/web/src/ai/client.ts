@@ -1,5 +1,5 @@
 import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, isCatalogSearch, object } from '@dcl-editor/contract'
-import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, AssistantMemoryRef, BrowserToolCall, EditorShell } from '@dcl-editor/contract'
+import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, AssistantMemoryRef, BrowserToolCall, EditorShell, PhonePreviewState } from '@dcl-editor/contract'
 import type { HostFetchInit } from '@ui/engine/hosted'
 import { createBrowserTools } from './tools'
 import type { BrowserProject } from './tools'
@@ -10,6 +10,7 @@ export function createBrowserAssistant(options: {
   service: string | null
   fetch(url: string, init?: HostFetchInit): Promise<Response>
   wallet(): string | null
+  mobilePreview?(): Pick<PhonePreviewState, 'mode' | 'ready'>
   project(): { id: string; tools: BrowserProject }
   // this browser's key to what the service remembers of a project's chat
   memory: {
@@ -49,6 +50,7 @@ export function createBrowserAssistant(options: {
       case 'read_file': return { tool: 'Read', detail: typeof call.args.path === 'string' ? call.args.path : '' }
       case 'asset_request': return { tool: 'Assets', detail: String(call.args.action ?? '') }
       case 'build': return { tool: 'Build', detail: 'Scene' }
+      case 'view': return { tool: 'View', detail: call.args.target === 'mobile' ? 'Mobile preview' : call.args.target === 'editor' ? 'Editor' : 'Current view' }
       case 'playtest': return { tool: 'Playtest', detail: String(call.args.action ?? '') }
       case 'scene_request':
         if (request.type === 'batch' && Array.isArray(request.requests)) return { tool: 'Scene', detail: `${request.requests.length} changes` }
@@ -249,7 +251,11 @@ export function createBrowserAssistant(options: {
         if (options.wallet() !== wallet || options.project().id !== project.id) throw new Error('The open project or account changed.')
         const memory = await rememberedChat(project.id, wallet)
         turn.controller.signal.throwIfAborted()
-        send({ kind: 'prompt', turnId: turn.id, projectId: project.id, params, memory })
+        const preview = options.mobilePreview?.()
+        const context = preview === undefined ? params.context : [params.context,
+          `[Mobile preview] ${JSON.stringify({ mode: preview.mode, ready: preview.ready })}`
+        ].filter(Boolean).join('\n\n')
+        send({ kind: 'prompt', turnId: turn.id, projectId: project.id, params: { ...params, context }, memory })
       } catch (error) {
         if (active === turn) finish(false, error instanceof Error ? error.message : 'Could not start the assistant.')
       }

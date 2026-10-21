@@ -38,6 +38,12 @@ try {
   let base = address()
   await ready(base)
   assert.equal(docker('exec', name, 'id', '-u'), '1000')
+  const runtime = await fetch(base + '/svc/mobile-preview/index.wasm', { method: 'HEAD' })
+  assert.equal(runtime.status, 200)
+  assert.equal(runtime.headers.get('content-type'), 'application/wasm')
+  assert.ok(Number(runtime.headers.get('content-length')) > 0)
+  assert.equal((await fetch(base + '/svc/mobile-preview/package.json')).status, 404)
+
   docker('exec', name, 'node', 'packages/service/scripts/healthcheck.mjs')
   docker('exec', name, 'node', '--input-type=module', '-e', `
     import assert from 'node:assert/strict'

@@ -1,12 +1,6 @@
 // The editor's backend in the browser (see ../seam.ts): projects in the Origin
 // Private File System, the scene built in a worker, and the result published to
 // the preview realm the page's service worker serves.
-//
-// What the desktop shell does natively and this one cannot is left undefined,
-// which is how the UI knows to hide it: updates, phone and desktop-client
-// previews, and prefab imports. The prefab library is the built-ins served next
-// to editor.js plus, signed in, the wallet's own library on the project service.
-//
 // Publishing has no CLI to drive here: on a v1 host the shell does it itself
 // (publish/publish.ts), and the hosting page confirms and signs.
 //
@@ -54,6 +48,7 @@ import { createBuiltinPrefabs } from './builtin-prefabs'
 import { runtimeTypes, sceneTemplates, templateFiles } from './bundled'
 import { type ProjectFiles, createPrefabLibrary, parseRef } from './prefab-library'
 import { type Preview, browserSecret, createPreviews, previewMachineId } from './preview'
+import { createPhonePreview, mobilePreviewEntry, previewEnvironment } from './phone-preview'
 import { relayServerLogs } from './server-logs'
 import { waitForPreviewLayout } from './preview-layout'
 import { createUserPrefabs } from './user-prefabs'
@@ -120,8 +115,10 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     if (logs.length > MAX_LOG_LINES) logs.splice(0, logs.length - MAX_LOG_LINES)
     for (const listener of logListeners) listener(line)
   }
+  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId), previewEnvironment(services?.services.worldsContent ?? null))
   const emit = (event: SceneBuildEvent): void => {
     for (const listener of buildListeners) listener(event)
+    if (event.type === 'bundleSaved' && current !== null) phone.built(current.id).catch((error: unknown) => console.error('[editor] mobile preview reload failed', error))
   }
   // where each project's npm packages stand, for as long as the page lives
   const packages = new Map<string, ProjectPackages>()
@@ -185,6 +182,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       return services.signedFetch(url, init)
     },
     wallet,
+    mobilePreview: phone.status,
     memory: {
       read: async (projectId, account) => {
         const kept = await store.assistantMemory(projectId, account)
@@ -241,11 +239,11 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
             await fileWrites
             const result = await previews.build(open.id, new Map(open.files))
             signal.throwIfAborted()
-            if (!result.ok) return { ok: false, diagnostics: result.diagnostics }
+            if (!result.ok) return { ok: false, diagnostics: result.diagnostics, mobilePreview: phone.status() }
             // compiled is not working: run it once and report what it printed
             const run = await runFreshBuild()
             signal.throwIfAborted()
-            return { ok: true, diagnostics: result.diagnostics, run }
+            return { ok: true, diagnostics: result.diagnostics, run, mobilePreview: phone.status() }
           }
         }
       }
@@ -472,6 +470,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
   }
 
   function transition(work: (mine: number) => Promise<void>): Promise<void> {
+    phone.close()
     ready = null
     const mine = ++generation
     const stopped = assistant.reset()
@@ -623,6 +622,11 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       readyListeners.push(listener)
     },
     requestReady: async () => ready,
+    phonePreview: async (mode) => (ready === null ? { ok: false, reason: 'no-scene' } : phone.open(ready.realm, ready.position, mode)),
+    phonePreviewState: phone.state,
+    onPhonePreviewState: phone.subscribe,
+    closePhonePreview: phone.close,
+    capturePhonePreview: phone.capture,
     onServersError: (listener) => {
       errorListeners.push(listener)
     },
@@ -782,6 +786,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     projects,
     dataLayer,
     dispose: () => {
+      phone.dispose()
       assistant.dispose()
       generation++
       leave()

@@ -361,7 +361,7 @@ describe('what a wallet may store and read', () => {
       pull() {
         reading()
       }
-    })
+    }, { highWaterMark: 0 })
     const pending = ctx.send(new Request(first.url, { method: 'PUT', body: slow, duplex: 'half' } as RequestInit))
     // the first upload holds the slot once its body is being read
     await started

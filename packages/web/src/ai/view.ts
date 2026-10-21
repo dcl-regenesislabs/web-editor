@@ -7,6 +7,7 @@ import { resolveEntityRef } from '@ui/ai/request-format'
 import { state, isUiEntity } from '@scene/state'
 import { isReservedEntity } from '@dcl-editor/contract'
 import { sendToScene } from '@ui/engine/bus'
+import { captureMobileView } from './mobile-view'
 
 const MAX_SIDE = 1024
 // the focus tween is 0.3 s; the frame after it has the new view
@@ -46,6 +47,8 @@ export interface Point {
 }
 
 export interface ViewRequest {
+  target?: 'editor' | 'mobile'
+  openIfClosed?: boolean
   entity: string | null
   // the free camera moved here, in world metres, looking at lookAt (or keeping its aim)
   from: Point | null
@@ -54,6 +57,12 @@ export interface ViewRequest {
 
 // The creator's camera comes back where it was once the picture is taken.
 export async function captureView(request: ViewRequest, signal: AbortSignal): Promise<ViewCapture> {
+  const phone = window.editorShell?.phonePreviewState?.()
+  const mobile = request.target === 'mobile' || (request.target === undefined && phone?.mode === 'embedded' && request.from === null && request.entity === null && request.lookAt === null)
+  if (mobile) {
+    if (request.from !== null || request.entity !== null || request.lookAt !== null) throw new Error('Mobile captures use the current player camera. Use target: editor for entity framing or camera positioning.')
+    return { ...await captureMobileView(request.openIfClosed === true, signal), framed: 'mobile preview' }
+  }
   const moving = request.from !== null || request.entity !== null
   if (moving) await sendToScene({ type: 'camera-hold' })
   try {

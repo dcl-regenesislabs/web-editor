@@ -49,6 +49,14 @@ signedFetch(url, init?: { method?; headers?; body?; metadata?: Record<string, un
 - Header allow-list: `accept`, `content-type`, `if-match`, `if-none-match`, `x-confirm-delete-all`. `body` (string, FormData, Blob) passes through untouched (no content-type added); `signal` is forwarded to fetch.
 - Guests: `not-signed-in`, as before.
 
+## Viewport activity (still `version: 1`, additive)
+
+`setViewportActive?(active: boolean): void` reduces the engine to at most 5 FPS while another
+preview covers the editor viewport. Editing and console requests remain available. Restoring
+activity uses the current graphics setting; the temporary cap never writes that setting.
+The editor restores activity on preview close/unmount or pop-out to another tab; the host also restores it on exit.
+Older hosts can omit this method. Hidden browser tabs are throttled independently by the engine.
+
 ## The project-storage service (packages/service)
 - Rejects any request whose metadata has `signer === 'decentraland-kernel-scene'` (or a sceneId), or whose `intent !== 'dcl:editor:projects'`; timestamp window 5 minutes; Origin allowlist.
 - API (all under the base url, all signed, wallet = the auth chain's owner, lowercased):

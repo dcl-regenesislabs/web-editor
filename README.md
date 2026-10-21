@@ -130,11 +130,29 @@ up as you make them:
 
 - **In your browser** — opens the web explorer in your default browser,
   pointed at your scene.
+- **As a phone** — embeds the mobile preview in the editor's
+  center beside the assistant. Its macOS-style traffic lights have hover labels: red closes,
+  yellow minimizes and pauses, and green opens in a tab or restores the preview to the editor.
+  **Minimize** pauses the preview so you can edit; **Restore preview** resumes the same instance
+  and camera. **Close preview** releases its memory. The covered editor viewport runs at up to 5 FPS,
+  restoring its configured rate when you minimize, close or move the preview to a tab. With the preview
+  in another tab, the editor's viewport and gizmos remain available. Edits hot-reload in either view. Requires the separate
+  [`@dcl-regenesislabs/mobile-preview-runtime`](packages/mobile-preview/README.md) npm package, pinned to an exact release and served by
+  the editor on its own origin (see [local setup](docs/WEB-EDITOR.md)). Startup stays separate from the editor UI.
+  The mobile preview includes the default grass floor under the scene's parcels.
+  Its header has sidebar icons to show or hide the hierarchy and inspector/assistant while the preview stays open.
+  Its web runtime still has gaps in system APIs; verify final gameplay in the native phone app.
 - **On your phone** — shows a QR code; scan it with your phone's camera to
   open the scene in the Decentraland mobile app. Phone and computer must be
   on the same network.
 - **In Decentraland Desktop** — jumps into the scene in the official
   [Decentraland client](https://dcl.gg/explorer), if you have it installed.
+
+The assistant can photograph the mobile preview with `view({ target: 'mobile' })`.
+An unframed `view` captures it automatically while embedded; `target: 'editor'` keeps the
+editor camera. Mobile captures include scene UI and touch controls.
+A minimized preview briefly resumes for the picture, then pauses again automatically.
+When you ask to see the mobile UI, the assistant can open a closed preview and wait for it to load.
 
 ## Sign in with Decentraland
 
@@ -237,6 +255,9 @@ Usage and context meters are hidden; hosting limits are documented in the servic
 The assistant can import library prefabs, inspect model bounds and animation names, and use viewport images
 and runtime diagnostics to refine the result. For new games it blocks out with primitives first, then turns
 them into catalog models in place; model searches run alongside scene edits.
+After UI changes, the web assistant is instructed to inspect a screenshot of an open mobile preview after
+building, fix visible layout problems and recheck. When the preview is closed, it asks you to open
+**Preview → As a phone** for a mobile check. It reports unavailable checks instead of claiming they passed.
 When nothing in the catalog fits, or you ask for something specific, it builds the model in code (three.js,
 run in a sandbox with no network) and saves the script next to it in `models/src/`, so "make the roof taller"
 edits and rebuilds it. Built models can move (a looping clip plays on its own) and share a library of 21

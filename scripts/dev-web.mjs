@@ -34,6 +34,7 @@ const { values } = parseArgs({
 const PAGE = 'http://localhost:5173'
 const SERVICE_PORT = 8787
 const WORLDS_PORT = 8799
+const MOBILE_PORT = 8788
 
 const reactWeb = path.join(path.resolve(values.bevy), 'react-web')
 if (!fs.existsSync(path.join(reactWeb, 'package.json'))) {
@@ -65,6 +66,11 @@ if (!values['no-build']) {
     run('npm', ['run', 'export-static', '-w', '@dcl-editor/scene'])
   }
   run('npm', ['run', 'build', '-w', '@dcl-editor/web'])
+  // the phone preview is optional: without its runtime the stack starts with the menu entry hidden
+  console.log('▶ npm run build -w @dcl-editor/mobile-preview')
+  if (spawnSync('npm', ['run', 'build', '-w', '@dcl-editor/mobile-preview'], { cwd: root, stdio: 'inherit' }).status !== 0) {
+    console.warn('[mobile] runtime build failed; starting without the phone preview')
+  }
 }
 
 const children = []
@@ -90,6 +96,9 @@ process.on('SIGTERM', stop)
 
 const dataDir = path.join(root, '.data', 'service')
 fs.mkdirSync(dataDir, { recursive: true })
+if (fs.existsSync(path.join(root, 'packages/mobile-preview/dist/manifest.json'))) {
+  start('mobile', process.execPath, ['packages/mobile-preview/scripts/serve.ts', String(MOBILE_PORT)])
+}
 start('service', process.execPath, [
   'packages/service/dev-server.ts',
   '--port',

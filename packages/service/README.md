@@ -311,6 +311,10 @@ docker build -f packages/service/Dockerfile -t dcl-editor-service:local .
 node packages/service/scripts/docker-smoke.mjs
 ```
 
+The image installs the exact mobile runtime npm version through the private hosting
+adapter, verifies its artifact manifest and prepares the editor transport during the build.
+It needs no Godot source checkout or source credential.
+
 The image uses Node 24, production service dependencies, the non-root `node` user
 (UID 1000), Tini, and a readiness healthcheck. The smoke script uses temporary
 storage and synthetic configuration to test signed uploads/downloads, persistence

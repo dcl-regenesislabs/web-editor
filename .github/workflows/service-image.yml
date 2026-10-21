@@ -5,6 +5,7 @@ on:
     paths:
       - 'packages/service/**'
       - 'packages/contract/**'
+      - 'packages/mobile-preview/**'
       - 'scripts/check-secrets*'
       - 'SECURITY.md'
       - 'package.json'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'packages/service/**'
       - 'packages/contract/**'
+      - 'packages/mobile-preview/**'
       - 'scripts/check-secrets*'
       - 'SECURITY.md'
       - 'package.json'
@@ -39,9 +41,19 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci --workspace @dcl-editor/service --include-workspace-root=false --ignore-scripts
+      - run: npm ci --workspace @dcl-editor/service --include-workspace-root=false --ignore-scripts --no-audit
       - run: node scripts/check-secrets.mjs --history
-      - run: npm audit --workspace @dcl-editor/service --omit=dev --audit-level=moderate
+      - name: Audit production dependencies offline
+        env:
+          OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY: ${{ runner.temp }}/osv-db
+        run: |
+          npm sbom --workspace @dcl-editor/service --omit=dev --package-lock-only --sbom-format=cyclonedx > "$RUNNER_TEMP/service.cdx.json"
+          mkdir -p "$OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY/osv-scalibr/npm"
+          curl -fLsS --retry 3 https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip -o "$OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY/osv-scalibr/npm/all.zip"
+          curl -fLsS --retry 3 https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          echo "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b  $RUNNER_TEMP/osv-scanner" | sha256sum --check -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          "$RUNNER_TEMP/osv-scanner" scan source --offline -L "$RUNNER_TEMP/service.cdx.json" --format gh-annotations
       - run: npm run typecheck --workspace @dcl-editor/service
       - run: npx vitest run packages/service/src
       - run: docker build -f packages/service/Dockerfile -t dcl-editor-service:local .

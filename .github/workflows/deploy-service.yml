@@ -47,7 +47,7 @@ jobs:
         run: |
           rsync -rlt -R -e 'ssh -i ~/.ssh/deploy' \
             --exclude node_modules --exclude '.env*' --exclude compose.override.yaml --exclude .data --exclude '*.tsbuildinfo' \
-            ./package.json ./package-lock.json ./packages/contract ./packages/service "$TARGET:$DIR/"
+            ./package.json ./package-lock.json ./packages/contract ./packages/service ./packages/mobile-preview "$TARGET:$DIR/"
       - name: Rebuild and restart
         env:
           TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
