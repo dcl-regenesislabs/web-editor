@@ -48,7 +48,7 @@ import { createBuiltinPrefabs } from './builtin-prefabs'
 import { runtimeTypes, sceneTemplates, templateFiles } from './bundled'
 import { type ProjectFiles, createPrefabLibrary, parseRef } from './prefab-library'
 import { type Preview, browserSecret, createPreviews, previewMachineId } from './preview'
-import { createPhonePreview, mobilePreviewEntry } from './phone-preview'
+import { createPhonePreview, mobilePreviewEntry, previewEnvironment } from './phone-preview'
 import { relayServerLogs } from './server-logs'
 import { waitForPreviewLayout } from './preview-layout'
 import { createUserPrefabs } from './user-prefabs'
@@ -115,7 +115,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     if (logs.length > MAX_LOG_LINES) logs.splice(0, logs.length - MAX_LOG_LINES)
     for (const listener of logListeners) listener(line)
   }
-  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId))
+  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId), previewEnvironment(services?.services.worldsContent ?? null))
   const emit = (event: SceneBuildEvent): void => {
     for (const listener of buildListeners) listener(event)
     if (event.type === 'bundleSaved' && current !== null) phone.built(current.id).catch((error: unknown) => console.error('[editor] mobile preview reload failed', error))

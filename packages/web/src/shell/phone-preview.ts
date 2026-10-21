@@ -7,10 +7,18 @@ export function mobilePreviewEntry(pageDir: string, service: string | null): str
   return service === null ? null : new URL('mobile-preview/index.html', service.replace(/\/$/, '') + '/').href
 }
 
+// The runtime defaults to org; on zone it must also use zone's catalysts, auth and comms.
+export function previewEnvironment(worldsContent: string | null): string | null {
+  if (worldsContent === null) return null
+  const host = new URL(worldsContent).hostname
+  return host === 'decentraland.zone' || host.endsWith('.decentraland.zone') ? 'zone' : null
+}
+
 export function createPhonePreview(
   entry: string | null,
   realmIdOf: (projectId: string) => Promise<string>,
-  machineId: (realmId: string) => Promise<string>
+  machineId: (realmId: string) => Promise<string>,
+  environment: string | null = null
 ) {
   const session = crypto.randomUUID()
   const channel = createPreviewTransport(entry, session, (message) => receive(message))
@@ -115,7 +123,9 @@ export function createPhonePreview(
       const link = new URL('decentraland://open')
       link.searchParams.set('preview', relayRealm)
       link.searchParams.set('position', position)
-      url.searchParams.set('args', ['--local-editor-preview', '--skip-lobby', '--guest-profile', '--fake-deeplink', link.href].join(' '))
+      const args = ['--local-editor-preview', '--skip-lobby', '--guest-profile', '--fake-deeplink', link.href]
+      if (environment !== null) args.push('--dclenv', environment)
+      url.searchParams.set('args', args.join(' '))
       realmOpened = realm
       publish({ mode, url: url.href, ready: false })
       activeTab = tab

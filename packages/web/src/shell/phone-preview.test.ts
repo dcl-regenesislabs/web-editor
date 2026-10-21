@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPhonePreview, mobilePreviewEntry } from './phone-preview'
+import { createPhonePreview, mobilePreviewEntry, previewEnvironment } from './phone-preview'
 
 const { channel } = vi.hoisted(() => ({ channel: {
   receive: (_message: Record<string, unknown>): void => {},
@@ -245,4 +245,17 @@ it('resolves runtime hosting entirely through the editor', () => {
   expect(mobilePreviewEntry('http://localhost:5173/', null)).toBe('http://127.0.0.1:8788/mobile-preview/index.html')
   expect(mobilePreviewEntry('https://play.example/', 'https://editor.example/api/')).toBe('https://editor.example/api/mobile-preview/index.html')
   expect(mobilePreviewEntry('https://play.example/', null)).toBeNull()
+})
+
+it('starts the runtime on the editor host\'s Decentraland environment', async () => {
+  expect(previewEnvironment('https://worlds-content-server.decentraland.zone/')).toBe('zone')
+  expect(previewEnvironment('https://worlds-content-server.decentraland.org/')).toBeNull()
+  expect(previewEnvironment('http://127.0.0.1:3000')).toBeNull()
+  expect(previewEnvironment(null)).toBeNull()
+  const preview = createPhonePreview('http://127.0.0.1:8788/mobile-preview/index.html', async () => 'realm-id', async () => 'machine', 'zone')
+  const opening = preview.open('http://localhost:5173/preview/test/', '0,0')
+  await vi.advanceTimersByTimeAsync(100)
+  await opening
+  expect(new URL(preview.state().url ?? '').searchParams.get('args')).toMatch(/ --dclenv zone$/)
+  preview.dispose()
 })
