@@ -9,6 +9,7 @@ import { awaitFreshBundle, noteSceneUpToDate, sceneNeedsReload, wireSceneHealth 
 import { consumePlayOverride, playBlockingFindings, revealSceneChecks } from '../features/editor/scene-checks'
 import { refreshAuthoredIds } from '../panels/authored-ids'
 import { autoHideSceneUi, releaseAutoHiddenSceneUi } from '../engine/scene-ui'
+import { trackCreator } from '../analytics'
 import { log } from '../log'
 import { run } from './run'
 import { uiSetCamera } from './selection'
@@ -46,7 +47,10 @@ export const uiPause = (): Promise<void> => {
 async function pause(): Promise<void> {
   const wasPlaying = !state.frozen
   await run(pauseScene(), false)
-  if (wasPlaying && state.frozen) await reloadSnapshot()
+  if (wasPlaying && state.frozen) {
+    trackCreator('play_stopped')
+    await reloadSnapshot()
+  }
   autoHideSceneUi() // back to editing: the HUD stops being the game again
   if (prePlayCam !== null) {
     uiSetCamera(prePlayCam)
@@ -114,6 +118,7 @@ async function play(gen: number): Promise<void> {
   // the scene's UI is the game once it runs — never preview it with the HUD blanked
   await releaseAutoHiddenSceneUi()
   await run(playScene(), false)
+  if (!state.frozen) trackCreator('play_started', { forced: blocking.length > 0 })
 }
 
 export const uiStep = async (count = 1): Promise<void> => {

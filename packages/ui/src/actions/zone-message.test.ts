@@ -18,7 +18,7 @@ beforeEach(() => {
 
 it('places and wires a message to the selected area without creating custom code', async () => {
   expect(await uiAddZoneMessage('512')).toBe('600')
-  expect(calls.place).toHaveBeenCalledWith('builtin:announcer', { name: 'Welcome Area Message' })
+  expect(calls.place).toHaveBeenCalledWith('builtin:announcer', 'zone_message', { name: 'Welcome Area Message' })
   expect(calls.params).toHaveBeenCalledWith('600', { zone: 'Welcome Area', when: 'enter' }, [])
   expect(calls.history).toHaveBeenCalledTimes(1)
   expect(state.saveStatus).toContain('edit its text in the inspector')

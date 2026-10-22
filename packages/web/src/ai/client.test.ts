@@ -3,6 +3,9 @@ import type { AiEvent, AssistantClientMessage, AssistantMemoryRef, PhonePreviewS
 import { ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX } from '@dcl-editor/contract'
 import { createBrowserAssistant } from './client'
 
+const { trackCreator } = vi.hoisted(() => ({ trackCreator: vi.fn() }))
+vi.mock('@ui/analytics', () => ({ trackCreator }))
+
 class Socket {
   static OPEN = 1
   static instances: Socket[] = []
@@ -75,6 +78,24 @@ it('sends fresh mobile availability on each turn without its launch URL', async 
     await vi.waitFor(() => expect(events).toContainEqual({
       kind: 'tool', turnId, tool: 'View', detail: 'Mobile preview', label: 'Checking mobile UI'
     }))
+  } finally { assistant.dispose() }
+})
+
+// The service's error code names a turn that ends on its own; a Stop is the
+// creator's, whatever the service said before it.
+it('reports a Stop after a service error as stopped, and an unstopped one by its code', async () => {
+  const { assistant } = setup()
+  const failed = () => trackCreator.mock.calls.filter(([action]) => action === 'prompt_failed').map(([, props]) => (props as { error: string }).error)
+  trackCreator.mockClear()
+  try {
+    const first = await assistant.shell.aiSend({ provider: 'claude', text: 'Make a door' })
+    Socket.instances[0].receive({ kind: 'event', event: { kind: 'error', turnId: first.turnId, message: 'Hit a limit', resumable: true } })
+    await assistant.shell.aiStop()
+    const second = await assistant.shell.aiSend({ provider: 'claude', text: 'Make a door' })
+    const ws = Socket.instances[1]
+    ws.receive({ kind: 'event', event: { kind: 'error', turnId: second.turnId, message: 'Hit a limit', resumable: true } })
+    ws.receive({ kind: 'event', event: { kind: 'done', turnId: second.turnId, ok: false } })
+    expect(failed()).toEqual(['stopped', 'limit'])
   } finally { assistant.dispose() }
 })
 

@@ -7,9 +7,11 @@ import { NO_PREFABS_YET } from '../prefabs/copy'
 import type { PrefabData } from '../prefabs/format'
 import { mount, run } from '../test/render'
 
-const { placePrefab, sceneState, catalog } = vi.hoisted(() => ({
+const { placePrefab, placeLibraryPrefab, sceneState, catalog } = vi.hoisted(() => ({
   catalog: { available: false, list: vi.fn(async () => [{ ref: 'builtin:theme', scope: 'builtin', data: { id: 'theme', name: 'UI Theme', category: 'custom', tags: [] } }]) },
-  placePrefab: vi.fn(async (_id: string): Promise<void> => {}), sceneState: { empty: null as boolean | null }
+  placePrefab: vi.fn(async (_id: string, _via: string): Promise<string | null> => '600'),
+  placeLibraryPrefab: vi.fn(async (_ref: string, _via: string): Promise<string | null> => '600'),
+  sceneState: { empty: null as boolean | null }
 }))
 vi.mock('../prefabs/library', () => ({
   libraryAvailable: () => catalog.available, listLibrary: catalog.list,
@@ -24,7 +26,7 @@ vi.mock('./empty-scene', () => ({ sceneEmptiness: () => sceneState.empty }))
 vi.mock('../actions/prefabs', () => ({
   uiDeleteLibraryPrefab: vi.fn(),
   uiDeletePrefab: vi.fn(),
-  uiPlaceLibraryPrefab: vi.fn(),
+  uiPlaceLibraryPrefab: placeLibraryPrefab,
   uiPlacePrefab: placePrefab,
   uiRenamePrefab: vi.fn(),
   uiSavePrefabToLibrary: vi.fn()
@@ -65,6 +67,7 @@ beforeEach(() => {
   consumerStore.scripts = {}
   consumerStore.loaded = true
   placePrefab.mockClear()
+  placeLibraryPrefab.mockClear()
 })
 
 afterEach(() => {
@@ -231,5 +234,27 @@ it('reloads the catalog after a project reset without requiring a tab remount', 
   await view.settle()
   expect(catalog.list).toHaveBeenCalledOnce()
   expect(view.text()).toContain('UI Theme')
+  view.unmount()
+})
+
+const card = (view: ReturnType<typeof mount>, name: string): HTMLElement | null =>
+  view.all('.eui-prefab-card').find((c) => c.dataset.tip?.startsWith(`${name} — `) === true) ?? null
+
+it('places a project card as the Prefabs panel', () => {
+  prefabStore.items = [entry()]
+  const view = panel()
+  view.click(card(view, 'Zombie'))
+  expect(placePrefab).toHaveBeenCalledWith('custom/zombie', 'prefabs_panel')
+  view.unmount()
+})
+
+it('places a built-in card as the Prefabs panel', async () => {
+  catalog.available = true
+  sceneState.empty = true
+  const view = panel()
+  run(resetProjectPrefabs)
+  await view.settle()
+  view.click(card(view, 'UI Theme'))
+  expect(placeLibraryPrefab).toHaveBeenCalledWith('builtin:theme', 'prefabs_panel')
   view.unmount()
 })

@@ -57,6 +57,14 @@ activity uses the current graphics setting; the temporary cap never writes that 
 The editor restores activity on preview close/unmount or pop-out to another tab; the host also restores it on exit.
 Older hosts can omit this method. Hidden browser tabs are throttled independently by the engine.
 
+## v1.4: analytics (still `version: 1`, additive)
+
+`track?(event: string, properties?: Record<string, unknown>): void` sends one event through the
+explorer's Segment pipeline, which adds its common fields (`session_id`, `dcl_eth_address`, `realm`, …)
+and holds events until the terms are accepted. The editor sends only `Creator Action`, with flat
+properties (`packages/ui/src/analytics.ts`). Older hosts can omit it: the editor then sends the same
+event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, timestamp }]>')`.
+
 ## The project-storage service (packages/service)
 - Rejects any request whose metadata has `signer === 'decentraland-kernel-scene'` (or a sceneId), or whose `intent !== 'dcl:editor:projects'`; timestamp window 5 minutes; Origin allowlist.
 - API (all under the base url, all signed, wallet = the auth chain's owner, lowercased):

@@ -433,8 +433,8 @@ function cardTip(card: PrefabCardModel): string {
 }
 
 function placePrefab(source: PrefabSource, id: string): void {
-  if (source === 'project') void uiPlacePrefab(id)
-  else void uiPlaceLibraryPrefab(id)
+  if (source === 'project') void uiPlacePrefab(id, 'prefabs_panel')
+  else void uiPlaceLibraryPrefab(id, 'prefabs_panel')
 }
 
 function CardArt(props: { thumbnail: string | undefined }): JSX.Element {

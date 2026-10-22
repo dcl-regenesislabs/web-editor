@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { uiAddSpawnerFor, uiCreatePrefabFromSelection, uiDeletePrefab, uiRenamePrefab } from './prefabs'
+import { uiAddSpawnerFor, uiCreatePrefabFromSelection, uiDeletePrefab, uiPlaceLibraryPrefab, uiPlacePrefab, uiRenamePrefab } from './prefabs'
 
 // One gesture, one action: Create prefab captures and, for "When spawned",
 // removes what it captured — in that order. The order is the whole test:
@@ -23,7 +23,8 @@ const {
   paramWrites,
   expandedKeys,
   revealInTree,
-  writeScriptParamValues
+  writeScriptParamValues,
+  trackCreator
 } = vi.hoisted(() => {
   const state = {
     snapshot: {} as Record<string, Record<string, unknown>>,
@@ -53,6 +54,7 @@ const {
     paramWrites,
     expandedKeys,
     revealInTree: vi.fn(),
+    trackCreator: vi.fn(),
     writeScriptParamValues: vi.fn(async (id: string, values: Record<string, unknown>) => {
       paramWrites.push(values)
       const row = { path: 'custom/spawner/scripts/spawner.ts', priority: 0, layout: JSON.stringify({ params: values }) }
@@ -98,6 +100,7 @@ vi.mock('@scene/custom-components', () => ({
 vi.mock('@scene/allowed-components', () => ({ TRIGGER_AREA: 'TriggerArea' }))
 vi.mock('@scene/world-pos', () => ({ rootLocalForWorld: () => null }))
 vi.mock('../engine/bus', () => ({ sendToScene: async () => {} }))
+vi.mock('../analytics', () => ({ trackCreator }))
 vi.mock('../assets', () => ({ dropPosition: async () => ({ x: 0, y: 0, z: 0 }), uniqueEntityName: (n: string) => n }))
 vi.mock('../prefabs/instantiate', () => ({
   instantiatePrefab: async () => ({
@@ -318,6 +321,12 @@ describe('uiAddSpawnerFor', () => {
     expect(await uiAddSpawnerFor('999')).toBeNull()
     expect(history.batches).toEqual([])
   })
+
+  it('counts the Spawner as an asset the gesture added', async () => {
+    trackCreator.mockClear()
+    await uiAddSpawnerFor('512')
+    expect(trackCreator).toHaveBeenCalledWith('asset_added', { source: 'project', kind: 'prefab', via: 'spawner' })
+  })
 })
 
 // Deleting a prefab folder used to strand its placed copies — invisible ones
@@ -384,5 +393,27 @@ describe('uiDeletePrefab', () => {
     expect(state.saveStatus).toContain('reaction.ts')
     expect(state.saveStatus).toContain('will break the build')
     expect(state.saveStatus).not.toContain('unrelated.ts')
+  })
+})
+
+// Tracked in the action, not the panel: every gesture that places a prefab names
+// itself, and only a built-in's ref is sent (a creator's own prefab is theirs).
+describe('prefab placement analytics', () => {
+  beforeEach(() => trackCreator.mockClear())
+
+  it('sends a built-in ref with the gesture that placed it', async () => {
+    expect(await uiPlaceLibraryPrefab('builtin:announcer', 'zone_message')).toBe('600')
+    expect(trackCreator).toHaveBeenCalledWith('asset_added', {
+      source: 'builtin', kind: 'prefab', via: 'zone_message', asset_id: 'builtin:announcer'
+    })
+  })
+
+  it('keeps a creator prefab nameless', async () => {
+    await uiPlaceLibraryPrefab('user:my-secret-door', 'prefabs_panel')
+    await uiPlacePrefab('custom/zombie', 'assistant')
+    expect(trackCreator.mock.calls).toEqual([
+      ['asset_added', { source: 'user', kind: 'prefab', via: 'prefabs_panel' }],
+      ['asset_added', { source: 'project', kind: 'prefab', via: 'assistant' }]
+    ])
   })
 })

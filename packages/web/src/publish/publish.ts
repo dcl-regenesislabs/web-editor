@@ -4,6 +4,7 @@
 // host.signDeployment and sends the auth chain that comes back.
 import type { PublishProgress, PublishedScene, ScenePublishResult } from '@dcl-editor/contract'
 import type { BuildResult } from '@dcl-editor/scene-compiler'
+import { trackCreator } from '@ui/analytics'
 import type { DclEditorHostV1 } from '@ui/engine/hosted'
 import { buildDeployment, type Deployment } from './entity'
 import { PublishError } from './errors'
@@ -34,6 +35,15 @@ const CANCELLED: ScenePublishResult = { ok: false, reason: 'cancelled', message:
 const NOT_SIGNED_IN: ScenePublishResult = { ok: false, reason: 'not-signed-in', message: 'Sign in to publish', retryable: false }
 const failed = (message: string, retryable: boolean): ScenePublishResult => ({ ok: false, reason: 'failed', message, retryable })
 
+// A `failed` result's code for analytics, in the warehouse's snake_case.
+class Failure {
+  code = 'unexpected'
+  set(code: string): this {
+    this.code = code.replace(/-/g, '_')
+    return this
+  }
+}
+
 export function createPublisher(source: PublishSource): Publisher {
   const { host } = source
   const server = host.services.worldsContent.replace(/\/+$/, '')
@@ -45,7 +55,7 @@ export function createPublisher(source: PublishSource): Publisher {
     return typeof base === 'string' ? `&position=${encodeURIComponent(base)}` : ''
   }
 
-  async function run(id: string, world: string, say: (progress: PublishProgress) => void, signal: AbortSignal): Promise<ScenePublishResult> {
+  async function run(id: string, world: string, say: (progress: PublishProgress) => void, signal: AbortSignal, failure: Failure): Promise<ScenePublishResult> {
     const { address, isGuest } = host.identity()
     if (isGuest || address === null) return NOT_SIGNED_IN
     await source.setWorld(id, world)
@@ -60,6 +70,7 @@ export function createPublisher(source: PublishSource): Publisher {
       }
       const crash = built.events.find((event) => event.type === 'failed')
       if (crash?.type === 'failed' && built.diagnostics.length === 0) say({ step: 'building', line: crash.message })
+      failure.set('build')
       return failed('The build failed.', false)
     }
 
@@ -80,10 +91,14 @@ export function createPublisher(source: PublishSource): Publisher {
       const why = describe(error)
       if (why === 'cancelled') return CANCELLED
       if (why === 'not-signed-in') return NOT_SIGNED_IN
+      failure.set('sign_failed')
       return failed(`Decentraland could not sign this publish: ${why}`, true)
     }
     if (signal.aborted) return CANCELLED
-    if (!validAuthChain(authChain, deployment.entityId)) return failed('Decentraland did not return a signature for this scene.', true)
+    if (!validAuthChain(authChain, deployment.entityId)) {
+      failure.set('no_signature')
+      return failed('Decentraland did not return a signature for this scene.', true)
+    }
 
     say({ step: 'uploading', line: `Uploading to ${world} (${server})…` })
     const said = await uploadDeployment({
@@ -113,16 +128,24 @@ export function createPublisher(source: PublishSource): Publisher {
       if (running !== null) return failed('A scene is already being published.', false)
       const controller = new AbortController()
       running = controller
-      try {
-        return await run(id, world, onProgress, controller.signal)
-      } catch (error) {
-        if (!(error instanceof PublishError)) return failed(describe(error), true)
-        if (error.reason === 'cancelled') return CANCELLED
-        if (error.detail !== undefined) onProgress({ step: 'uploading', line: `The server answered: ${error.detail}` })
-        return failed(error.message, error.retryable)
-      } finally {
-        running = null
+      const failure = new Failure()
+      const result = await run(id, world, onProgress, controller.signal, failure)
+        .catch((error: unknown) => {
+          if (!(error instanceof PublishError)) return failed(describe(error), true)
+          if (error.reason === 'cancelled') return CANCELLED
+          if (error.detail !== undefined) onProgress({ step: 'uploading', line: `The server answered: ${error.detail}` })
+          failure.set(error.reason)
+          return failed(error.message, error.retryable)
+        })
+        .finally(() => {
+          running = null
+        })
+      if (result.ok) {
+        trackCreator('scene_published', { project_id: id, world, files: result.published.files, bytes: result.published.bytes })
+      } else {
+        trackCreator('publish_failed', { project_id: id, world, error: result.reason === 'failed' ? failure.code : result.reason.replace(/-/g, '_'), retryable: result.retryable })
       }
+      return result
     },
     stop() {
       running?.abort()
