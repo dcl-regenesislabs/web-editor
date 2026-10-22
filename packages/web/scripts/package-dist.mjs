@@ -17,7 +17,7 @@ const manifest = {
   version: '0.0.0',
   license: 'Apache-2.0',
   description: 'The Decentraland scene editor for the web explorer: editor.js plus the files it loads beside it. Served by version, not installed.',
-  repository: { type: 'git', url: 'git+https://github.com/dcl-regenesislabs/bevy-editor.git', directory: 'packages/web' }
+  repository: { type: 'git', url: 'git+https://github.com/dcl-regenesislabs/web-editor.git', directory: 'packages/web' }
 }
 fs.writeFileSync(path.join(dist, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 console.log(`dist/package.json written for ${manifest.name}`)
