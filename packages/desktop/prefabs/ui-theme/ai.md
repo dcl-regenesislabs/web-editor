@@ -13,13 +13,15 @@ Place one UI Theme from the library. Pick Accent Color and Dark or Light in its 
 - `accentColor`: six-digit hex color, edited with a color picker.
 - `appearance`: Dark or Light.
 
-For custom UI, import `sceneUiTheme` and `UI_CANVAS` from `~runtime/uiTheme`, and `UiPanel`, `UiText`, `UiButton`, `ProgressPips`, `UiNotice` from `~runtime/uiComponents`. Register with `ReactEcsRenderer.addUiRenderer(entity, render, UI_CANVAS)`. Keep viewport roots pointer-transparent and handlers on actual buttons. Labels and stacks need explicit dimensions. Inspect a screenshot in the real preview, including completion and a smaller viewport.
+For custom UI, import `sceneUiTheme` from `~runtime/uiTheme`, `UiPanel`, `UiText`, `UiButton`, `ProgressPips`, `UiNotice` from `~runtime/uiComponents`, and place every panel with `addHudItem(slot, render)` from `~runtime/hudLayout` (its header documents the slots) instead of `ReactEcsRenderer.addUiRenderer`. Each panel declares width and height and is at most `HUD_COLUMN_WIDTH` wide; handlers go on actual buttons. Inspect a screenshot in the real preview, including completion.
 
 `ColorHex`, `EntityName`, `EntityNames`, `ZoneName` and `ZoneNames` from `~runtime/authoring` are string aliases that give constructor parameters color or entity pickers. Plural references are ordered comma-separated names; creators pick and reorder them in the inspector. Names must be unique and contain no commas. The assistant can provide arrays to the plural parameters.
 
 ## Do / Don't
 
-- Use one theme per scene, readable text and small non-blocking HUDs.
+- Use one theme per scene, readable text (16 px or more) and small non-blocking HUDs.
+- Never put UI in the bottom corners or the screen's left edge: phones draw the joystick and the jump/E/F buttons there. Results, shops and rule cards use the `modal` slot, which hides the touch controls while open.
+- No hover-only states and no emoji in text; buttons at least 48 px tall.
 - Do not write a separate palette for each prefab or use default pink SDK buttons.
 - Verify running and finished states in a real preview screenshot.
 

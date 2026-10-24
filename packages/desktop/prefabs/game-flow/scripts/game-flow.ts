@@ -106,7 +106,7 @@ export class GameFlow {
     if (this.display === '2D UI') {
       VisibilityComponent.createOrReplace(this.entity, { visible: false })
       TextShape.deleteFrom(this.entity)
-      mountStatusHud(this.entity, this.position, () => {
+      mountStatusHud(this.position, () => {
         const [label, value = '', detail] = this.text().split('\n')
         return { label, value, detail }
       })

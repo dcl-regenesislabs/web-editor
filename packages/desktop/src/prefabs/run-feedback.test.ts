@@ -24,12 +24,7 @@ vi.mock('@dcl/sdk/ecs', () => ({
   VisibilityComponent: { createOrReplace: (id: number, value: { visible: boolean; propagateToChildren: boolean }) => host.visibility.set(id, value) }
 }))
 vi.mock('@dcl/sdk/network', () => ({ isServer: () => host.server }))
-vi.mock('@dcl/sdk/react-ecs', () => ({
-  default: { createElement: (_component: unknown, props: unknown) => props },
-  ReactEcsRenderer: { addUiRenderer: (_id: number, render: () => unknown) => { host.render = render } }
-}))
-vi.mock('~runtime/uiTheme', () => ({ UI_CANVAS: { virtualWidth: 1920, virtualHeight: 1080 } }))
-vi.mock('~runtime/gameHud', () => ({ RunHud: () => null }))
+vi.mock('~runtime/gameHud', () => ({ mountRunHud: (read: () => unknown) => { host.render = read } }))
 vi.mock('~runtime/game', () => ({
   game: {
     state: host.game, now: () => host.now,

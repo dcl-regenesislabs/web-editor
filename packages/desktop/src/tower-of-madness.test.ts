@@ -152,6 +152,7 @@ const host = vi.hoisted(() => {
   }
 })
 
+vi.mock('@dcl/sdk/platform', () => ({ isMobile: () => false }))
 vi.mock('@dcl/sdk/react-ecs', () => ({
   default: { createElement: (component: unknown, props: unknown, ...children: unknown[]) => ({ component, props, children }) },
   UiEntity: 'entity', Label: 'label', ReactEcsRenderer: { addUiRenderer: () => {} }

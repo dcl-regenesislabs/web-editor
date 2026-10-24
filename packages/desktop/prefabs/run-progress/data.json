@@ -14,8 +14,12 @@
     "restart"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "changelog": [
+    {
+      "version": "1.4.0",
+      "notes": "The run HUD fits phones: Restart moves from the bottom-right corner (under the jump button) to under the clock, panels stack in the shared HUD layout instead of overlapping other HUDs, the controls hint matches the device, and the completion screen hides the touch controls while it is open."
+    },
     {
       "version": "1.3.1",
       "notes": "Hit points show unless Health & Respawn's Health Bar is turned off, so older Health & Respawn copies keep their bar."

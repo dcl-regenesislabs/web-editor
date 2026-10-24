@@ -1,7 +1,7 @@
 {
   "id": "44374100-12fb-481f-90ce-2a4d81949084",
   "name": "Game Flow",
-  "description": "Lobby, countdown, rounds, winners \u2014 runs your game from start to end. Works with: Leaderboard, Announcer.",
+  "description": "Lobby, countdown, rounds, winners — runs your game from start to end. Works with: Leaderboard, Announcer.",
   "category": "custom",
   "group": "Multiplayer Server",
   "tags": [
@@ -14,11 +14,15 @@
     "winners"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "changelog": [
     {
+      "version": "1.2.0",
+      "notes": "The 2D status panel takes its place in the shared HUD layout, so it no longer overlaps other HUDs on any screen."
+    },
+    {
       "version": "1.0.0",
-      "notes": "Initial release: lobby \u2192 round \u2192 winners on game.round, a countdown every client derives from one shared deadline, a winners line read from the board key a Leaderboard shows, and a \"script\" mode where your own game.newRound() ends the round and the round length is only a ceiling."
+      "notes": "Initial release: lobby → round → winners on game.round, a countdown every client derives from one shared deadline, a winners line read from the board key a Leaderboard shows, and a \"script\" mode where your own game.newRound() ends the round and the round length is only a ceiling."
     },
     {
       "version": "1.1.0",
