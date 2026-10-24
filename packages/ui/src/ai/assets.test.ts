@@ -6,7 +6,7 @@ const { copy } = vi.hoisted(() => ({
   copy: vi.fn(async () => ({ folder: 'custom/game_flow', reused: false }))
 }))
 vi.mock('@scene/state', () => ({ state: { frozen: true } }))
-vi.mock('@ui/prefabs/library', () => ({
+vi.mock('../prefabs/library', () => ({
   listLibrary: async () => [{ ref: 'builtin:game-flow', scope: 'builtin', data: { id: 'flow', name: 'Game Flow', tags: ['round'], requiresSdk: 'auth-server' } }],
   copyLibraryPrefabIntoProject: copy
 }))
@@ -18,7 +18,7 @@ function setup() {
     if (expected !== null || files.has(path)) throw new Error('File changed.')
     files.set(path, bytes)
   })
-  const run = createAssetRequests({ files: () => files, write })
+  const run = createAssetRequests({ files: () => files })
   return { files, write, run: (request: Record<string, unknown>, signal = new AbortController().signal) => run(request, signal) }
 }
 

@@ -6,6 +6,7 @@
 
 import type { ProjectImportResult, ProjectPackages, ProjectSync, SyncConflictChoice, SyncStatus } from './projects'
 import type { PublishProgress, PublishWorld, PublishedScene, ScenePublishResult } from './publish'
+import type { EditorToolCall, EditorToolResult } from './editor-tools'
 
 // Per-project metadata shown on the home/picker screen.
 export interface ProjectInfo {
@@ -520,6 +521,12 @@ export interface EditorShell {
   // the signed-in wallet's kept chat for the open project; null when there is no one to keep it for
   aiTranscript?: () => AiTranscript | null
   onAiEvent?: (cb: (e: AiEvent) => void) => void | (() => void)
+  // the desktop assistant's engine tools (view, playtest, ui_layout): main forwards each call of
+  // the editor's MCP server here, the page runs it on the engine and answers
+  onEditorToolCall?: (cb: (call: EditorToolCall) => void) => () => void
+  editorToolResult?: (id: string, result: EditorToolResult) => Promise<void>
+  // a shared library file the assistant copies into a project (materials/…jpg, sounds/…mp3)
+  libraryFile?: (file: string) => Promise<Uint8Array>
   // ---- Prefab library ----
   // every builtin + user-library prefab, newest tree read on each call
   prefabLibraryList?: () => Promise<PrefabLibraryEntry[]>

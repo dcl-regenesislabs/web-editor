@@ -1,28 +1,27 @@
 import { isReservedEntity, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
 import { buildFromSchema, getSchema, type ComponentSchema } from '@scene/schema'
-import { cmd } from '@ui/engine/cmd'
+import { cmd } from '../engine/cmd'
 import { entityName, NAME_COMPONENT } from '@scene/custom-components'
 import { isAllowedComponent } from '@scene/allowed-components'
-import { uiAddEntity } from '@ui/actions/entities'
-import { uiDeleteComponent, uiSetComponentValue } from '@ui/actions/components'
-import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '@ui/assets'
-import { dataLayerListFiles, dataLayerReadFile, dataLayerReadFileBytes, dataLayerSaveFile, dataLayerSaveFileBytes } from '@ui/engine/datalayer'
-import { inspectModel } from '@ui/model-info'
-import { announceBuiltModel } from '@ui/features/ai/built-models'
-import { announceThumbnail, announceThumbnailUsed } from '@ui/features/ai/built-thumbnails'
+import { uiAddEntity } from '../actions/entities'
+import { uiDeleteComponent, uiSetComponentValue } from '../actions/components'
+import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
+import { dataLayerListFiles, dataLayerReadFile, dataLayerReadFileBytes, dataLayerSaveFile, dataLayerSaveFileBytes } from '../engine/datalayer'
+import { inspectModel } from '../model-info'
+import { announceBuiltModel } from '../features/ai/built-models'
+import { announceThumbnail, announceThumbnailUsed } from '../features/ai/built-thumbnails'
 import { buildCodeModel, overBudget, MODEL_BUDGET } from './code-model'
-import { MATERIAL_MAPS, materialFile } from '@ui/three/materials'
-import { materialBytes, soundBytes } from './library-files'
-import { SOUNDS, isSoundName, soundInfo, soundProjectPath } from '@ui/sounds'
-import { modelImagePath, sceneBudget, sceneTextures } from '@ui/scene-budget'
+import { MATERIAL_MAPS, materialFile } from '../three/materials'
+import { materialBytes, soundBytes } from './library-bytes'
+import { SOUNDS, isSoundName, soundInfo, soundProjectPath } from '../sounds'
+import { modelImagePath, sceneBudget, sceneTextures } from '../scene-budget'
 import { isFlatModel, searchModels } from './model-search'
-import { sendToScene } from '@ui/engine/bus'
-import { runRequestText } from '@ui/ai/requests'
-import { resolveEntityRef } from '@ui/ai/request-format'
-import { sceneOutline } from '@ui/ai/roster'
-import { invalidateSceneCheckCache, refreshSceneChecks } from '@ui/features/editor/scene-check-context'
-import type { AssistantSceneSettings } from '../shell/scene-json'
+import { uiResyncScene } from '../actions/assets'
+import { runRequestText } from './requests'
+import { resolveEntityRef } from './request-format'
+import { sceneOutline } from './roster'
+import { invalidateSceneCheckCache, refreshSceneChecks } from '../features/editor/scene-check-context'
 import { readThumbnail, saveThumbnail, THUMBNAIL_VERSION, thumbnailPath } from './thumbnail'
 
 function entity(ref: unknown): string {
@@ -86,6 +85,15 @@ const describe = (a: ModelAsset) => ({
   ...((a.animations?.length ?? 0) > 0 ? { animations: a.animations } : {}),
   ...(isFlatModel(a) ? { flat: true } : {})
 })
+
+// what the assistant may change in scene.json; the host that owns scene.json validates and applies it
+export interface AssistantSceneSettings {
+  permissions?: unknown
+  spawnPoints?: unknown
+  parcels?: unknown
+  base?: unknown
+  thumbnailPath?: unknown
+}
 
 export type SceneSettingsEditor = (settings: AssistantSceneSettings) => Promise<unknown>
 
@@ -346,7 +354,7 @@ async function placeGltf(request: Record<string, unknown>, rel: string, fallback
     return { ...(object(created) ? created : {}), model: rel }
   } finally {
     // new content can re-instance the scene, which drops the editor's pick colliders
-    void sendToScene({ type: 'resync' })
+    void uiResyncScene()
   }
 }
 
