@@ -68,6 +68,15 @@ const noSystemScene = systemScene === 'off'
 
 window.__bevyBootConfig = noSystemScene ? {} : { systemScene }
 
+// Newer boot.js reads the react-web shell's service globals at load, to shorten the realm it
+// writes back to the url; without them the module throws and the engine never boots. This
+// frame has no address bar, so the production defaults are enough.
+const hostGlobals = window as unknown as Record<string, unknown>
+hostGlobals.__defaultBaseDomain ??= () => 'decentraland.org'
+hostGlobals.__serviceUrl ??= (name: string) =>
+  name === 'worldsServer' ? 'https://worlds-content-server.decentraland.org' : `https://${name}.decentraland.org`
+hostGlobals.__defaultRealm ??= () => 'https://realm-provider.decentraland.org/main'
+
 // runtime script tag (not an import): boot.js ships in the engine npm package
 // and must load from the served /engine/ dir, outside the Vite module graph
 const boot = document.createElement('script')
