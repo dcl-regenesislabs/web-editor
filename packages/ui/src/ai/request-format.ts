@@ -1,20 +1,16 @@
-// The turn-end request file the assistant may leave behind, and the pure rules
-// for reading it. The CLI can only write files; anything that has to happen in
-// the live scene (placing a prefab, naming it, setting a script param, attaching
-// a script) is declared here and executed by the renderer through the ordinary
-// click paths — see requests.ts.
+// The batch scene changes scene_request carries (placing a prefab, naming it,
+// setting a script param, attaching a script), and the pure rules for reading
+// them; the renderer executes them through the ordinary click paths — see
+// requests.ts.
 //
 // Everything is tolerant on purpose: a malformed entry costs one skipped request
-// and one notice line, never the turn. The assistant is a language model writing
-// JSON by hand, so "half the file is good" is the common case, not the edge.
+// and one notice line, never the batch. The assistant is a language model writing
+// JSON by hand, so "half the batch is good" is the common case, not the edge.
 import { attachablePath } from '../script/template'
 import type { Snapshot } from '@scene/state'
 import { entityName, nameKey } from '@scene/custom-components'
 
-/** Project-root-relative; read and deleted through the data layer. */
-export const REQUESTS_PATH = '.editor/requests.json'
-
-// A runaway file must not be able to fill a scene with prefabs.
+// A runaway batch must not be able to fill a scene with prefabs.
 const MAX_REQUESTS = 24
 
 export interface Vec3 {
@@ -180,7 +176,7 @@ function setParams(entry: Record<string, unknown>, problems: string[]): SetParam
   return { type: 'setParams', to, params: values }
 }
 
-// Parse `.editor/requests.json`. Never throws: a broken file is reported as a
+// Parse a batch of requests. Never throws: a broken batch is reported as a
 // problem line and yields no requests.
 export function parseRequests(text: string): ParsedRequests {
   const problems: string[] = []

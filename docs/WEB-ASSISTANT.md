@@ -304,7 +304,8 @@ browser key are deleted. It also verifies account sync and publishing still work
 fake engine host; real-engine gates remain in bevy-web's `react-web/e2e/`.
 
 Implementation: `packages/service/src/ai/` runs the agent and transport;
-`packages/web/src/ai/` handles tools and scene actions;
+`packages/ui/src/ai/` runs the tools and scene actions both assistants share, and
+`packages/web/src/ai/` connects them to the service;
 `packages/contract/src/assistant.ts` defines their messages.
 
 ### Real preview checks with the running service

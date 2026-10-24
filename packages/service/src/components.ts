@@ -80,10 +80,10 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     if (authInStorage) throw new Error('AI_AUTH_PATH must be outside STORAGE_DIR in production')
     if (imageAuthInStorage) throw new Error('AI_IMAGE_AUTH_PATH must be outside STORAGE_DIR in production')
   }
-  const factory = options.agentFactory ?? (authPath === undefined ? undefined :
-    await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills))
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const logs = await createLogComponent({ config, metrics })
+  const factory = options.agentFactory ?? (authPath === undefined ? undefined :
+    await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills, logs.getLogger('assistant')))
   if (authInStorage) {
     logs.getLogger('assistant').warn('The assistant credential is inside STORAGE_DIR; set AI_AUTH_PATH to a secret mount outside it')
   }

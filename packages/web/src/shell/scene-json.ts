@@ -2,6 +2,7 @@
 // mirror desktop's scene-settings.ts, scene-meta.ts and composite-entities.ts:
 // that package reads through node:fs and is not a dependency of this one.
 import type { SceneSettings, SpawnPointSetting } from '@dcl-editor/contract'
+import type { AssistantSceneSettings } from '@ui/ai/scene'
 
 export const IMG_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -168,13 +169,6 @@ export const ASSISTANT_PERMISSIONS = [
   'USE_WEBSOCKET'
 ]
 
-export interface AssistantSceneSettings {
-  permissions?: unknown
-  spawnPoints?: unknown
-  parcels?: unknown
-  base?: unknown
-  thumbnailPath?: unknown
-}
 
 const MAX_ASSISTANT_PARCELS = 100
 

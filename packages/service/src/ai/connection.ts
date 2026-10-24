@@ -11,9 +11,10 @@ import type { WalletImages } from './thumbnail.ts'
 const MAX_TURN_RESULT_CHARS = 2_000_000
 const MAX_LABEL_CHARS = 80
 const TOOL_LABELS: Record<BrowserToolName, string> = {
-  playtest: 'Testing the game',
+  playtest: 'Testing the game', ui_layout: 'Measuring the UI',
   build: 'Building the scene', scene_request: 'Editing the scene', write_file: 'Saving a file', asset_request: 'Working with assets',
-  read_file: 'Reading a file', list_files: 'Listing files', view: 'Looking at the scene'
+  read_file: 'Reading a file', list_files: 'Listing files', view: 'Looking at the scene',
+  search_files: 'Searching the code', edit_file: 'Editing a file'
 }
 
 interface Pending {
@@ -94,7 +95,7 @@ export function createConnection(options: {
         const timer = setTimeout(() => {
           finish(false, 'The browser did not answer the tool request.')
           abort(`${label ?? TOOL_LABELS[tool]} timed out. The turn stopped; check the scene before retrying.`)
-        }, options.toolTimeoutMs ?? (tool === 'read_file' || tool === 'list_files' ? 60_000 : 15 * 60_000))
+        }, options.toolTimeoutMs ?? (tool === 'read_file' || tool === 'list_files' || tool === 'search_files' ? 60_000 : 15 * 60_000))
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return
           clearTimeout(timer)

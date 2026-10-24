@@ -1,6 +1,6 @@
-import { startThreeWorker, type ThreeWorker } from '@ui/three/client'
-import type { ModelStats, ThreeReply, ThreeRequest } from '@ui/three/protocol'
-import { isLibraryName, LIBRARY, type LibraryName } from '@ui/three/materials'
+import { startThreeWorker, type ThreeWorker } from '../three/client'
+import type { ModelStats, ThreeReply, ThreeRequest } from '../three/protocol'
+import { isLibraryName, LIBRARY, type LibraryName } from '../three/materials'
 
 const MAX_GLB_BYTES = 20 * 1024 * 1024
 

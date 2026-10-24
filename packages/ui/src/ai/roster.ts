@@ -198,7 +198,7 @@ export function sceneOutline(
 
 // One line per prefab copy in this project that ships an ai.md, so the prompt
 // stays O(1) in prefab count: the assistant pulls the guide itself instead of
-// carrying every prefab's rules in DCL_SYSTEM_PROMPT. Copies, not placed
+// carrying every prefab's rules in ASSISTANT_PROMPT. Copies, not placed
 // instances — a script imports from custom/<slug>/ whether or not an instance is
 // in the scene, and the `_2` dedup is already per copy.
 export interface GuideEntry {

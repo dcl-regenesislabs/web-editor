@@ -148,6 +148,11 @@ export function noteSceneUpToDate(): void {
   sceneStale = false
 }
 
+// the build error or runtime crash on show now, for the assistant's build tool
+export function currentSceneHealth(): SceneHealth | null {
+  return health
+}
+
 // exported for the unit test only — the app consumes useSceneHealth
 export function healthForTest(): SceneHealth | null {
   return health

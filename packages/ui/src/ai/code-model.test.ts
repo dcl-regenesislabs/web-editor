@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const { replies } = vi.hoisted(() => ({ replies: [] as unknown[] }))
-vi.mock('@ui/three/client', () => ({
+vi.mock('../three/client', () => ({
   startThreeWorker: async () => {
     const worker = {
       onmessage: null as ((event: { data: unknown }) => void) | null,

@@ -14,8 +14,8 @@ vi.mock('@scene/state', () => ({
   isUiEntity: () => false
 }))
 vi.mock('@scene/custom-components', () => ({ entityName: () => 'Tower HUD', NAME_COMPONENT: 'core::Name' }))
-vi.mock('@ui/actions/components', () => ({ uiSetComponentValue: setValue, uiAddComponent: vi.fn() }))
-vi.mock('@ui/engine/datalayer', () => ({ dataLayerReadFile: vi.fn() }))
+vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiAddComponent: vi.fn() }))
+vi.mock('../engine/datalayer', () => ({ dataLayerReadFile: vi.fn() }))
 
 const PATH = 'src/scripts/TowerHud.tsx'
 const source = (fields: string) => `export class TowerHud {\n  constructor(public src: string, public entity: Entity, ${fields}) {}\n}\n`

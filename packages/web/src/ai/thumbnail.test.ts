@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { saveThumbnail } from './thumbnail'
+import { saveThumbnail } from '@ui/ai/thumbnail'
 import { applyAssistantSettings, type RawSceneJson } from '../shell/scene-json'
 
 afterEach(() => { vi.unstubAllGlobals() })

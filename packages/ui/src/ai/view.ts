@@ -1,13 +1,16 @@
 // What the assistant sees when it asks: the engine's frame, framed on an entity when it names one,
 // shrunk to a size a model reads well. The editor's panels are DOM over the canvas, so they are
 // not in the capture; the editor scene's own gizmos are.
-import { consoleCommand } from '@ui/engine/console'
-import { uiFocusEntity } from '@ui/actions/selection'
-import { resolveEntityRef } from '@ui/ai/request-format'
+import { consoleCommand } from '../engine/console'
+import { uiFocusEntity } from '../actions/selection'
+import { resolveEntityRef } from './request-format'
 import { state, isUiEntity } from '@scene/state'
 import { isReservedEntity } from '@dcl-editor/contract'
-import { sendToScene } from '@ui/engine/bus'
+import { uiHoldCamera, uiPoseCamera, uiReleaseCamera } from '../actions/viewport'
 import { captureMobileView } from './mobile-view'
+import type { ViewRequest } from './view-request'
+
+export { viewRequest, type Point, type ViewRequest } from './view-request'
 
 const MAX_SIDE = 1024
 // the focus tween is 0.3 s; the frame after it has the new view
@@ -40,21 +43,6 @@ export interface ViewCapture {
   framed: string | null
 }
 
-export interface Point {
-  x: number
-  y: number
-  z: number
-}
-
-export interface ViewRequest {
-  target?: 'editor' | 'mobile'
-  openIfClosed?: boolean
-  entity: string | null
-  // the free camera moved here, in world metres, looking at lookAt (or keeping its aim)
-  from: Point | null
-  lookAt: Point | null
-}
-
 // The creator's camera comes back where it was once the picture is taken.
 export async function captureView(request: ViewRequest, signal: AbortSignal): Promise<ViewCapture> {
   const phone = window.editorShell?.phonePreviewState?.()
@@ -64,18 +52,18 @@ export async function captureView(request: ViewRequest, signal: AbortSignal): Pr
     return { ...await captureMobileView(request.openIfClosed === true, signal), framed: 'mobile preview' }
   }
   const moving = request.from !== null || request.entity !== null
-  if (moving) await sendToScene({ type: 'camera-hold' })
+  if (moving) await uiHoldCamera()
   try {
     return await captureFrame(request, signal)
   } finally {
-    if (moving) await sendToScene({ type: 'camera-release' })
+    if (moving) await uiReleaseCamera()
   }
 }
 
 async function captureFrame({ entity, from, lookAt }: ViewRequest, signal: AbortSignal): Promise<ViewCapture> {
   let framed: string | null = null
   if (from !== null) {
-    await sendToScene({ type: 'camera-pose', position: from, ...(lookAt === null ? {} : { lookAt }) })
+    await uiPoseCamera(from, lookAt)
     framed = `from ${from.x} ${from.y} ${from.z}${lookAt === null ? '' : ` towards ${lookAt.x} ${lookAt.y} ${lookAt.z}`}`
     await new Promise((resolve) => setTimeout(resolve, FOCUS_SETTLE_MS))
     signal.throwIfAborted()
