@@ -91,15 +91,6 @@ export function createBrowserAssistant(options: {
     if (call.tool === 'write_file' || call.tool === 'edit_file') {
       const path = typeof call.args.path === 'string' ? call.args.path : ''
       emit({ kind: 'tool', turnId, tool: call.tool === 'write_file' && call.args.revision === null ? 'Write' : 'Edit', detail: path, ...label })
-      const result: unknown = JSON.parse(text)
-      if (object(result) && object(result.attached) && typeof result.attached.name === 'string') {
-        emit({ kind: 'tool', turnId, tool: 'Attached', detail: `${path.split('/').pop() ?? path} to ${result.attached.name}`, ...label })
-      }
-      return
-    }
-    const result: unknown = JSON.parse(text)
-    if (object(result) && Array.isArray(result.attached)) {
-      for (const script of result.attached) if (typeof script === 'string') emit({ kind: 'tool', turnId, tool: 'AttachScript', detail: script, ...label })
     }
   }
 

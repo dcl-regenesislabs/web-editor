@@ -7,7 +7,7 @@ import { dataLayerListFiles, dataLayerReadFileBytes, dataLayerSaveFileBytes } fr
 import { awaitFreshBundle, currentSceneHealth } from '../features/editor/scene-health'
 import { log } from '../log'
 import { createAssetRequests } from './assets'
-import { scriptAttacher } from './attach'
+import { refreshWrittenScript } from './attach'
 import { createFileTools, isFileTool, sameBytes, type ProjectFiles } from './file-tools'
 import { setLibraryBytes } from './library-bytes'
 import { browserSceneRequest } from './scene'
@@ -33,8 +33,7 @@ const disk: ProjectFiles = {
     if (!sameBytes(await readDisk(path), expected)) throw new Error('This file changed since you read it: read it again.')
     await dataLayerSaveFileBytes(path, bytes)
   },
-  // a new script goes on the entity selected when the turn started
-  written: scriptAttacher()
+  written: refreshWrittenScript
 }
 let fileTools = createFileTools(disk)
 
@@ -114,7 +113,6 @@ export function installEditorToolBridge(): void {
   })
   shell.onAiEvent?.((e) => {
     if (e.kind === 'started') {
-      disk.written = scriptAttacher()
       fileTools = createFileTools(disk)
     }
     if (e.kind === 'done') leavePhone().catch((err: unknown) => log.warn('leaving the phone canvas failed', err))

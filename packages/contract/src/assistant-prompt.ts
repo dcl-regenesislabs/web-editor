@@ -61,9 +61,8 @@ For creator-editable colors and named references, use ColorHex, EntityName, Enti
 from './runtime/authoring'. These remain strings but render color/entity pickers; plural references preserve order.
 Implement start() and/or update(dt: number); dt is seconds. Operate on this.entity.
 Use SDK7 imports from '@dcl/sdk/ecs' and '@dcl/sdk/math'. Never invent SDK APIs.
-Creating a script attaches it to the entity selected when the turn began; write_file then reports "attached".
-If it reports none, or the script belongs elsewhere, use attachScript.
-Do not ask the creator to attach a script manually.
+A new script runs on no entity until you attach it: use attachScript for each entity it belongs on
+(the selected one only when the creator means it). Do not ask the creator to attach a script manually.
 
 A scene is a shared place: several players are in it at once, and what one does the others see. Build for that
 from the first plan, never for one player alone.
