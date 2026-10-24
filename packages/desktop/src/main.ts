@@ -16,14 +16,14 @@ import { publishStart, publishStop, isPublishing } from './publish'
 import { deployCapability } from './publish-args'
 import { aiBusy, aiReset, aiSend, aiStop, detectProviders } from './ai'
 import { initUpdater, installAndRestart, installOnQuit, manualCheck, updateStatus } from './updater'
-import { ensureSkillsCache, linkSkillsIntoProject } from './skills'
+import { addSoundLibrary, ensureSkillsCache, linkSkillsIntoProject } from './skills'
 import { DEEPLINK_PROTOCOLS, isDeeplink, parseSignin } from './deeplink'
 import { spawnWorldPosition, type SceneMeta } from './scene-meta'
 import { importThumbnail, loadSceneSettings, saveSceneSettings } from './scene-settings'
 import { compositeEntityIds } from './composite-entities'
 import { installAuthServerSdk, sdkCapability } from './sdk-capability'
 import { mobilePreview, unityDeepLink, webPreviewUrl } from './preview'
-import { prefabLibraryDirs, prefabStagingRoot } from './app-paths'
+import { editorSkillsDir, prefabLibraryDirs, prefabStagingRoot, soundLibraryDir } from './app-paths'
 import { assertRelayHost } from './relay-host'
 import { installEditorChords } from './chords'
 import { buildMenu as buildMenuTemplate } from './menu'
@@ -427,7 +427,10 @@ void app.whenReady().then(async () => {
 
   // refresh the AI assistant's SDK skills in the background (openProject links
   // them into each scene when this resolves)
-  skillsCache = ensureSkillsCache(path.join(app.getPath('userData'), 'sdk-skills'), app.getVersion(), log)
+  skillsCache = ensureSkillsCache(path.join(app.getPath('userData'), 'sdk-skills'), app.getVersion(), log, editorSkillsDir()).then((dir) => {
+    if (dir !== null) addSoundLibrary(dir, soundLibraryDir(), log)
+    return dir
+  })
 
   ipcMain.handle('pick-project', () => pickProject())
   ipcMain.handle('open-project', (_e, dir: string) => openProject(dir))

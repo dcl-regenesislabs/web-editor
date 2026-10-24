@@ -37,6 +37,21 @@ extraResources:
     filter:
       - '**/*'
       - '!tsconfig.json'
+  # the editor's own AI skills (see src/skills.ts); the web service's SDK
+  # bundle beside them is not needed here
+  - from: ../service/skills
+    to: editor-skills
+    filter:
+      - '**/*'
+      - '!sdk-skills.json'
+      - '!LICENSE'
+      - '!README.md'
+  # the sound library the game-sounds skill copies into scenes (src/skills.ts)
+  - from: ../ui/src/sounds
+    to: sounds
+    filter:
+      - '*.mp3'
+      - CREDITS.md
   # the editor system scene, staged with the contract package vendored in
   - from: staging/editor-scene
     to: editor-scene
