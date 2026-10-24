@@ -7,7 +7,7 @@
 // Chat/session state lives here so it follows the creator between modes: the
 // presentation pieces (features/ai/*) are stateless and are re-parented between
 // the two layouts, which would reset any state they owned. It drives the
-// Claude/Codex CLI (main process), which edits project files on disk — Scripts
+// Claude CLI (main process), which edits project files on disk — Scripts
 // under src/scripts/ and the scene's entry point src/index.ts; in Studio those
 // edits arrive as an accept/reject diff via the CodeEditor handle — nothing runs
 // in the scene until the creator accepts. The web shell runs tools in the browser.
@@ -16,8 +16,7 @@ import type { AiEvent, AiImageAttachment, AiProvider, AiProviderInfo, AiTranscri
 import { ASSISTANT_MAX_IMAGE_BYTES } from '@dcl-editor/contract'
 import { Button, labelTip, Modal } from '../ds'
 import { useStore } from '../core/store'
-import { state, entityLabel, type Snapshot } from '@scene/state'
-import { entityName } from '@scene/custom-components'
+import { state } from '@scene/state'
 import { type CodeEditorHandle } from '../script/code-editor'
 import { IconBot, IconChevron, IconNewChat } from '../icons'
 import { onBuiltModel } from '../features/ai/built-models'
@@ -31,11 +30,7 @@ import { ErrorDetails } from '../features/ai/ErrorDetails'
 import { AiEmpty, AiSetup, MessageList, type ChatMsg } from '../features/ai/transcript'
 import { type ToolUse } from '../features/ai/activity'
 import { keptTranscript, MAX_ATTACH, readImages, restoredTranscript, sameFile } from '../features/ai/chat-helpers'
-import { baseName } from '../script/project-files'
-import { attachScript } from '../script/attach'
-import { attachablePath } from '../script/template'
 import { buildContext, entityScriptFiles, selectedEntities } from '../ai/context'
-import { clearEditorRequests, runEditorRequests } from '../ai/requests'
 import { ensurePrefabsLoaded } from './prefab-store'
 import { isPrimaryMod } from '../lib/keys'
 import { projectFiles } from '../assets'
@@ -94,17 +89,12 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
   const activeTurn = useRef<string | null>(null)
   const editorRef = useRef<CodeEditorHandle>(null)
   const openFileTouched = useRef(false)
-  const attachTarget = useRef<string | null>(null) // entity active at turn start — selection can move while the CLI works
-  const createdScripts = useRef<string[]>([])
   const stopRef = useRef<() => void>(() => {}) // latest stop(), for the Escape handler
   useStore(() => state.activeEntity)
   useStore(() => state.selected)
   useStore(() => state.snapshot)
   const entities = selectedEntities()
   const current = providers.find((p) => p.id === provider)
-  // the hosted tools attach a new script as it is written; only the desktop CLI attaches at turn end
-  const attachAtTurnEnd = useRef(true)
-  attachAtTurnEnd.current = current?.transport !== 'service'
   const available = current?.available ?? false
   const anyAvailable = providers.some((p) => p.available)
 
@@ -119,48 +109,16 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
       )
     }
 
-    const autoAttach = async (turnId: string, entityId: string, paths: string[]): Promise<void> => {
-      for (const path of paths) {
-        let attached = false
-        try {
-          attached = await attachScript(entityId, path)
-        } catch (err) {
-          console.error('auto-attach failed:', path, err)
-        }
-        if (!attached) continue
-        const to = entityName(state.snapshot as Snapshot, entityId) ?? entityLabel(entityId)
-        addTools(turnId, [{ tool: 'Attached', detail: `${baseName(path)} to ${to}` }])
-      }
-    }
-
-    const finishTurn = async (turnId: string, target: string | null, paths: string[]): Promise<void> => {
+    const finishTurn = async (turnId: string): Promise<void> => {
       addTools(turnId, await vendorRuntimeAfterTurn())
-      let claimed: string[] = []
-      try {
-        const run = await runEditorRequests(target)
-        addTools(turnId, run.outcomes)
-        if (run.problems.length > 0) addTools(turnId, [{ tool: 'Skipped', detail: run.problems.join('; ') }])
-        claimed = run.attached
-      } catch (err) {
-        console.error('assistant requests failed:', err)
-      }
-      const rest = paths.filter((p) => !claimed.includes(p))
-      if (target !== null && rest.length > 0) await autoAttach(turnId, target, rest)
     }
 
     return shell.onAiEvent((e: AiEvent) => {
       if (e.kind === 'started') activeTurn.current = e.turnId
       else if (e.turnId !== activeTurn.current) return
-      if (e.kind === 'tool' && e.tool === 'AttachScript') {
-        createdScripts.current = createdScripts.current.filter((path) => path !== e.detail)
-      }
       if (e.kind === 'tool' && (e.tool === 'Edit' || e.tool === 'Write')) {
         if (aiStore.file !== null && sameFile(e.detail, aiStore.file)) openFileTouched.current = true
-        if (e.tool === 'Write') {
-          refreshFileRail()
-          const p = attachablePath(e.detail)
-          if (p !== null && attachAtTurnEnd.current && !createdScripts.current.includes(p)) createdScripts.current.push(p)
-        }
+        if (e.tool === 'Write') refreshFileRail()
       }
       setMessages((prev) => {
         const next = [...prev]
@@ -194,11 +152,7 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
           if (openFileTouched.current) void ed.reviewAgainstDisk()
         }
         openFileTouched.current = false
-        const target = attachTarget.current
-        const paths = createdScripts.current
-        attachTarget.current = null
-        createdScripts.current = []
-        if (e.ok) void finishTurn(e.turnId, target, paths)
+        if (e.ok) void finishTurn(e.turnId)
       }
     })
   }, [])
@@ -467,9 +421,6 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
     const imgs = resuming ? [] : attachments
     const run = (): void => {
       openFileTouched.current = false
-      attachTarget.current = state.activeEntity
-      createdScripts.current = []
-      void clearEditorRequests()
       setMessages((prev) => [
         ...prev,
         { role: 'user', text: asked, images: imgs.length > 0 ? imgs.map((i) => i.dataUrl) : undefined },

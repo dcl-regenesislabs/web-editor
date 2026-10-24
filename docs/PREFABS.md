@@ -309,7 +309,7 @@ admin-tools, which expose no API.
 | front-matter | `prefab: <folder>`, plus `claims-globals:` / `claims-rpc:` / `claims-messages:` naming every `globalThis` key, rpc method or comms message the folder DEFINES. Tested globally unique — a wire-name collision between two prefabs is a failing test, not a runtime mystery. |
 | shape | `# <Name> — AI guide` + purpose, `## When to use`, `## API`, optional extras, `## Do / Don't`, `## Example`. Order is tested. |
 | size | hard cap 6,144 bytes, target ≤ 4 KB. The cap is what stops the monotonic growth that made the old system prompt unmaintainable. |
-| duplication | MOVE, never duplicate: a rule lives in `DCL_SYSTEM_PROMPT` (`packages/desktop/src/ai-prompt.ts`) or in a guide, never both. `guides.test.ts` lint-bans per-prefab vocabulary from it. |
+| duplication | MOVE, never duplicate: a rule lives in `ASSISTANT_PROMPT` (`packages/contract/src/assistant-prompt.ts`) or in a guide, never both. `guides.test.ts` lint-bans per-prefab vocabulary from it. |
 | params | every inspector param name of every script the composite references must appear in the guide (word-boundary matched, so a rename fails the test). |
 
 The assistant is told which guides exist, not what they say: `PrefabEntry.hasGuide`

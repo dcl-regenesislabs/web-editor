@@ -73,6 +73,7 @@ import { startDevSceneReload, notifyDevSceneReady } from './dev-hmr'
 import { startThemePreview } from '../engine/theme-preview'
 import '../engine/gizmo-debug'
 import { installCameraGestures } from '../engine/camera-gestures'
+import { installEditorToolBridge } from '../ai/editor-tools'
 
 export type BootPhase = 'waiting-engine' | 'waiting-scene' | 'ready'
 
@@ -273,6 +274,8 @@ export async function boot(): Promise<void> {
   // Tool chords come from the MAIN process (before-input-event), so they work
   // whatever holds focus — the engine iframe grabs it the moment the viewport is
   // clicked, and a listener in this window would never see them then.
+  // the desktop assistant sees and plays the scene through these (the editor's MCP server)
+  installEditorToolBridge()
   window.editorShell?.onEditorChord?.((c) => {
     switch (c.action) {
       case 'tool':

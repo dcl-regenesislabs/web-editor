@@ -12,7 +12,7 @@ describe('sound library', () => {
     const files = fs.readdirSync(path.join(here, 'sounds')).filter((f) => f.endsWith('.mp3')).map((f) => f.replace(/\.mp3$/, ''))
     expect(files.sort()).toEqual([...SOUNDS].sort())
     expect(Object.keys(properties).sort()).toEqual([...SOUNDS].sort())
-    const prompt = fs.readFileSync(path.join(here, '../../service/src/ai/prompt.ts'), 'utf8')
+    const prompt = fs.readFileSync(path.join(here, '../../contract/src/assistant-prompt.ts'), 'utf8')
     const listed = prompt.slice(prompt.indexOf('{type:"addSound"'), prompt.indexOf('Play sounds'))
     for (const name of SOUNDS) expect(listed).toMatch(new RegExp(`[\\s,:]${name}[,;. (]`))
   })

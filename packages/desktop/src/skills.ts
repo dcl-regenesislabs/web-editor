@@ -20,7 +20,7 @@ const TARBALL_TIMEOUT_MS = 90_000 // ~4MB over hotel/mobile links; the SHA call 
 // Skills that fight the assistant's mandate (script-only authoring, no shell,
 // acceptEdits headless flow): scaffolding/deploy walkthroughs are npx
 // instructions it can't run, sdk-scenes mandates ask-the-user-first and
-// composite-first workflows that contradict DCL_SYSTEM_PROMPT. A denylist so
+// composite-first workflows that contradict ASSISTANT_PROMPT. A denylist so
 // new upstream skills default IN. Denylisted skills ship their supporting
 // files but NOT SKILL.md: without frontmatter they can never trigger, yet
 // shipped skills' {baseDir}/../<name>/references/ paths still resolve (e.g.

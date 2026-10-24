@@ -7,7 +7,8 @@ export const ASSISTANT_ID = /^[a-zA-Z0-9-]{1,80}$/
 export const ASSISTANT_PROTOCOL = 'dcl-assistant-v1'
 export const ASSISTANT_TICKET_PREFIX = 'dcl-ticket.'
 
-export type BrowserToolName = 'list_files' | 'read_file' | 'write_file' | 'scene_request' | 'asset_request' | 'build' | 'view' | 'playtest'
+export const BROWSER_TOOLS = ['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout'] as const
+export type BrowserToolName = (typeof BROWSER_TOOLS)[number]
 export interface BrowserToolCall {
   kind: 'call'
   turnId: string
@@ -39,6 +40,11 @@ export type AssistantServerMessage =
   | { kind: 'event'; event: AiEvent }
   | BrowserToolCall
   | { kind: 'failure'; message: string }
+
+// One model and one effort for every assistant turn, web and desktop alike, so a run on either
+// reads the same. The web service may override the model (AI_MODEL); the desktop dev picker too.
+export const ASSISTANT_MODEL = 'claude-opus-5-5'
+export const ASSISTANT_EFFORT = 'medium'
 
 export function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

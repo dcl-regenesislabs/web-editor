@@ -52,6 +52,11 @@ extraResources:
     filter:
       - '*.mp3'
       - CREDITS.md
+  # the surface materials the assistant's buildModel copies into scenes (src/app-paths.ts)
+  - from: ../ui/src/three/materials
+    to: materials
+    filter:
+      - '*.jpg'
   # the editor system scene, staged with the contract package vendored in
   - from: staging/editor-scene
     to: editor-scene

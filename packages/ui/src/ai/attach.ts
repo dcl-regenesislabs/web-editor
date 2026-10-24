@@ -1,8 +1,8 @@
 import { entityName } from '@scene/custom-components'
 import { isUiEntity, state } from '@scene/state'
 import { isReservedEntity } from '@dcl-editor/contract'
-import { attachScript, refreshScriptEverywhere } from '@ui/script/attach'
-import { attachablePath } from '@ui/script/template'
+import { attachScript, refreshScriptEverywhere } from '../script/attach'
+import { attachablePath } from '../script/template'
 
 export interface AttachedTo {
   id: string

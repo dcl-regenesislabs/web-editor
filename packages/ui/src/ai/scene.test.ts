@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { browserSceneRequest } from './scene'
 import { state } from '@scene/state'
-import { importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '@ui/assets'
-import { inspectModel } from '@ui/model-info'
-import { sceneTextures } from '@ui/scene-budget'
+import { importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
+import { inspectModel } from '../model-info'
+import { sceneTextures } from '../scene-budget'
 import { buildCodeModel } from './code-model'
-import { materialFile } from '@ui/three/materials'
-import { dataLayerListFiles, dataLayerSaveFileBytes } from '@ui/engine/datalayer'
-import { soundBytes } from './library-files'
+import { materialFile } from '../three/materials'
+import { dataLayerListFiles, dataLayerSaveFileBytes } from '../engine/datalayer'
+import { soundBytes } from './library-bytes'
 
 const { setValue, deleteValue, status } = vi.hoisted(() => {
   const status = new Map<string, string>()
@@ -23,20 +23,20 @@ vi.mock('@scene/state', () => ({
   isUiEntity: () => false, isRuntimeEntity: () => false, provenanceBaseline: () => null
 }))
 vi.mock('@scene/custom-components', () => ({ entityName: () => 'Box', NAME_COMPONENT: 'core::Name' }))
-vi.mock('@ui/engine/cmd', () => ({ cmd: { componentSchema: () => Promise.reject(new Error('no engine')) } }))
+vi.mock('../engine/cmd', () => ({ cmd: { componentSchema: () => Promise.reject(new Error('no engine')) } }))
 vi.mock('@scene/allowed-components', () => ({ isAllowedComponent: () => true }))
-vi.mock('@ui/actions/entities', () => ({ uiAddEntity: vi.fn() }))
-vi.mock('@ui/actions/components', () => ({ uiSetComponentValue: setValue, uiDeleteComponent: deleteValue }))
-vi.mock('@ui/assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn() }))
-vi.mock('@ui/engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
-vi.mock('./library-files', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() }))
-vi.mock('@ui/engine/bus', () => ({ sendToScene: vi.fn() }))
+vi.mock('../actions/entities', () => ({ uiAddEntity: vi.fn() }))
+vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiDeleteComponent: deleteValue }))
+vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn() }))
+vi.mock('../engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
+vi.mock('./library-bytes', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() }))
+vi.mock('../engine/bus', () => ({ sendToScene: vi.fn() }))
 vi.mock('./code-model', () => ({ buildCodeModel: vi.fn(async () => { throw new Error('built') }), overBudget: () => [], MODEL_BUDGET: {} }))
-vi.mock('@ui/ai/requests', () => ({ runRequestText: vi.fn() }))
-vi.mock('@ui/model-info', async (real) => ({ ...(await real<object>()), inspectModel: vi.fn() }))
-vi.mock('@ui/scene-budget', async (real) => ({ ...(await real<object>()), sceneTextures: vi.fn() }))
-vi.mock('@ui/ai/request-format', () => ({ resolveEntityRef: (_: unknown, ref: string) => ref }))
-vi.mock('@ui/features/editor/scene-check-context', () => ({
+vi.mock('./requests', () => ({ runRequestText: vi.fn() }))
+vi.mock('../model-info', async (real) => ({ ...(await real<object>()), inspectModel: vi.fn() }))
+vi.mock('../scene-budget', async (real) => ({ ...(await real<object>()), sceneTextures: vi.fn() }))
+vi.mock('./request-format', () => ({ resolveEntityRef: (_: unknown, ref: string) => ref }))
+vi.mock('../features/editor/scene-check-context', () => ({
   refreshSceneChecks: async () => [{ id: 'empty-prefab-ref', level: 'blocker', title: 'Nothing picked', detail: 'Pick a prefab', entityId: '512', fix: { label: 'x', action: 'y' } }]
 }))
 
