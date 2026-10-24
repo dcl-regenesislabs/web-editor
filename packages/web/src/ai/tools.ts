@@ -16,7 +16,7 @@ export interface BrowserProject {
   // when a turn ends, however it ended
   turnEnded?(): Promise<void>
   // after a successful write
-  written?(path: string, content: string, created: boolean): Promise<{ id: string; name: string } | null>
+  written?(path: string, content: string): Promise<void>
 }
 
 export { sameBytes }

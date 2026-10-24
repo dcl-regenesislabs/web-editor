@@ -15,8 +15,8 @@ export interface ProjectFiles {
   read(path: string): Promise<Uint8Array | undefined>
   // fails when the file no longer holds `expected` (null: when it exists at all)
   write(path: string, bytes: Uint8Array, expected: Uint8Array | null, signal: AbortSignal): Promise<void>
-  // after a successful write; answers the entity a new script was attached to
-  written?(path: string, content: string, created: boolean): Promise<{ id: string; name: string } | null>
+  // after a successful write
+  written?(path: string, content: string): Promise<void>
 }
 
 const encoder = new TextEncoder()
@@ -125,7 +125,7 @@ export function createFileTools(project: ProjectFiles) {
       signal.throwIfAborted()
       const revision = crypto.randomUUID()
       reads.set(path, { revision, bytes: next, whole: reads.get(path)?.whole ?? false })
-      await project.written?.(path, changed, false)
+      await project.written?.(path, changed)
       return JSON.stringify({ path, revision, replaced: found > 1 && args.all === true ? found : 1 })
     }
     if (tool !== 'write_file' || !assistantWritable(path)) throw new Error('The assistant can write source files; scene data is changed through editor actions.')
@@ -143,7 +143,7 @@ export function createFileTools(project: ProjectFiles) {
     signal.throwIfAborted()
     const revision = crypto.randomUUID()
     reads.set(path, { revision, bytes: next, whole: true })
-    const attached = (await project.written?.(path, args.content, expected === null)) ?? null
-    return JSON.stringify({ path, revision, created: expected === null, ...(attached === null ? {} : { attached }) })
+    await project.written?.(path, args.content)
+    return JSON.stringify({ path, revision, created: expected === null })
   }
 }

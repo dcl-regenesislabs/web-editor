@@ -24,7 +24,7 @@ import { hostV1 } from '@ui/engine/hosted'
 import { persistReady } from '@ui/core/persist'
 import { version } from '../../package.json'
 import { createBrowserAssistant } from '../ai/client'
-import { scriptAttacher } from '@ui/ai/attach'
+import { refreshWrittenScript } from '@ui/ai/attach'
 import { state } from '@scene/state'
 import { browserSceneRequest } from '@ui/ai/scene'
 import { sameBytes } from '../ai/tools'
@@ -230,7 +230,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
                 parcels, base: raw?.scene?.base ?? null, previewReady: true
               }
             }),
-          written: scriptAttacher(),
+          written: refreshWrittenScript,
           view: (request, signal) => captureView(request, signal),
           playtest, uiLayout, turnEnded: leavePhone,
           build: async (signal) => {
