@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { autoHideSceneUi, releaseAutoHiddenSceneUi, resetSceneUi, sceneUi } from './scene-ui'
+import { autoHideSceneUi, cancelAutoHideSceneUi, releaseAutoHiddenSceneUi, resetSceneUi, sceneUi } from './scene-ui'
 
 const host = vi.hoisted(() => ({
   state: { frozen: true, snapshot: {} as Record<string, Record<string, unknown>>, saveStatus: '' },
@@ -22,6 +22,15 @@ it('does not let the previous scene hide the next scene UI after a reset', async
   autoHideSceneUi()
   resetSceneUi()
   host.state.snapshot = { '512': { UiTransform: { parent: 0, display: 0 } } }
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(sceneUi.hidden).toBe(false)
+  expect(host.write).not.toHaveBeenCalled()
+})
+
+it('drops a pending hide when a restart begins, so it cannot land on the reloaded scene', async () => {
+  host.state.snapshot = { '512': { UiTransform: { parent: 0, display: 0 } } }
+  autoHideSceneUi()
+  cancelAutoHideSceneUi()
   await vi.advanceTimersByTimeAsync(1000)
   expect(sceneUi.hidden).toBe(false)
   expect(host.write).not.toHaveBeenCalled()

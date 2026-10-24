@@ -60,7 +60,7 @@ import { noteCodeOrigin, refreshCodeMove, resetCodeOrigins } from '../panels/cod
 import { clearPendingCodeMove, runStudioChord } from '../panels/ai-store'
 import { revealInTree } from '../panels/reveal'
 import { resetProjectPrefabs } from '../panels/prefab-store'
-import { resetSceneUi, autoHideSceneUi } from '../engine/scene-ui'
+import { resetSceneUi, autoHideSceneUi, cancelAutoHideSceneUi } from '../engine/scene-ui'
 import { reassertSceneAudio, toggleSceneAudio } from '../engine/audio'
 import { uiTogglePlay } from '../actions/playback'
 import { awaitFreshBundle, noteSceneStale, noteSceneUpToDate } from '../features/editor/scene-health'
@@ -451,6 +451,7 @@ export function restartScene(): Promise<void> {
 async function restartOnce(): Promise<void> {
   const hash = state.scene?.hash
   if (hash === undefined) return
+  cancelAutoHideSceneUi()
   try {
     if (hasPendingSave()) state.saveStatus = 'saving…'
     const flushed = await flushPendingSave()

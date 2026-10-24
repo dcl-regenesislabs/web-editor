@@ -61,7 +61,8 @@ const PROXY_TIMEOUT_MS = 20_000
 const PROXY_MAX_BYTES = 256 * 1024 * 1024 // matches servers.ts: DoS backstop, generous vs real GLBs
 function proxyOpendcl(url, res, method = 'GET') {
   if (url.pathname === '/opendcl/ping') {
-    res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' }).end('ok')
+    // the UI tells the proxy from a single-page fallback by its JSON answer (packages/ui/src/assets.ts)
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }).end('{"ok":true}')
     return
   }
   if (method !== 'GET' && method !== 'HEAD') {
