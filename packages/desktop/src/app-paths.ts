@@ -32,6 +32,17 @@ export function prefabLibraryDirs(): LibraryDirs {
   }
 }
 
+// The editor's own AI skills, kept next to the web service's SDK skills bundle
+// in the repo so both assistants read the same files.
+export function editorSkillsDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'editor-skills') : path.resolve(__dirname, '..', '..', 'service', 'skills')
+}
+
+// The shared sound library (Kenney CC0 mp3s) the game-sounds skill copies from.
+export function soundLibraryDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'sounds') : path.resolve(__dirname, '..', '..', 'ui', 'src', 'sounds')
+}
+
 export function prefabStagingRoot(): string {
   return path.join(app.getPath('userData'), 'prefab-imports')
 }
