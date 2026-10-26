@@ -41,11 +41,14 @@
     "happy-dom": "^20.11.1",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.0.0",
-    "undici": "8.11.2",
+    "undici": "8.12.3",
     "vitest": "^2.1.9"
   },
   "overrides": {
-    "protobufjs@<7.6.3": "7.6.6"
+    "protobufjs@<7.6.3": "7.6.6",
+    "@earendil-works/pi-coding-agent": {
+      "undici": "$undici"
+    }
   },
   "dependencies": {
     "@dcl-regenesislabs/bevy-explorer-web": "0.1.0-32423376134.commit-d18de13"
