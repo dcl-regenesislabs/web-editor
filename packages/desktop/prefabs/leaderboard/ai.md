@@ -49,13 +49,13 @@ Params of the prefab's script — set them in the placePrefab request:
 - `source`: `State key` (default) or `Run best times`.
 - `courseId`: matches Run Progress when source is `Run best times`.
 - `display`: `3D panel` (default) or `2D UI`. The overlay uses UI Theme.
-- `position`: `left` or `right` for the overlay.
+- `position`: `left` or `right` column of the shared HUD layout for the overlay.
 - `title`: the heading on the panel (default "Leaderboard").
 - `boardKey`: the `game.state` key to read (default `'leaderboard'`). Game Flow
   reads the same key for its winners line — point both at one key.
 - `sort`: `'desc'` (highest wins — points) or `'asc'` (lowest wins — best times,
   which also renders the score as m:ss).
-- `rows`: how many places to list (default 8; max 25 in 3D, 10 on screen).
+- `rows`: how many places to list (default 8; max 25 in 3D, 10 on screen, 5 on phones).
 
 For Run best times, Board Key and Sort are hidden: the course supplies the key,
 scores in seconds and ascending order. The shared key is `run:<courseId>:leaderboard`.

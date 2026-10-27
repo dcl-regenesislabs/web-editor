@@ -35,7 +35,7 @@ export class ServerClock {
     if (this.onScreen) {
       VisibilityComponent.createOrReplace(this.entity, { visible: false })
       TextShape.deleteFrom(this.entity)
-      mountStatusHud(this.entity, this.position, () => ({ label: this.label, value: this.time }))
+      mountStatusHud(this.position, () => ({ label: this.label, value: this.time }))
     }
     this.render('--:--:--')
   }

@@ -1,9 +1,7 @@
-import ReactEcs, { ReactEcsRenderer } from '@dcl/sdk/react-ecs'
 import { engine, PlayerIdentityData, VisibilityComponent, type Entity } from '@dcl/sdk/ecs'
 import { isServer } from '@dcl/sdk/network'
 import { game, reportProblem } from '~runtime/game'
-import { RunHud } from '~runtime/gameHud'
-import { UI_CANVAS } from '~runtime/uiTheme'
+import { mountRunHud, type RunHudProps } from '~runtime/gameHud'
 import type { ColorHex, EntityName, EntityNames, ZoneName, ZoneNames } from '~runtime/authoring'
 import { createRun, restartRun, runOf } from '~runtime/runs'
 import { entityWorld, namedEntity } from '~runtime/sceneNames'
@@ -101,7 +99,7 @@ export class RunProgress {
     watch(this.finishArea, { type: 'finish' })
     this.points.forEach((area, index) => watch(area, { type: 'checkpoint', index }))
     this.items.forEach((id) => watch(id, { type: 'collect', id }))
-    if (this.hud !== 'Hidden') ReactEcsRenderer.addUiRenderer(this.entity, () => this.render(), UI_CANVAS)
+    if (this.hud !== 'Hidden') mountRunHud(() => this.hudProps())
   }
 
   update(): void {
@@ -150,21 +148,21 @@ export class RunProgress {
     }).finally(() => { this.pending = false })
   }
 
-  private render(): ReactEcs.JSX.Element {
+  private hudProps(): RunHudProps {
     const player = this.player()
     const state = this.current() ?? freshRun()
     const health = game.state.healthBar === false ? null : record(game.state.health)[player]
     const life = record(record(game.state.healthLife)[player])
-    return <RunHud
-      title={this.title} objective={this.objective} phase={state.phase}
-      elapsedMs={elapsedRun(state, game.now())} bestMs={state.bestMs}
-      checkpoint={state.checkpoint} checkpoints={this.points.length}
-      collected={state.collected.length} collectibles={this.items.length}
-      health={typeof health === 'number' ? health : null}
-      maxHealth={typeof game.state.healthMax === 'number' ? game.state.healthMax : 100}
-      respawnSeconds={life.dead === true && typeof life.respawnAt === 'number' ? Math.max(0, life.respawnAt - game.now()) / 1000 : 0}
-      notice={game.now() < this.noticeUntil ? this.notice : ''}
-      accentColor={this.accentColor} restart={() => this.restart()} hud={this.hud === 'Big timer' ? 'Big timer' : 'Full'}
-    />
+    return {
+      title: this.title, objective: this.objective, phase: state.phase,
+      elapsedMs: elapsedRun(state, game.now()), bestMs: state.bestMs,
+      checkpoint: state.checkpoint, checkpoints: this.points.length,
+      collected: state.collected.length, collectibles: this.items.length,
+      health: typeof health === 'number' ? health : null,
+      maxHealth: typeof game.state.healthMax === 'number' ? game.state.healthMax : 100,
+      respawnSeconds: life.dead === true && typeof life.respawnAt === 'number' ? Math.max(0, life.respawnAt - game.now()) / 1000 : 0,
+      notice: game.now() < this.noticeUntil ? this.notice : '',
+      accentColor: this.accentColor, restart: () => this.restart(), hud: this.hud === 'Big timer' ? 'Big timer' : 'Full'
+    }
   }
 }

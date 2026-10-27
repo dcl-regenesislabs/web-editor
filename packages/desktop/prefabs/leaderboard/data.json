@@ -13,8 +13,12 @@
     "board"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "changelog": [
+    {
+      "version": "1.6.0",
+      "notes": "The on-screen board takes its place in the shared HUD layout, so it no longer overlaps other HUDs, and shows the top 5 on phones, whose screen is a third shorter."
+    },
     {
       "version": "1.5.0",
       "notes": "Before the first score the board tells players \"No scores yet — be the first!\" (or \"No times yet\" for times) instead of setup instructions, and its text wraps to stay inside the panel. A board placed before this keeps its old text size, where the new line already fits."

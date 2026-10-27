@@ -31,8 +31,9 @@ Configure the placed script, with one distinct courseId per course:
 - `collectibleAreas`: comma-separated Trigger Area names, each counts once per player.
 - `accentColor`: fallback six-digit hex color. Place UI Theme to style the entire scene together.
 - `collectibleVisuals`: comma-separated names of plain visual entities, matching collectibleAreas in order.
-- `hud`: "Full" (run panel, corner clock, controls), "Big timer" (one large
-  centred clock plus Restart and the results screen) or "Hidden" (draws nothing).
+- `hud`: "Full" (run panel and health on the left, clock and Restart on the right),
+  "Big timer" (one large clock at the top centre plus Restart and the results screen)
+  or "Hidden" (draws nothing). Both use the shared HUD layout and fit phones.
   The creator's HUD request is THIS setting: "one big timer" = "Big timer". For a
   custom HUD set "Hidden" and read `runOf()`; never draw a second clock beside it.
 

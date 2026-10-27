@@ -49,7 +49,7 @@ export class Leaderboard {
     if (isServer()) { return }
     if (this.display === '2D UI') {
       VisibilityComponent.createOrReplace(this.entity, { visible: false, propagateToChildren: true })
-      mountLeaderboardHud(this.entity, this.position, () => this.content())
+      mountLeaderboardHud(this.position, () => this.content())
       return
     }
     this.panel = this.findPanel()

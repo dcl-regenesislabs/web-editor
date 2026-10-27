@@ -13,8 +13,12 @@
     "ui"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "changelog": [
+    {
+      "version": "1.3.0",
+      "notes": "Announcements take their place in the shared HUD layout at the bottom centre, narrow enough to stay clear of the phone touch buttons and of other HUDs."
+    },
     {
       "version": "1.0.0",
       "notes": "Initial release: server code anywhere in the scene calls game.broadcast('announce', { text }) and every player's client shows the line for a few seconds."
