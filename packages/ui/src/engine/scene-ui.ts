@@ -81,6 +81,13 @@ export function resetSceneUi(): void {
   autoHidden = false
 }
 
+// A restart reloads the scene under the pending hide's feet: its stale snapshot ids name the
+// new instance's roots, and the reset at the end of the restart forgets the hide was ever made,
+// so Play would never release it. The restart schedules its own hide once the scene is back.
+export function cancelAutoHideSceneUi(): void {
+  hideGeneration++
+}
+
 // Hiding the scene's UI is an EDITING affordance: while stopped it covers the
 // viewport with chrome that isn't selectable or movable. The moment the scene
 // runs, that UI IS the game — so the automatic hide is released on Play and
