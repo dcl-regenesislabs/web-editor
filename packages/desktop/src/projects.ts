@@ -154,6 +154,22 @@ export function duplicateProject(cfg: config.AppConfig, dir: string): string | n
   return dest
 }
 
+// The template ships a composite whose scene metadata matches its scene.json: without one the
+// inspector writes its own (a one-parcel "Test Scene"), and that copy can later be written back
+// over scene.json. The new scene's name goes in both.
+function nameComposite(dir: string, name: string): void {
+  const file = path.join(dir, 'assets', 'scene', 'main.composite')
+  try {
+    const composite = JSON.parse(fs.readFileSync(file, 'utf8')) as { components?: Array<{ name?: string; data?: Record<string, { json?: Record<string, unknown> }> }> }
+    const root = composite.components?.find((c) => c.name?.startsWith('inspector::SceneMetadata'))?.data?.['0']?.json
+    if (root === undefined) return
+    root.name = name
+    fs.writeFileSync(file, JSON.stringify(composite, null, 2))
+  } catch {
+    /* no composite in the template: the inspector makes one on first open */
+  }
+}
+
 // Scaffold a new scene by copying a bundled template folder (offline, deterministic
 // — no global sdk-commands init). Deps install on first open (ensureProjectDeps).
 export function createScene(
@@ -175,6 +191,7 @@ export function createScene(
   } catch {
     /* template had no/invalid scene.json — leave as copied */
   }
+  nameComposite(dest, name.trim())
   cfg.recentProjects = [dest, ...cfg.recentProjects.filter((p) => p !== dest)]
   cfg.lastOpened[dest] = Date.now()
   config.save(cfg)

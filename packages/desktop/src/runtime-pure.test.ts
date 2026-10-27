@@ -311,6 +311,19 @@ describe('runtime-modules distribution', () => {
     }
   })
 
+  // without a composite the inspector writes a one-parcel "Test Scene" that can land back on scene.json
+  it('templates ship a composite whose scene metadata matches scene.json', () => {
+    for (const t of ['blank', 'starter']) {
+      const dir = path.resolve(__dirname, `../templates/${t}`)
+      const scene = JSON.parse(fs.readFileSync(path.join(dir, 'scene.json'), 'utf8'))
+      const composite = JSON.parse(fs.readFileSync(path.join(dir, 'assets/scene/main.composite'), 'utf8'))
+      const meta = composite.components.find((c: { name: string }) => c.name.startsWith('inspector::SceneMetadata')).data['0'].json
+      expect(meta.name).toBe(scene.display.title)
+      expect(meta.layout.parcels.map((p: { x: number; y: number }) => `${p.x},${p.y}`)).toEqual(scene.scene.parcels)
+      expect(`${meta.layout.base.x},${meta.layout.base.y}`).toBe(scene.scene.base)
+    }
+  })
+
   it('master modules never re-introduce a barrel export', () => {
     const dir = path.resolve(__dirname, '../runtime-modules')
     expect(fs.existsSync(path.join(dir, 'index.ts'))).toBe(false)
