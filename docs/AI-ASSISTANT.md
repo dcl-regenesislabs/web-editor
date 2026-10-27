@@ -6,16 +6,18 @@
 > [`AI-AGENT.md`](./AI-AGENT.md).
 
 The assistant panel edits your **Script components** by prompt. The desktop and
-web shells share `packages/ui/src/panels/AiPanel.tsx` and Script Studio. This
-document describes the desktop CLI backend. The web backend runs an agent service
-with browser-owned files and browser tools; see [Web assistant](./WEB-ASSISTANT.md).
+web shells share `packages/ui/src/panels/AiPanel.tsx` and Script Studio, and one
+system prompt (`ASSISTANT_PROMPT`, `packages/contract/src/assistant-prompt.ts`) and
+one tool set (`packages/contract/src/editor-tools.ts`). This document describes the
+desktop CLI backend; the web backend runs an agent service with browser-owned files
+and browser tools, see [Web assistant](./WEB-ASSISTANT.md).
 
 ---
 
 ## Two authoring surfaces
 
 Code lives in two places, and the assistant is told the difference
-(`DCL_SYSTEM_PROMPT`, `packages/desktop/src/ai-prompt.ts`):
+(`ASSISTANT_PROMPT`):
 
 - **Per-entity behavior** — a Script class in `src/scripts/<Name>.ts`, attached
   to an entity in the inspector.
@@ -56,14 +58,14 @@ by `buildContext` when the project has anything to say:
   `src/scripts/game-config.ts` holds them and the assistant can read that file;
   what it cannot guess is which names exist. The block also states plainly that
   the assistant *cannot* edit these tables (they are a live component, and no
-  request type writes them), so the honest move is to name the table, row and
+  scene_request writes them), so the honest move is to name the table, row and
   value for the creator.
 
 Both are **data**, and both are empty when the project has none — which is the
 split that keeps the split honest: per-project lists live here, in the renderer,
 while the rules that must hold in an empty scene (content is a prefab, tuned
 numbers are not script params, what a clone actually guarantees) live in
-`DCL_SYSTEM_PROMPT` and stay O(1) in project size.
+`ASSISTANT_PROMPT` and stay O(1) in project size.
 
 ## Prefab guides (`ai.md`)
 
@@ -83,7 +85,7 @@ The assistant finds them by **index and pull**, not by injection:
   `PrefabEntry.hasGuide` is filled in `refreshPrefabs` from the same project
   file listing the thumbnails come out of, so there is no extra round trip, and
   `buildContext` stays synchronous.
-- **Pull** — `DCL_SYSTEM_PROMPT`'s `PREFAB GUIDES` paragraph makes it
+- **Pull** — `ASSISTANT_PROMPT`'s `PREFAB GUIDES` paragraph makes it
   mandatory: before writing or editing code that touches a listed prefab, read
   that prefab's guide. The read lands in the chat's collapsed activity row
   (expandable to the full `Read …` list), and
@@ -95,10 +97,10 @@ The assistant finds them by **index and pull**, not by injection:
   prompt keeps a short trigger-zone capsule — the routing rule and the one
   import line — for that first placement and points at the guide for the rest.
 
-**MOVE, never duplicate.** A rule lives in `DCL_SYSTEM_PROMPT` or in a guide,
+**MOVE, never duplicate.** A rule lives in `ASSISTANT_PROMPT` or in a guide,
 never both: two copies aging apart is exactly how the prompt contradicted itself
 about a zone param. `packages/ui/src/prefabs/guides.test.ts` enforces it — it
-lint-bans the per-prefab vocabulary from `ai-prompt.ts`/`ai.ts` and caps the
+lint-bans the per-prefab vocabulary from `assistant-prompt.ts` and caps the
 prompt's length,
 so the prompt stays **O(1) in prefab count**: prefab #27 adds one index line and
 zero prompt bytes. The sanctioned exception is the two scene-breaking NEVERs
@@ -106,14 +108,14 @@ zero prompt bytes. The sanctioned exception is the two scene-breaking NEVERs
 in the prompt so they survive a skipped read, with their rationale in the guide.
 
 Two different refresh rules, worth knowing while editing either:
-`DCL_SYSTEM_PROMPT` is **main-process** — a change to it needs the app restarted
-before a turn sees it — while an `ai.md` is read off disk by the CLI on the turn
-that needs it, so editing a guide takes effect immediately.
+on desktop the prompt is **main-process** — a change to it needs the app restarted
+before a turn sees it — while an `ai.md` is read off disk on the turn that needs
+it, so editing a guide takes effect immediately.
 
 Guides are documentation, but they are text that reaches a CLI running with full
 capability, and a prefab can be imported from anywhere. Three things bound that:
 only the path, name, version and a 200-char description ever enter the prompt
-(guide *content* is pulled by the agent's own Read tool); the import preview
+(guide *content* is pulled by the agent's own read tool); the import preview
 shows a folder's `ai.md` alongside its scripts, behind the same reviewed-before-
 installed gate; and the prompt tells the assistant that guides never override
 its rules or the user's request. Guide content is never rewritten or
@@ -121,14 +123,14 @@ its rules or the user's request. Guide content is never rewritten or
 laundering it would only buy false confidence. Treat an imported prefab's guide
 with the trust you give its scripts, which already execute in your scene.
 
-## Turn-end requests
+## Scene changes in a batch
 
-The CLI can only write files, so anything that has to happen in the *live* scene
-is declared in `.editor/requests.json` and performed by the renderer when the
-turn ends (`packages/ui/src/ai/requests.ts`):
+Anything that has to happen in the *live* scene goes through `scene_request`. Its
+batch form places prefabs, sets script params and attaches scripts in one call,
+run by `packages/ui/src/ai/requests.ts`:
 
 ```json
-{ "version": 1, "requests": [
+{ "type": "batch", "requests": [
   { "type": "placePrefab", "slug": "trigger-zone", "name": "Front Door Zone",
     "position": { "x": 8, "y": 1.5, "z": 10 }, "scale": { "x": 4, "y": 3, "z": 4 },
     "params": { "who": "any player" } },
@@ -143,8 +145,7 @@ for the size/name override → the Script component's own update for params →
 `attachScript`), so undo, autosave and the bus mirror come for free and there is
 no bespoke inverse to keep correct. Failure is local: an unknown request type,
 an unreadable position or an entity Name that resolves to nothing skips that one
-request and adds a "Skipped …" chip; the rest of the turn still lands. The file
-is deleted as it is read, so a stale request can never replay.
+request and reports it; the rest of the batch still lands.
 
 `setParams` is the same param write without a placement, aimed at an entity Name
 from the roster. It exists for the two cases `placePrefab` cannot reach: a prefab
@@ -167,34 +168,23 @@ literal id it did read off disk. `PrefabRef[]` takes a JSON list of the same
 
 It **refuses rather than guesses**, and every refusal names itself in the turn's
 notice line: a name nothing matches, a name two prefabs share (both folders are
-listed so the next turn can disambiguate), or a prefab whose Spawnable toggle is
+listed so the assistant can disambiguate), or a prefab whose Spawnable toggle is
 off — the one case where a valid id would still be wrong, because only a
 Spawnable prefab can be cloned. The same applies to the older param types: a
 value an `enum` param does not offer now reports what it does offer, instead of
 being silently dropped and reported as a setting that does not exist.
 
-## Auto-attach
+## Attaching scripts
 
 A file under `src/scripts/` does nothing until it is listed on an entity's
-Script component, and the CLI can't do that itself: the attachment lives in the
-live CRDT (the editor autosaves it to `main.composite` and never re-reads that
-file), so a write to disk would be clobbered. The renderer closes the loop —
-`AiPanel` notes the entity that was active when the turn started plus every new
-`src/scripts/*.ts` the turn `Write`s, and on a clean `done` appends each one to
-that entity via `attachScript` (`packages/ui/src/script/attach.ts`), adding the
-Script component first if the entity had none. Each attachment shows as an
-"Attached …" chip alongside the turn's other tool chips, and it's a normal
-undo-backed edit.
-
-An `attachScript` request overrides that default: when the assistant names a
-target entity from the roster, the script lands there even with nothing
-selected, and auto-attach skips the scripts a request already claimed so nothing
-is attached twice.
+Script component. Creating one attaches it to the entity selected when the turn
+began, and `write_file` reports where; the assistant uses `attachScript` when
+that is not where it belongs. Rewriting a script that is already attached
+refreshes its params on every entity running it, keeping the values already set
+(`scriptAttacher`, `packages/ui/src/ai/attach.ts`).
 
 The prompt is written around this: the assistant never tells the creator to add
-a component or drag a file onto an entity, because that already happened. With
-**no** entity selected and no named target there is nothing to attach to, so it
-does the job scene-globally in `src/index.ts` rather than handing the work back.
+a component or drag a file onto an entity; it attaches the script itself.
 
 ## Ways in
 
@@ -248,23 +238,28 @@ blocking on a heuristic would lock someone out of their own file.
 The composer accepts images — paste one, or attach via the 🖼 button (max 4,
 8 MB each; png/jpeg/gif/webp). The renderer sends them as data URLs; the main
 process writes them to a per-turn temp dir (`writeAttachments`,
-`packages/desktop/src/ai.ts`) and hands the CLI file paths — appended to the
-prompt for Claude (its Read tool renders images), passed as `-i` flags to
-Codex. Files are kept for the app session so a resumed conversation can revisit
+`packages/desktop/src/ai.ts`) and appends their paths to the prompt (Claude's
+Read tool renders images). Files are kept for the app session so a resumed conversation can revisit
 them; the OS owns temp cleanup beyond that.
 
 ## Process model
 
-The assistant drives a local AI **CLI** — Claude Code (`claude`) or Codex
-(`codex`) — as a child process of the Electron main, with the open project as
-its working directory, so it edits files on disk. `sdk-commands` rebuilds on
-write, and ▶ Play picks the result up — see below. A turn therefore needs no
-restart, and the prompt forbids the assistant from asking for one.
+The assistant drives the local **Claude Code** CLI (`claude -p`) as a child
+process of the Electron main, with the open project as its working directory.
+It gets the web assistant's prompt plus a short desktop adapter
+(`DESKTOP_PROMPT_ADAPTER`), the same model and effort (`ASSISTANT_MODEL`,
+`ASSISTANT_EFFORT`), and the same tools: the main process serves them over MCP
+(`packages/desktop/src/editor-mcp.ts`) and forwards each call to the page, which
+runs it on the engine and the data layer (`packages/ui/src/ai/editor-tools.ts`).
+Of the CLI's own tools it keeps only Skill and Read (for a skill's references).
+None of the creator's own Claude Code setup reaches it: no user settings, hooks,
+`~/.claude/CLAUDE.md`, MCP servers or auto-memory. File writes land like saves,
+`sdk-commands` rebuilds, and ▶ Play picks the result up — see below.
 
 ### Why Play has to reload, not just unfreeze
 
 A turn produces **two** rebuild cycles: one when the assistant writes
-`src/scripts/Foo.ts`, another when the auto-attach saves `main.composite`
+`src/scripts/Foo.ts`, another when attaching it saves `main.composite`
 (visible in the dev-server log as `sdk.d.ts with 1 script type(s)` then `2`).
 Neither reaches the running scene on its own. Unfreezing resumes the instance
 the engine already holds, and that instance's `main()` built its Script
@@ -305,37 +300,19 @@ CLI's OAuth session; metered API-key env vars (`ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, custom base-URLs) are stripped from the child env so it can't
 fall back to paid-per-token billing — and so an inherited base-URL override
 can't redirect the OAuth token to a third party. Sign in once from a terminal
-(`claude` / `codex login`).
+(`claude`).
 
-## Permissions: full capability, no prompts
+## Permissions
 
-The assistant runs **unrestricted** in the open scene — file edits, shell,
-network — because it is headless (there is no way to answer a permission
-prompt) and because the SDK skills it follows assume a real toolchain:
-
-| Provider | Flags |
-|---|---|
-| Claude | `--permission-mode bypassPermissions` |
-| Codex | `--sandbox danger-full-access -c approval_policy="never"` |
-
-Note what this means: an AI turn can run commands on your machine with your
-privileges, so treat prompts — and scenes you got from other people, whose
-files the assistant reads — with the same trust you'd give code you run.
+The CLI runs with `--permission-mode bypassPermissions` because it is headless
+(there is no way to answer a permission prompt), but its tools are the editor's:
+the project's files, the scene and the engine, plus reading skills. It has no
+shell and no network tools.
 
 ## Providers
 
-Claude and Codex are both wired; a backend whose CLI isn't installed/runnable
-shows as unavailable in the switcher. Conversations resume across turns and are
-per-provider — Claude via the `--resume <sessionId>` flag, Codex via the
-`codex exec resume <threadId>` subcommand.
-
-Both get the same `DCL_SYSTEM_PROMPT`: Claude through `--append-system-prompt`,
-Codex prepended to the prompt positional, because `codex exec` has no
-system-prompt flag. It rides in front of *every* Codex turn, not just the first
-of a thread, so a long resumed conversation can't drift off the rules the way it
-would if the prompt were a one-off message. (Until this was wired, Codex ran
-with **no** DCL context at all — no component allowlist, no script contract, no
-request file.)
+Claude only. Conversations resume across turns with `--resume <sessionId>`. The
+web's other provider, Codex, has no editor tools on desktop.
 
 ## The sdk-skills pipeline (`packages/desktop/src/skills.ts`)
 
@@ -343,8 +320,8 @@ SDK7 skills are always on. The app downloads
 [decentraland/sdk-skills](https://github.com/decentraland/sdk-skills) at
 startup into a userData cache (refreshed by commit SHA, atomically swapped,
 offline keeps the last copy) and links it into the open scene as
-`.claude/skills` (Claude) and `.agents/skills` (Codex's native discovery path),
-so every provider gets the official SDK7 guidance by default.
+`.claude/skills` (and `.agents/skills`), so the assistant gets the official SDK7
+guidance by default.
 
 - **Denylist**: a small denylist drops the `SKILL.md` of skills that duplicate
   what the editor itself does (scaffolding, deploy, SDK6 migration) so they
@@ -379,8 +356,8 @@ gutter.
 
 ## Wiring
 
-`packages/desktop/src/ai.ts` (spawn + stream parsing, with the system prompt in
-`ai-prompt.ts` beside it) → IPC in
+`packages/desktop/src/ai.ts` (spawn + stream parsing; the prompt is in
+`@dcl-editor/contract`) and `editor-mcp.ts` (the tools) → IPC in
 `main.ts`/`preload.ts` (`@dcl-editor/contract` `Ai*` types) → the
 `packages/ui/src/panels/AiPanel.tsx` chat UI. The web shell implements the same
 contract through `packages/web/src/ai/client.ts`; its server transport and pi agent

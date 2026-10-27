@@ -1,4 +1,4 @@
-import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, isCatalogSearch, object } from '@dcl-editor/contract'
+import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, BROWSER_TOOLS, isCatalogSearch, object } from '@dcl-editor/contract'
 import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, AssistantMemoryRef, BrowserToolCall, EditorShell, PhonePreviewState } from '@dcl-editor/contract'
 import { trackCreator } from '@ui/analytics'
 import type { HostFetchInit } from '@ui/engine/hosted'
@@ -25,6 +25,7 @@ export function createBrowserAssistant(options: {
   let connectionGeneration = 0
   let active: {
     id: string; projectId: string; wallet: string; controller: AbortController; calls: Set<string>; execute: ReturnType<typeof createBrowserTools>
+    ended: BrowserProject['turnEnded']
     // for analytics: when it started, which model, and the code of the service's last error event
     started: number; model: string | null; error: string | null
   } | null = null
@@ -44,6 +45,7 @@ export function createBrowserAssistant(options: {
     if (turn === null) return
     active = null
     turn.controller.abort()
+    turn.ended?.().catch((e: unknown) => console.error('[assistant] ending the turn failed', e))
     if (message !== undefined) emit({ kind: 'error', turnId: turn.id, message })
     emit({ kind: 'done', turnId: turn.id, ok })
     trackCreator(ok ? 'prompt_completed' : 'prompt_failed', {
@@ -55,16 +57,19 @@ export function createBrowserAssistant(options: {
     })
   }
 
-  // null when the row needs the result; write_file too, since the panel refreshes the file rail on its row
+  // null when the row needs the result; write_file and edit_file too, since the panel refreshes the file rail on its row
   function rowFor(call: BrowserToolCall): { tool: string; detail: string } | null {
     const request = object(call.args.request) ? call.args.request : {}
     switch (call.tool) {
       case 'write_file': return null
       case 'read_file': return { tool: 'Read', detail: typeof call.args.path === 'string' ? call.args.path : '' }
+      case 'search_files': return { tool: 'Search', detail: typeof call.args.query === 'string' ? call.args.query : '' }
+      case 'edit_file': return null
       case 'asset_request': return { tool: 'Assets', detail: String(call.args.action ?? '') }
       case 'build': return { tool: 'Build', detail: 'Scene' }
       case 'view': return { tool: 'View', detail: call.args.target === 'mobile' ? 'Mobile preview' : call.args.target === 'editor' ? 'Editor' : 'Current view' }
-      case 'playtest': return { tool: 'Playtest', detail: String(call.args.action ?? '') }
+      case 'playtest': return { tool: 'Playtest', detail: `${String(call.args.action ?? '')}${call.args.platform === 'mobile' ? ' (mobile)' : ''}` }
+      case 'ui_layout': return { tool: 'UI layout', detail: 'Screen' }
       case 'scene_request':
         if (request.type === 'batch' && Array.isArray(request.requests)) return { tool: 'Scene', detail: `${request.requests.length} changes` }
         if (request.type === 'sceneSettings') return { tool: 'Scene', detail: 'Settings' }
@@ -83,9 +88,9 @@ export function createBrowserAssistant(options: {
       if (!shown) emit({ kind: 'tool', turnId, ...row, ...label })
       return
     }
-    if (call.tool === 'write_file') {
+    if (call.tool === 'write_file' || call.tool === 'edit_file') {
       const path = typeof call.args.path === 'string' ? call.args.path : ''
-      emit({ kind: 'tool', turnId, tool: call.args.revision === null ? 'Write' : 'Edit', detail: path, ...label })
+      emit({ kind: 'tool', turnId, tool: call.tool === 'write_file' && call.args.revision === null ? 'Write' : 'Edit', detail: path, ...label })
       const result: unknown = JSON.parse(text)
       if (object(result) && object(result.attached) && typeof result.attached.name === 'string') {
         emit({ kind: 'tool', turnId, tool: 'Attached', detail: `${path.split('/').pop() ?? path} to ${result.attached.name}`, ...label })
@@ -132,7 +137,7 @@ export function createBrowserAssistant(options: {
     if (!object(message)) return
     if (message.kind === 'failure' && typeof message.message === 'string') { finish(false, message.message, 'service_failure'); return }
     if (message.kind === 'call' && typeof message.turnId === 'string' && typeof message.callId === 'string' &&
-      ASSISTANT_ID.test(message.callId) && ['list_files', 'read_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest'].includes(String(message.tool)) && object(message.args)) {
+      ASSISTANT_ID.test(message.callId) && (BROWSER_TOOLS as readonly string[]).includes(String(message.tool)) && object(message.args)) {
       const { label, ...rest } = message as unknown as Omit<BrowserToolCall, 'label'> & { label?: unknown }
       const call: BrowserToolCall = typeof label === 'string' ? { ...rest, label } : rest
       if (active === null || active.id !== call.turnId || active.calls.has(call.callId)) return
@@ -257,7 +262,7 @@ export function createBrowserAssistant(options: {
       paused = null
       const project = options.project()
       const turn = {
-        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(), execute: createBrowserTools(project.tools),
+        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(), execute: createBrowserTools(project.tools), ended: project.tools.turnEnded,
         started: Date.now(), model: params.model ?? null, error: null
       }
       active = turn

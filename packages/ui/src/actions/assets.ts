@@ -119,3 +119,6 @@ export const uiImportFiles = async (files: File[]): Promise<void> => {
     ensureTransformTool()
   }
 }
+
+// new content can re-instance the scene, which drops the editor's pick colliders: the scene rebuilds them
+export const uiResyncScene = (): Promise<void> => sendToScene({ type: 'resync' })

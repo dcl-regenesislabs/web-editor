@@ -2,7 +2,7 @@
 // uses it for project management and the scene-loading lifecycle; everything
 // engine-related goes through the same-origin iframe instead.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { EDITOR_CHORD_CHANNEL, type EditorChord, AUTH_SIGNIN_CHANNEL, PUBLISH_EVENT_CHANNEL, UPDATE_EVENT_CHANNEL } from '@dcl-editor/contract'
+import { EDITOR_CHORD_CHANNEL, type EditorChord, AUTH_SIGNIN_CHANNEL, PUBLISH_EVENT_CHANNEL, UPDATE_EVENT_CHANNEL, EDITOR_TOOL_CALL_CHANNEL, EDITOR_TOOL_RESULT_CHANNEL, type EditorToolCall, type EditorToolResult } from '@dcl-editor/contract'
 import type { AiEvent, AiProviderInfo, AiSendParams, AuthSigninPayload, DeployCapability, EditorShell, MobilePreview, OpenPreview, PrefabCopyResult, PrefabImportInspect, PrefabLibraryEntry, PublishEvent, SceneSettings, SceneTemplate, ServersReady, UpdateStatus } from '@dcl-editor/contract'
 
 // synchronous probe at load — reliable in a sandboxed preload (see main.ts)
@@ -109,6 +109,13 @@ const shell = {
     ipcRenderer.on('ai-event', listener)
     return () => { ipcRenderer.removeListener('ai-event', listener) }
   },
+  onEditorToolCall: (cb: (call: EditorToolCall) => void) => {
+    const listener = (_e: IpcRendererEvent, call: EditorToolCall): void => cb(call)
+    ipcRenderer.on(EDITOR_TOOL_CALL_CHANNEL, listener)
+    return () => { ipcRenderer.removeListener(EDITOR_TOOL_CALL_CHANNEL, listener) }
+  },
+  editorToolResult: (id: string, result: EditorToolResult): Promise<void> => ipcRenderer.invoke(EDITOR_TOOL_RESULT_CHANNEL, id, result),
+  libraryFile: (file: string): Promise<Uint8Array> => ipcRenderer.invoke('library-file', file),
   // Prefab library: the builtin + userData prefab trees, and the staged-import
   // flow (pick/fetch → confirm → commit). All fs work happens in main.
   prefabLibraryList: (): Promise<PrefabLibraryEntry[]> => ipcRenderer.invoke('prefab-library-list'),

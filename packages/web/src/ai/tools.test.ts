@@ -44,6 +44,33 @@ describe('assistant browser tools', () => {
     await expect(run('write_file', { path: 'src/scripts/New.ts', revision: null, content: 'new' })).resolves.toContain('"created":true')
   })
 
+  it('searches readable files by text or pattern, never secrets', async () => {
+    const { run, files, encoder } = setup()
+    files.set('src/index.ts', encoder.encode('import { engine } from "@dcl/sdk/ecs"\nexport function main() {\n  engine.addSystem(spin)\n}'))
+    files.set('.env.local', encoder.encode('original secret'))
+    expect(JSON.parse(await run('search_files', { query: 'ORIGINAL' }))).toEqual({ hits: ['src/scripts/Door.ts:1: original'], total: 1 })
+    expect(JSON.parse(await run('search_files', { query: 'add\\w+\\(', regex: true, match: 'index' })).hits).toEqual(['src/index.ts:3: engine.addSystem(spin)'])
+    await expect(run('search_files', { query: '(', regex: true })).rejects.toThrow('regular expression')
+  })
+
+  it('reads a range or the matching lines, numbered, and then edits only by exact text', async () => {
+    const { run, files, encoder, written } = setup()
+    files.set('src/scripts/Long.ts', encoder.encode('one\ntwo\nthree\nfour two'))
+    expect(JSON.parse(await run('read_file', { path: 'src/scripts/Long.ts', offset: 2, limit: 2 }))).toMatchObject({ totalLines: 4, lines: '2| two\n3| three' })
+    const partial = JSON.parse(await run('read_file', { path: 'src/scripts/Long.ts', query: 'two' }))
+    expect(partial).toMatchObject({ matches: ['2| two', '4| four two'], total: 2 })
+    // a whole-file write after a partial read would drop what was not seen
+    await expect(run('write_file', { path: 'src/scripts/Long.ts', revision: partial.revision, content: 'x' })).rejects.toThrow('edit_file')
+    await expect(run('edit_file', { path: 'src/scripts/Long.ts', old: 'two', new: '2' })).rejects.toThrow('2 times')
+    await expect(run('edit_file', { path: 'src/scripts/Long.ts', old: 'five', new: '5' })).rejects.toThrow('not found')
+    expect(JSON.parse(await run('edit_file', { path: 'src/scripts/Long.ts', old: 'four two', new: 'four 2' }))).toMatchObject({ replaced: 1 })
+    expect(JSON.parse(await run('edit_file', { path: 'src/scripts/Long.ts', old: 'o', new: '0', all: true }))).toMatchObject({ replaced: 3 })
+    expect(new TextDecoder().decode(files.get('src/scripts/Long.ts'))).toBe('0ne\ntw0\nthree\nf0ur 2')
+    expect(written).toHaveBeenLastCalledWith('src/scripts/Long.ts', '0ne\ntw0\nthree\nf0ur 2', false)
+    await expect(run('edit_file', { path: 'src/scripts/Missing.ts', old: 'a', new: 'b' })).rejects.toThrow('write_file')
+    await expect(run('edit_file', { path: '.env.local', old: 'secret', new: 'x' })).rejects.toThrow()
+  })
+
   it('tells the model where a newly created script was attached as soon as it is written', async () => {
     const { run, written } = setup()
     expect(JSON.parse(await run('write_file', { path: 'src/scripts/Lamp.ts', revision: null, content: 'v1' }))).toMatchObject({ attached: { id: '512', name: 'Door' } })

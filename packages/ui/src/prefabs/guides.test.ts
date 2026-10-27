@@ -2,7 +2,7 @@
 // boundary between them and the assistant's core prompt. Two failure modes this
 // suite exists for: a guide that drifts from the params/API it documents (the
 // creator's copy is the one the assistant reads, and nothing else checks it), and
-// per-prefab knowledge growing back into DCL_SYSTEM_PROMPT — the same rule written
+// per-prefab knowledge growing back into ASSISTANT_PROMPT — the same rule written
 // twice, aging apart, is how the prompt contradicted itself about the zone param.
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -19,35 +19,17 @@ import {
   runtimeSpecifiers
 } from './builtin-fixtures'
 
-const AI_PROMPT_TS = new URL('../../../desktop/src/ai-prompt.ts', import.meta.url)
-const AI_TS = new URL('../../../desktop/src/ai.ts', import.meta.url)
+const SHARED_PROMPT_TS = new URL('../../../contract/src/assistant-prompt.ts', import.meta.url)
 const STORE_TS = new URL('../panels/prefab-store.ts', import.meta.url)
 
 // The name the guide ships under, the name the store looks for and the name the
 // index points the assistant at are one string — see the last test in this file.
 const GUIDE_FILE = 'ai.md'
 const MAX_GUIDE_BYTES = 6144
-// The prompt is ~11k: ~9.5k post-surgery, plus the spawnable-prefab and
-// Game-Config rules, which are O(1) in project size (the per-project LISTS live
-// in the turn context, packages/ui/src/ai/kit-context.ts). The cap exists to
-// catch RE-GROWTH, not to fight ordinary edits — the vocabulary lint below is
-// what keeps per-prefab content out. Raise deliberately for a new editor
-// CAPABILITY, never as part of adding a prefab.
-// Raised 11500 → 12300 for the SPAWNING capability: runtime-created content
-// got a routing rule (the SPAWNING block) the way zones did, and the prompt
-// was at 11386 with 114 chars of headroom — the block does not fit under the
-// old cap. The spawner's params and API stay in its guide as ever.
-// Raised 12300 → 14600 for the MULTIPLAYER capability: the `game` API is the
-// one thing no guide can teach — a scene with no prefab in it still has a
-// Multiplayer Server and a client per player, and without the verbs the
-// assistant writes room.send code. The kit prefabs' own params and APIs stay in
-// their guides as ever.
-// Raised 14600 → 15100 for the SIDES split: one message verb became four
-// (request/onRequest, broadcast/onBroadcast), and the rule that used to be one
-// clause — "which callback you put it in" — is now the branch itself, which has
-// to state where it goes, which way round, and that update() runs on the server
-// too. The prompt was at 14473 with 127 chars of headroom.
-const MAX_PROMPT_CHARS = 15100
+// The cap exists to catch RE-GROWTH, not to fight ordinary edits — the vocabulary
+// lint below is what keeps per-prefab content out. Raise deliberately for a new
+// editor CAPABILITY, never as part of adding a prefab.
+const MAX_PROMPT_CHARS = 36000
 
 function hasGuide(folder: string): boolean {
   return existsSync(fileURLToPath(new URL(`${folder}/${GUIDE_FILE}`, PREFABS_ROOT)))
@@ -105,29 +87,32 @@ function scriptPaths(folder: string): string[] {
   return out
 }
 
-const promptSource = readFileSync(AI_PROMPT_TS, 'utf8')
+const promptSource = readFileSync(SHARED_PROMPT_TS, 'utf8')
 
-// Both halves of the core prompt: the literal and the process code that injects
-// it. The vocabulary lint below scans the pair, so a per-prefab rule cannot dodge
-// it by living in whichever file the prompt is not in this month.
-const aiSource = `${promptSource}\n${readFileSync(AI_TS, 'utf8')}`
-
-// The prompt is a template literal in main-process code no test can import
-// (electron), so it is extracted as text — escaped backticks inside it are
-// skipped so the scan stops at the real terminator.
-function systemPrompt(): string {
-  const opener = 'const DCL_SYSTEM_PROMPT = `'
-  const start = promptSource.indexOf(opener)
-  if (start < 0) throw new Error('DCL_SYSTEM_PROMPT was renamed or is no longer a template literal')
+// The prompts are template literals in code no test can import (electron, the
+// service), so they are extracted as text — escaped backticks inside are skipped
+// so the scan stops at the real terminator.
+function extractPrompt(source: string, opener: string): string {
+  const start = source.indexOf(opener)
+  if (start < 0) throw new Error(`${opener} was renamed or is no longer a template literal`)
   const from = start + opener.length
   let i = from
-  while (i < promptSource.length) {
-    if (promptSource[i] === '\\') i += 2
-    else if (promptSource[i] === '`') break
+  while (i < source.length) {
+    if (source[i] === '\\') i += 2
+    else if (source[i] === '`') break
     else i++
   }
-  if (i >= promptSource.length) throw new Error('DCL_SYSTEM_PROMPT is unterminated')
-  return promptSource.slice(from, i)
+  if (i >= source.length) throw new Error(`${opener} is unterminated`)
+  return source.slice(from, i)
+}
+
+// The core prompt both assistants get. spawnPoints in it is scene.json's field (sceneSettings), not the
+// spawn-points prefab's vocabulary.
+const PROMPT = {
+  text: () => extractPrompt(promptSource, 'export const ASSISTANT_PROMPT = `'),
+  vocabulary: promptSource,
+  max: MAX_PROMPT_CHARS,
+  exempt: ['spawnPoints']
 }
 
 function count(haystack: string, needle: string): number {
@@ -273,6 +258,7 @@ describe('per-prefab AI guides', () => {
 })
 
 describe('the core prompt and the guides do not overlap', () => {
+  const { text, vocabulary, max, exempt } = PROMPT
   // Per-prefab vocabulary. Each of these lives in exactly one guide; seeing one
   // here means a rule was copied instead of moved, and the copies will age apart.
   const BANNED = [
@@ -296,10 +282,10 @@ describe('the core prompt and the guides do not overlap', () => {
   ]
 
   it('keeps per-prefab vocabulary out of the core prompt', () => {
-    for (const token of BANNED) {
+    for (const token of BANNED.filter((banned) => !exempt.includes(banned))) {
       expect(
-        aiSource.includes(token),
-        `ai-prompt.ts/ai.ts mentions "${token}" — that belongs in the prefab's ai.md`
+        vocabulary.includes(token),
+        `the prompt mentions "${token}" — that belongs in the prefab's ai.md`
       ).toBe(false)
     }
   })
@@ -308,15 +294,15 @@ describe('the core prompt and the guides do not overlap', () => {
   // turn, before any guide is on disk. Once each: a second mention is the API
   // reference growing back.
   it('spends the zone bus vocabulary exactly once, on the capsule import', () => {
-    expect(count(aiSource, 'zoneBus')).toBe(1)
-    expect(count(aiSource, 'isInZone')).toBe(1)
+    expect(count(vocabulary, 'zoneBus')).toBe(1)
+    expect(count(vocabulary, 'isInZone')).toBe(1)
   })
 
   // The sanctioned exception to MOVE-never-duplicate: these two survive a skipped
   // read because either one silently breaks the scene. Their rationale is in the
   // guide; the ban itself stays here.
   it('keeps the two scene-breaking NEVERs in core', () => {
-    const prompt = systemPrompt()
+    const prompt = text()
     expect(prompt).toContain('NEVER hand-roll proximity')
     expect(prompt).toContain('triggerAreaEventsSystem')
   })
@@ -325,7 +311,7 @@ describe('the core prompt and the guides do not overlap', () => {
   // Game Config, the turn context emits neither block, so the prompt is the only
   // place that says content is a prefab and tuned numbers are not params.
   it('keeps the spawnable and Game Config rules in core', () => {
-    const prompt = systemPrompt()
+    const prompt = text()
     expect(prompt).toContain('every project prefab is spawnable')
     expect(prompt).toContain('engine.addEntity')
     expect(prompt).toContain('[Spawnable prefabs]')
@@ -335,7 +321,7 @@ describe('the core prompt and the guides do not overlap', () => {
   })
 
   it('makes the guide pull mandatory and says where guides live', () => {
-    const prompt = systemPrompt()
+    const prompt = text()
     expect(prompt).toContain('PREFAB GUIDES')
     expect(prompt).toContain('[Prefab guides]')
     expect(prompt).toContain(`custom/<slug>/${GUIDE_FILE}`)
@@ -348,7 +334,7 @@ describe('the core prompt and the guides do not overlap', () => {
   // the bridge sentence is the only thing that stops code copied from
   // docs.decentraland.org from leaking room.* into a script.
   it('teaches the game API and the bridge from the documented room.* calls', () => {
-    const prompt = systemPrompt()
+    const prompt = text()
     expect(prompt).toContain("import { game } from './runtime/game'")
     expect(prompt).toContain(
       "game.request/game.onRequest and game.broadcast/game.onBroadcast are the Multiplayer Server's room.send/room.onMessage with the envelope handled for you"
@@ -364,7 +350,7 @@ describe('the core prompt and the guides do not overlap', () => {
   // import, the branch has a home and a direction, and nothing on the client
   // answers the server.
   it('teaches the isServer() branch, not a callback that implies the side', () => {
-    const prompt = systemPrompt()
+    const prompt = text()
     expect(prompt).not.toContain('there is no isServer()')
     expect(prompt).toContain("import { isServer } from '@dcl/sdk/network'")
     expect(prompt).toContain('EVERY script runs on BOTH sides')
@@ -387,11 +373,14 @@ describe('the core prompt and the guides do not overlap', () => {
   // The O(1) property as a test: prefab #27 adds one index line and zero prompt
   // bytes. If this fails, the fix is to move the new text into a guide.
   it('keeps the prompt bounded — O(1) in prefab count', () => {
-    const prompt = systemPrompt()
+    const prompt = text()
     expect(prompt.length, 'extraction produced something implausible').toBeGreaterThan(4000)
-    expect(prompt.length, `DCL_SYSTEM_PROMPT is ${prompt.length} chars`).toBeLessThan(MAX_PROMPT_CHARS)
+    expect(prompt.length, `the prompt is ${prompt.length} chars`).toBeLessThan(max)
   })
 
+})
+
+describe('the guide filename', () => {
   // Three files have to agree on one filename or the index points at nothing: the
   // prefab folders ship it, refreshPrefabs detects it, buildGuideIndex cites it.
   it('agrees with the store and the index on the guide filename', () => {

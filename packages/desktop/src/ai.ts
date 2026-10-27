@@ -1,4 +1,4 @@
-// In-app AI assistant: drives a local AI *CLI* (Claude Code / Codex) as a child
+// In-app AI assistant: drives a local AI *CLI* (Claude Code) as a child
 // process, one per user turn, with the open project as its working directory.
 // It runs on the user's own subscription/OAuth session — API keys are stripped
 // from the child env on purpose (metered keys are the thing we're avoiding) — and
@@ -11,8 +11,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import type { AiEvent, AiProvider, AiProviderInfo, AiSendParams } from '@dcl-editor/contract'
-import { DCL_SYSTEM_PROMPT } from './ai-prompt'
+import { ASSISTANT_EFFORT, ASSISTANT_MODEL, type AiEvent, type AiProvider, type AiProviderInfo, type AiSendParams } from '@dcl-editor/contract'
+import { ASSISTANT_PROMPT, DESKTOP_PROMPT_ADAPTER } from '@dcl-editor/contract'
+import { EDITOR_MCP_SERVER } from './editor-mcp'
 
 // GUI-launched Electron gets a sparse PATH (no shell profile), so the CLIs — and
 // their own node/child lookups — won't be found by name alone. Search these in
@@ -192,10 +193,12 @@ interface TurnCtx {
   resume?: string
   // temp-file paths of attached images (already written to disk)
   images: string[]
+  // the editor's MCP server (view, playtest, ui_layout), as --mcp-config JSON
+  mcpConfig?: string
 }
 
 // A provider = how to find its binary + how to turn a turn into an argv + how to
-// read its streaming stdout. Only these two differ between Claude and Codex.
+// read its streaming stdout.
 interface ProviderDef {
   id: AiProvider
   label: string
@@ -225,24 +228,61 @@ function rel(projectDir: string, p: unknown): string {
 }
 
 // What a tool chip shows after its name. File tools report paths; for the rest,
-// prefer what a creator can read — Bash's human description over the raw
-// command, a search's pattern over nothing.
+// prefer what a creator can read — a search's query over nothing.
 function toolDetail(tool: string, inp: Record<string, unknown>, projectDir: string): string {
   const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
   const clip = (s: string): string => (s.length > 64 ? s.slice(0, 64) + '…' : s)
   const file = rel(projectDir, inp.file_path ?? inp.path ?? '')
   if (file !== '') return file
-  if (tool === 'Bash') return clip(str(inp.description) !== '' ? str(inp.description) : str(inp.command))
-  if (tool === 'Grep' || tool === 'Glob') return clip(str(inp.pattern))
-  if (tool === 'WebSearch') return clip(str(inp.query))
-  if (tool === 'WebFetch') return clip(str(inp.url))
-  if (tool === 'Task') return clip(str(inp.description))
+  if (tool === 'Playtest') return `${str(inp.action)}${inp.platform === 'mobile' ? ' (mobile)' : ''}`
+  if (tool === 'UI layout') return 'Screen'
+  if (tool === 'Scene') {
+    const request = typeof inp.request === 'object' && inp.request !== null ? inp.request as Record<string, unknown> : {}
+    return Array.isArray(request.requests) ? `${request.requests.length} changes` : str(request.type)
+  }
+  if (tool === 'Assets') return str(inp.action)
+  if (tool === 'Search' || tool === 'Files') return clip(str(inp.query) !== '' ? str(inp.query) : str(inp.match))
   return ''
+}
+
+// the editor's MCP tools as the web assistant names them in the chat
+const EDITOR_TOOL_LABELS: Record<string, string> = {
+  [`mcp__${EDITOR_MCP_SERVER}__view`]: 'View',
+  [`mcp__${EDITOR_MCP_SERVER}__playtest`]: 'Playtest',
+  [`mcp__${EDITOR_MCP_SERVER}__ui_layout`]: 'UI layout',
+  [`mcp__${EDITOR_MCP_SERVER}__scene_request`]: 'Scene',
+  [`mcp__${EDITOR_MCP_SERVER}__asset_request`]: 'Assets',
+  [`mcp__${EDITOR_MCP_SERVER}__build`]: 'Build',
+  [`mcp__${EDITOR_MCP_SERVER}__list_files`]: 'Files',
+  [`mcp__${EDITOR_MCP_SERVER}__search_files`]: 'Search',
+  [`mcp__${EDITOR_MCP_SERVER}__read_file`]: 'Read',
+  [`mcp__${EDITOR_MCP_SERVER}__edit_file`]: 'Edit',
+  [`mcp__${EDITOR_MCP_SERVER}__write_file`]: 'Write'
+}
+
+// Claude gets the web assistant's prompt and the editor's tools, so a run here reads like one on the web.
+export const CLAUDE_SYSTEM_PROMPT = `${ASSISTANT_PROMPT}\n\n${DESKTOP_PROMPT_ADAPTER}`
+
+// The editor's assistant runs the same on every creator's machine: none of their own Claude Code
+// setup (user settings and hooks, ~/.claude/CLAUDE.md, personal skills). Its tools are the web
+// assistant's, from the editor's MCP server; of the CLI's own only Skill and Read (for a skill's
+// references, which the web reads with read_skill). Without ToolSearch the MCP tools load up front.
+const USER_CLAUDE_MD = path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), 'CLAUDE.md')
+export const EDITOR_CLI_TOOLS = 'Skill,Read'
+function editorIsolation(): string[] {
+  const settings = {
+    // a glob: forward slashes on every platform
+    claudeMdExcludes: [USER_CLAUDE_MD.split(path.sep).join('/')],
+    // the CLI's own memory would carry one project's notes into later turns, which the web has no way to do
+    autoMemoryEnabled: false
+  }
+  return ['--setting-sources', 'project,local', '--settings', JSON.stringify(settings), '--tools', EDITOR_CLI_TOOLS]
 }
 
 // Exported for the parser tests: parseLine tracks two external CLIs' output
 // formats, so a format change has to be caught by something.
-export const PROVIDERS: Record<AiProvider, ProviderDef> = {
+// The web's other provider, Codex, has no editor tools here.
+export const PROVIDERS: Partial<Record<AiProvider, ProviderDef>> = {
   claude: {
     id: 'claude',
     label: 'Claude',
@@ -264,10 +304,15 @@ export const PROVIDERS: Record<AiProvider, ProviderDef> = {
         '--permission-mode',
         'bypassPermissions',
         '--append-system-prompt',
-        DCL_SYSTEM_PROMPT
+        CLAUDE_SYSTEM_PROMPT
       ]
-      if (ctx.model !== undefined && ctx.model !== 'default') args.push('--model', ctx.model)
+      // the web assistant's model and effort unless a dev picks another model: the desktop is how
+      // we test the web assistant's behaviour, whatever the creator's own Claude Code settings say
+      args.push('--model', ctx.model !== undefined && ctx.model !== 'default' ? ctx.model : ASSISTANT_MODEL, '--effort', ASSISTANT_EFFORT)
       if (ctx.resume !== undefined) args.push('--resume', ctx.resume)
+      // only the editor's server: the creator's own MCP servers and claude.ai connectors stay out
+      if (ctx.mcpConfig !== undefined) args.push('--mcp-config', ctx.mcpConfig, '--strict-mcp-config')
+      args.push(...editorIsolation())
       // images travel as paths inside the prompt — claude's Read tool renders
       // image files natively, no dedicated flag exists (or is needed)
       return args
@@ -290,81 +335,19 @@ export const PROVIDERS: Record<AiProvider, ProviderDef> = {
         for (const block of obj.message.content) {
           if (block.type === 'text' && block.text !== undefined && block.text !== '') emit(block.text)
           else if (block.type === 'tool_use' && block.name !== undefined) {
-            emit('', [block.name, toolDetail(block.name, block.input ?? {}, projectDir)])
+            const name = EDITOR_TOOL_LABELS[block.name] ?? block.name
+            emit('', [name, toolDetail(name, block.input ?? {}, projectDir)])
           }
         }
       }
       if (obj.type === 'result') return obj.session_id
       return undefined
     }
-  },
-  // Codex, wired against `codex exec --json` (its non-interactive JSONL mode).
-  // Resume is a SUBCOMMAND (`codex exec resume <threadId>`), not a flag; the
-  // thread id comes from the `thread.started` event. codex ≥0.145 removed the
-  // --ask-for-approval FLAG, so the policy is pinned through `-c` instead
-  // (accepted by every version, and it also overrides a user config.toml that
-  // asks for approvals — we spawn with stdin ignored, so a prompt would hang
-  // the turn forever); `--sandbox danger-full-access` is the bypassPermissions
-  // equivalent — workspace-write would confine writes to the scene AND kill
-  // network, and the SDK skills need to download models and hit npm;
-  // `--skip-git-repo-check` lets it run in a scene folder that isn't a git
-  // repo. Disabled in the UI when the binary isn't runnable, so this only
-  // matters where codex is set up.
-  codex: {
-    id: 'codex',
-    label: 'Codex',
-    binNames: ['codex'],
-    models: ['default', 'gpt-5-codex', 'gpt-5'],
-    defaultModel: 'default',
-    buildArgs: (ctx) => {
-      const base = ctx.resume !== undefined ? ['exec', 'resume', ctx.resume] : ['exec']
-      const args = [
-        ...base,
-        '--json',
-        '-C',
-        ctx.projectDir,
-        '--sandbox',
-        'danger-full-access', // shell + network, same posture as claude's bypassPermissions
-        '-c',
-        'approval_policy="never"', // headless — never block on an approval prompt
-        '--skip-git-repo-check'
-      ]
-      if (ctx.model !== undefined && ctx.model !== 'default') args.push('--model', ctx.model)
-      for (const img of ctx.images) args.push('-i', img) // codex's native image flag
-      // `codex exec` has no system-prompt flag, so the rules ride in front of the
-      // prompt — on every turn, matching claude's --append-system-prompt rather
-      // than trusting a resumed thread to still be carrying them.
-      args.push(`${DCL_SYSTEM_PROMPT}\n\n---\n\n${ctx.text}`) // prompt is the trailing positional
-      return args
-    },
-    parseLine: (line, projectDir, emit) => {
-      let obj: {
-        type?: string
-        thread_id?: string
-        item?: { type?: string; text?: string; command?: string; changes?: Array<{ path?: string }> }
-      }
-      try {
-        obj = JSON.parse(line)
-      } catch {
-        return undefined
-      }
-      if (obj.type === 'thread.started') return obj.thread_id
-      // act only on completed items (started/updated are partial and would dup)
-      if (obj.type === 'item.completed' && obj.item !== undefined) {
-        const item = obj.item
-        if (item.type === 'agent_message' && item.text !== undefined && item.text !== '') emit(item.text)
-        else if (item.type === 'file_change')
-          for (const ch of item.changes ?? []) emit('', ['Edit', rel(projectDir, ch.path ?? '')])
-        else if (item.type === 'command_execution' && item.command !== undefined) emit('', ['Run', item.command])
-      }
-      return undefined
-    }
   }
 }
 
 const scan = (): AiProviderInfo[] =>
-  (Object.keys(PROVIDERS) as AiProvider[]).map((id) => {
-    const def = PROVIDERS[id]
+  Object.values(PROVIDERS).map((def) => {
     const bin = findExecutable(def.binNames)
     return {
       id: def.id,
@@ -427,7 +410,6 @@ export function aiStop(): void {
 export function aiReset(): void {
   aiStop()
   delete sessions.claude
-  delete sessions.codex
 }
 
 // Attached images, written to one temp dir per turn. Kept for the whole app
@@ -466,7 +448,8 @@ function writeAttachments(images: AiSendParams['images']): string[] {
 export function aiSend(
   params: AiSendParams,
   projectDir: string | null,
-  emit: (e: AiEvent) => void
+  emit: (e: AiEvent) => void,
+  mcpConfig?: string
 ): { turnId: string } {
   if (projectDir === null) throw new Error('Open a scene before using the assistant.')
   const def = PROVIDERS[params.provider]
@@ -481,12 +464,11 @@ export function aiSend(
   let prompt = params.context !== undefined && params.context !== '' ? `${params.context}\n\n---\n\n${params.text}` : params.text
   const images = writeAttachments(params.images)
   if (images.length > 0) {
-    // both CLIs get the paths in the prompt; codex additionally gets -i flags.
-    // The instruction to view them matters for claude — without it the model
+    // The CLI gets the paths in the prompt; the instruction to view them matters — without it the model
     // sometimes answers without opening the files.
     prompt += `\n\n[The user attached ${images.length === 1 ? 'an image' : `${images.length} images`} to this message — view ${images.length === 1 ? 'it' : 'them'} before answering:\n${images.join('\n')}]`
   }
-  const args = def.buildArgs({ text: prompt, model: params.model, projectDir, resume: sessions[params.provider], images })
+  const args = def.buildArgs({ text: prompt, model: params.model, projectDir, resume: sessions[params.provider], images, mcpConfig })
 
   let child: ChildProcess
   try {

@@ -1,22 +1,23 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { playtest } from './playtest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { leavePhone, playtest } from './playtest'
 
 const mock = vi.hoisted(() => ({
   state: { frozen: false, saveStatus: '' },
   play: vi.fn(async () => {}), restart: vi.fn(async () => {}),
   command: vi.fn(async (_command: string, _args?: string[]) => '(1, 2, 3)'),
+  snapshot: vi.fn(async (): Promise<Record<string, Record<string, unknown>>> => ({ '2': { Transform: { rotation: { x: 0, y: 0, z: 0, w: 1 } } }, '512': { UiText: { value: '3 / 5' } } })),
   serverLogs: [] as Array<{ seq: number; level: 'log' | 'error' | 'system'; msg: string }>
 }))
 vi.mock('@scene/state', () => ({ state: mock.state }))
 vi.mock('@scene/inspector', () => ({ syncFrozenState: async () => {} }))
-vi.mock('@ui/actions/playback', () => ({ uiPlay: mock.play }))
-vi.mock('@ui/boot/boot', () => ({ restartScene: mock.restart }))
-vi.mock('@ui/engine/console', () => ({ consoleCommand: mock.command, getEngineWindow: () => window }))
-vi.mock('@ui/engine/cmd', () => ({ cmd: {
-  crdtSnapshot: async () => ({ '2': { Transform: { rotation: { x: 0, y: 0, z: 0, w: 1 } } }, '512': { UiText: { value: '3 / 5' } } }), sceneLogs: async () => ''
+vi.mock('../actions/playback', () => ({ uiPlay: mock.play }))
+vi.mock('../boot/boot', () => ({ restartScene: mock.restart }))
+vi.mock('../engine/console', () => ({ consoleCommand: mock.command, getEngineWindow: () => window }))
+vi.mock('../engine/cmd', () => ({ cmd: {
+  crdtSnapshot: () => mock.snapshot(), sceneLogs: async () => ''
 } }))
-vi.mock('@ui/engine/hosted', () => ({ hostV1: () => ({ previewServerLogs: () => mock.serverLogs }) }))
+vi.mock('../engine/hosted', () => ({ hostV1: () => ({ previewServerLogs: () => mock.serverLogs }) }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -61,7 +62,7 @@ describe('assistant playtesting', () => {
 
   it('reports observed player position and HUD without changing game state', async () => {
     expect(await playtest({ action: 'status' }, new AbortController().signal)).toEqual({
-      playing: true, position: { x: 1, y: 2, z: 3 }, hud: ['3 / 5'], errors: [], serverErrors: []
+      playing: true, platform: 'desktop', position: { x: 1, y: 2, z: 3 }, hud: ['3 / 5'], errors: [], serverErrors: []
     })
     expect(mock.command).toHaveBeenCalledTimes(1)
     expect(mock.command).toHaveBeenCalledWith('player_position')
@@ -86,5 +87,51 @@ describe('assistant playtesting', () => {
       { action: 'click', x: -1, y: 0.5 }
     ]) await expect(playtest(request, new AbortController().signal)).rejects.toThrow()
     expect(mock.command).not.toHaveBeenCalled()
+  })
+
+  it('plays as on a phone until stopped, and a turn never leaves the creator on one', async () => {
+    vi.useFakeTimers()
+    const run = async (request: Record<string, unknown>) => {
+      const pending = playtest(request, new AbortController().signal)
+      await vi.runAllTimersAsync()
+      return pending
+    }
+    expect(await run({ action: 'start', platform: 'mobile' })).toMatchObject({ playing: true, platform: 'mobile' })
+    expect(mock.command).toHaveBeenCalledWith('mobile_ui', ['on'])
+    await run({ action: 'start', platform: 'mobile' })
+    expect(mock.command.mock.calls.filter(([command]) => command === 'mobile_ui')).toHaveLength(1)
+    expect(await run({ action: 'stop' })).toMatchObject({ platform: 'desktop' })
+    expect(mock.command).toHaveBeenLastCalledWith('player_position')
+    expect(mock.command.mock.calls.filter(([command]) => command === 'mobile_ui').map(([, args]) => args)).toEqual([['on'], ['off']])
+
+    await run({ action: 'start', platform: 'mobile' })
+    mock.restart.mockClear()
+    await leavePhone()
+    expect(mock.command).toHaveBeenCalledWith('mobile_ui', ['off'])
+    expect(mock.restart).toHaveBeenCalledTimes(1)
+    await leavePhone()
+    expect(mock.restart).toHaveBeenCalledTimes(1)
+    await expect(playtest({ action: 'start', platform: 'tablet' }, new AbortController().signal)).rejects.toThrow('desktop or mobile')
+  })
+
+  it('presses as soon as the awaited text is on the HUD, and says when it never came', async () => {
+    vi.useFakeTimers()
+    const hud = mock.snapshot.getMockImplementation()!
+    onTestFinished(() => { mock.snapshot.mockImplementation(hud) })
+    let polls = 0
+    mock.snapshot.mockImplementation(async () => ({ '512': { UiText: { value: ++polls < 3 ? 'Esperando…' : '¡PICA!' } } }))
+    const pressed: number[] = []
+    document.querySelector('canvas')!.addEventListener('keydown', () => pressed.push(polls))
+    const pending = playtest({ action: 'input', keys: ['E'], durationMs: 100, waitFor: 'PICA' }, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    await pending
+    expect(pressed).toEqual([3])
+
+    mock.snapshot.mockImplementation(async () => ({}))
+    const never = playtest({ action: 'input', keys: ['E'], waitFor: 'PICA' }, new AbortController().signal)
+    const failed = expect(never).rejects.toThrow('did not appear')
+    await vi.runAllTimersAsync()
+    await failed
+    expect(pressed).toEqual([3])
   })
 })

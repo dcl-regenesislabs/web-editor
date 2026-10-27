@@ -4,18 +4,14 @@ import { AiPanel } from './AiPanel'
 import { shadowedRuntimeProblem } from '../prefabs/generate'
 import { mount, run } from '../test/render'
 
-const { ensureScriptRuntime, runEditorRequests, attachScript } = vi.hoisted(() => ({
-  ensureScriptRuntime: vi.fn(async () => ({ vendored: [] as string[], shadowed: [] as string[] })),
-  runEditorRequests: vi.fn(async () => ({ outcomes: [], problems: [], attached: [] })),
-  attachScript: vi.fn(async () => false)
+const { ensureScriptRuntime } = vi.hoisted(() => ({
+  ensureScriptRuntime: vi.fn(async () => ({ vendored: [] as string[], shadowed: [] as string[] }))
 }))
 
 vi.mock('../prefabs/generate', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../prefabs/generate')>()
   return { ...actual, ensureScriptRuntime }
 })
-vi.mock('../ai/requests', () => ({ runEditorRequests, clearEditorRequests: vi.fn(async () => {}) }))
-vi.mock('../script/attach', () => ({ attachScript }))
 
 // Mutate the property, never the window itself — this suite renders into the DOM.
 const shellHost = window as unknown as {
@@ -33,7 +29,6 @@ let emit: (e: AiEvent) => void = () => {}
 beforeEach(() => {
   ensureScriptRuntime.mockClear()
   ensureScriptRuntime.mockResolvedValue({ vendored: [], shadowed: [] })
-  runEditorRequests.mockClear()
   shellHost.editorShell = {
     aiSend: async () => {},
     aiReset: async () => {},
@@ -63,10 +58,9 @@ async function turn(): Promise<ReturnType<typeof mount>> {
 // the runtime — and the import the system prompt tells it to write ('./runtime/…')
 // would not resolve on the creator's next gesture, which is Play.
 describe('AiPanel turn end', () => {
-  it('vendors the script runtime when the turn wrote no requests and attached nothing', async () => {
+  it('vendors the script runtime when a turn ends', async () => {
     const view = await turn()
     expect(ensureScriptRuntime).toHaveBeenCalledTimes(1)
-    expect(runEditorRequests).toHaveBeenCalledTimes(1)
     view.unmount()
   })
 
@@ -84,13 +78,6 @@ describe('AiPanel turn end', () => {
     ensureScriptRuntime.mockResolvedValue({ vendored: [], shadowed: ['src/scripts/runtime/game.ts'] })
     const view = await turn()
     expect(view.text()).toContain(shadowedRuntimeProblem('src/scripts/runtime/game.ts'))
-    view.unmount()
-  })
-
-  it('still runs the assistant’s requests when vendoring throws', async () => {
-    ensureScriptRuntime.mockRejectedValue(new Error('disk gone'))
-    const view = await turn()
-    expect(runEditorRequests).toHaveBeenCalledTimes(1)
     view.unmount()
   })
 })

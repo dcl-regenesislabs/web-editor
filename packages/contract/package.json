@@ -12,7 +12,9 @@
     "./bus": "./src/bus-protocol.ts",
     "./shell": "./src/shell.ts",
     "./assistant": "./src/assistant.ts",
-    "./cid": "./src/cid.ts"
+    "./cid": "./src/cid.ts",
+    "./editor-tools": "./src/editor-tools.ts",
+    "./assistant-prompt": "./src/assistant-prompt.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

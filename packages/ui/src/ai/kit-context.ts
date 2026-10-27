@@ -1,7 +1,7 @@
 // The two blocks the turn context gained when prefabs became spawnable and
 // numbers moved to Game Config: what this project can clone at run time, and
 // what it has already tuned. Both are DATA — the rules that go with them live in
-// DCL_SYSTEM_PROMPT, which is O(1) in project size, while these grow with the
+// ASSISTANT_PROMPT, which is O(1) in project size, while these grow with the
 // scene and so belong here, next to the roster.
 //
 // Pure: the caller reads the prefab list and the scene-root component, these
