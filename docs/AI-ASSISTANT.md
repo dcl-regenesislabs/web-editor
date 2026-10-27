@@ -177,11 +177,13 @@ being silently dropped and reported as a setting that does not exist.
 ## Attaching scripts
 
 A file under `src/scripts/` does nothing until it is listed on an entity's
-Script component. Creating one attaches it to the entity selected when the turn
-began, and `write_file` reports where; the assistant uses `attachScript` when
-that is not where it belongs. Rewriting a script that is already attached
-refreshes its params on every entity running it, keeping the values already set
-(`scriptAttacher`, `packages/ui/src/ai/attach.ts`).
+Script component. Writing one attaches it nowhere: the assistant attaches it with
+`attachScript`, naming each entity it belongs on (the selection only when the
+creator means it). Attaching to whatever was selected when the turn began put
+scripts on the wrong entity whenever the creator's request was not about the
+selection. Rewriting a script that is already attached refreshes its params on
+every entity running it, keeping the values already set (`refreshWrittenScript`,
+`packages/ui/src/ai/attach.ts`).
 
 The prompt is written around this: the assistant never tells the creator to add
 a component or drag a file onto an entity; it attaches the script itself.

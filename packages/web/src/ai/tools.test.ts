@@ -7,7 +7,7 @@ function setup() {
   const files = new Map<string, Uint8Array>([['src/scripts/Door.ts', encoder.encode('original')], ['.env.local', encoder.encode('secret')]])
   const scene = vi.fn(async () => ({ attached: ['src/scripts/Door.ts'] }))
   const view = vi.fn(async (request: { entity: string | null }) => ({ mimeType: 'image/jpeg', image: 'AAAA', width: 2, height: 1, framed: request.entity }))
-  const written = vi.fn(async (_path: string, _content: string, created: boolean) => (created ? { id: '512', name: 'Door' } : null))
+  const written = vi.fn(async (_path: string, _content: string) => {})
   const execute = createBrowserTools({
     files: () => files,
     write: async (path, bytes, expected, signal) => {
@@ -66,15 +66,16 @@ describe('assistant browser tools', () => {
     expect(JSON.parse(await run('edit_file', { path: 'src/scripts/Long.ts', old: 'four two', new: 'four 2' }))).toMatchObject({ replaced: 1 })
     expect(JSON.parse(await run('edit_file', { path: 'src/scripts/Long.ts', old: 'o', new: '0', all: true }))).toMatchObject({ replaced: 3 })
     expect(new TextDecoder().decode(files.get('src/scripts/Long.ts'))).toBe('0ne\ntw0\nthree\nf0ur 2')
-    expect(written).toHaveBeenLastCalledWith('src/scripts/Long.ts', '0ne\ntw0\nthree\nf0ur 2', false)
+    expect(written).toHaveBeenLastCalledWith('src/scripts/Long.ts', '0ne\ntw0\nthree\nf0ur 2')
     await expect(run('edit_file', { path: 'src/scripts/Missing.ts', old: 'a', new: 'b' })).rejects.toThrow('write_file')
     await expect(run('edit_file', { path: '.env.local', old: 'secret', new: 'x' })).rejects.toThrow()
   })
 
-  it('tells the model where a newly created script was attached as soon as it is written', async () => {
+  // a new script runs nowhere until the model attaches it: the selection is often not where it belongs
+  it('leaves a newly created script unattached', async () => {
     const { run, written } = setup()
-    expect(JSON.parse(await run('write_file', { path: 'src/scripts/Lamp.ts', revision: null, content: 'v1' }))).toMatchObject({ attached: { id: '512', name: 'Door' } })
-    expect(written).toHaveBeenCalledWith('src/scripts/Lamp.ts', 'v1', true)
+    expect(JSON.parse(await run('write_file', { path: 'src/scripts/Lamp.ts', revision: null, content: 'v1' }))).toEqual({ path: 'src/scripts/Lamp.ts', revision: expect.any(String), created: true })
+    expect(written).toHaveBeenCalledWith('src/scripts/Lamp.ts', 'v1')
   })
 
   it('does not expose secrets, traversal, generated runtime, or direct composite writes', async () => {
