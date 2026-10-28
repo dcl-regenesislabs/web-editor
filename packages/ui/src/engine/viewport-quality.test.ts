@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
-import { parseQuality, sessionCommands } from './viewport-quality'
+import { defaultQuality, parseQuality, sessionCommands } from './viewport-quality'
 
 describe('parseQuality', () => {
   it('defaults on a first run', () => {
@@ -17,6 +17,13 @@ describe('parseQuality', () => {
 
   it('reads garbage as a first run', () => {
     expect(parseQuality('not json')).toEqual(parseQuality(null))
+  })
+
+  it('starts a Retina screen near 1080p at 30 fps, and keeps what the creator chose there', () => {
+    const dense = defaultQuality(2)
+    expect(parseQuality(null, dense)).toEqual({ renderScale: '0.5', grass: 'low', fpsCap: '30' })
+    expect(parseQuality('{"renderScale":"1"}', dense)).toEqual({ renderScale: '1', grass: 'low', fpsCap: '30' })
+    expect(defaultQuality(1.5)).toEqual(parseQuality(null))
   })
 })
 
