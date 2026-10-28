@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 const REPO = 'decentraland/sdk-skills'
 const BRANCH = 'main'
@@ -19,12 +20,16 @@ const TARBALL_TIMEOUT_MS = 90_000 // ~4MB over hotel/mobile links; the SHA call 
 // Skills that fight the assistant's mandate (script-only authoring, no shell,
 // acceptEdits headless flow): scaffolding/deploy walkthroughs are npx
 // instructions it can't run, sdk-scenes mandates ask-the-user-first and
-// composite-first workflows that contradict DCL_SYSTEM_PROMPT. A denylist so
+// composite-first workflows that contradict ASSISTANT_PROMPT. A denylist so
 // new upstream skills default IN. Denylisted skills ship their supporting
 // files but NOT SKILL.md: without frontmatter they can never trigger, yet
 // shipped skills' {baseDir}/../<name>/references/ paths still resolve (e.g.
 // player-avatar and multiplayer-sync read sdk-scenes/references/).
 const SKILL_DENYLIST = new Set(['create-scene', 'deploy-scene', 'deploy-worlds', 'migrate-sdk6-to-sdk7', 'sdk-scenes'])
+// Upstream skills an editor skill replaces (the editor's own skills ship in
+// packages/service/skills/). Treated like the denylist: references stay, since
+// the replacement links to them.
+const SUPERSEDED = new Set(['build-ui'])
 
 type Logger = (msg: string) => void
 const defaultLog: Logger = (msg) => console.log(`[sdk-skills] ${msg}`)
@@ -63,14 +68,44 @@ function readCachedSha(metaPath: string, skillsDir: string, appVersion: string):
   }
 }
 
+// The editor's own skills, one folder per skill that holds a SKILL.md.
+function editorSkillNames(editorSkillsDir: string | null): string[] {
+  if (editorSkillsDir === null || !fs.existsSync(editorSkillsDir)) return []
+  return fs.readdirSync(editorSkillsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && fs.existsSync(path.join(editorSkillsDir, e.name, 'SKILL.md')))
+    .map((e) => e.name)
+    .sort()
+}
+
+// Content hash of the editor skills, so editing one rebuilds the cache even
+// when neither upstream nor the app version moved (a dev run never bumps it).
+function editorSkillsDigest(editorSkillsDir: string | null): string {
+  const hash = createHash('sha256')
+  const walk = (dir: string, rel: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full, `${rel}/${entry.name}`)
+      else if (entry.isFile()) hash.update(`${rel}/${entry.name}\0`).update(fs.readFileSync(full))
+    }
+  }
+  for (const name of editorSkillNames(editorSkillsDir)) walk(path.join(editorSkillsDir as string, name), name)
+  return hash.digest('hex').slice(0, 12)
+}
+
 // Ensure the cache at <cacheDir>/skills holds the latest skills, one folder per
 // skill (only tarball dirs with a SKILL.md, symlink-free, frontmatter-sanitized;
-// denylisted skills keep supporting files but drop SKILL.md). The cache is
-// keyed on upstream SHA + appVersion: a new app version rebuilds even when
+// denylisted skills keep supporting files but drop SKILL.md), with the editor's
+// own skills from `editorSkillsDir` laid over them. The cache is keyed on
+// upstream SHA + appVersion (+ editor skills digest): a new app version rebuilds even when
 // upstream didn't move, so changes to the shaping logic here always take
 // effect. Never throws: offline or a failed refresh just keeps whatever cache
 // already exists. Returns the skills dir, or null when there is no usable cache.
-export async function ensureSkillsCache(cacheDir: string, appVersion: string, log: Logger = defaultLog): Promise<string | null> {
+export async function ensureSkillsCache(
+  cacheDir: string,
+  appVersion: string,
+  log: Logger = defaultLog,
+  editorSkillsDir: string | null = null
+): Promise<string | null> {
   const skillsDir = path.join(cacheDir, 'skills')
   const metaPath = path.join(cacheDir, 'meta.json')
   const stageNew = path.join(cacheDir, 'skills.new')
@@ -87,7 +122,9 @@ export async function ensureSkillsCache(cacheDir: string, appVersion: string, lo
     }
   }
 
-  const cached = readCachedSha(metaPath, skillsDir, appVersion)
+  const editorSkills = editorSkillNames(editorSkillsDir)
+  const cacheVersion = editorSkills.length > 0 ? `${appVersion}+${editorSkillsDigest(editorSkillsDir)}` : appVersion
+  const cached = readCachedSha(metaPath, skillsDir, cacheVersion)
 
   try {
     const shaRes = await fetchWithTimeout(`https://api.github.com/repos/${REPO}/commits/${BRANCH}`, SHA_TIMEOUT_MS, 'application/vnd.github.sha')
@@ -115,7 +152,7 @@ export async function ensureSkillsCache(cacheDir: string, appVersion: string, lo
         const src = path.join(extracted, entry.name)
         if (!fs.existsSync(path.join(src, 'SKILL.md'))) continue
         const dest = path.join(stageNew, entry.name)
-        if (SKILL_DENYLIST.has(entry.name)) {
+        if (SKILL_DENYLIST.has(entry.name) || SUPERSEDED.has(entry.name)) {
           if (fs.readdirSync(src).every((n) => n === 'SKILL.md')) continue // nothing but the trigger — nothing to ship
           fs.cpSync(src, dest, { recursive: true, filter: (s) => path.basename(s) !== 'SKILL.md' })
           continue
@@ -124,6 +161,11 @@ export async function ensureSkillsCache(cacheDir: string, appVersion: string, lo
         count++
       }
       if (count === 0) throw new Error('tarball contained no skills')
+      for (const name of editorSkills) {
+        const dest = path.join(stageNew, name)
+        fs.rmSync(dest, { recursive: true, force: true })
+        fs.cpSync(path.join(editorSkillsDir as string, name), dest, { recursive: true })
+      }
 
       // Swap via renames on the cache volume so there is never a window where
       // skillsDir is half-copied; meta.json is absent while the swap is in
@@ -141,7 +183,7 @@ export async function ensureSkillsCache(cacheDir: string, appVersion: string, lo
         throw e
       }
       fs.rmSync(stageOld, { recursive: true, force: true })
-      fs.writeFileSync(metaPath, JSON.stringify({ sha, appVersion, updatedAt: new Date().toISOString() }))
+      fs.writeFileSync(metaPath, JSON.stringify({ sha, appVersion: cacheVersion, updatedAt: new Date().toISOString() }))
       log(`updated to ${REPO}@${sha.slice(0, 7)} (${count} skills)`)
     } finally {
       fs.rmSync(work, { recursive: true, force: true })
@@ -244,6 +286,22 @@ function linkAgentDir(projectDir: string, agentDir: string, cacheSkillsDir: stri
     }
     linkDir(path.join(cacheSkillsDir, name), linkPath)
     ensureGitignored(skillsPath, name)
+  }
+}
+
+// The game-sounds skill plays the app's sound library, which ships once for both assistants
+// (resources/sounds, packages/ui/src/sounds in dev) rather than inside the skill: copied in after
+// each refresh, so the agent copies {baseDir}/sounds/<name>.mp3 into the scene.
+export function addSoundLibrary(skillsDir: string, soundsDir: string, log: Logger = defaultLog): void {
+  const skill = path.join(skillsDir, 'game-sounds')
+  if (!fs.existsSync(path.join(skill, 'SKILL.md')) || !fs.existsSync(soundsDir)) return
+  try {
+    fs.cpSync(soundsDir, path.join(skill, 'sounds'), {
+      recursive: true,
+      filter: (src) => src === soundsDir || src.endsWith('.mp3') || path.basename(src) === 'CREDITS.md'
+    })
+  } catch (e) {
+    log(`could not add the sound library: ${String(e)}`)
   }
 }
 

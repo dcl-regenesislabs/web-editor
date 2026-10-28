@@ -1,9 +1,8 @@
 import { assistantReadable } from '@dcl-editor/contract'
 import { state } from '@scene/state'
-import { listLibrary, copyLibraryPrefabIntoProject } from '@ui/prefabs/library'
-import { readPrefabData } from '@ui/prefabs/storage'
-import type { BrowserProject } from './tools'
-import { inspectModel } from '@ui/model-info'
+import { listLibrary, copyLibraryPrefabIntoProject } from '../prefabs/library'
+import { readPrefabData } from '../prefabs/storage'
+import { inspectModel } from '../model-info'
 
 const PAGE_SIZE = 30
 
@@ -15,7 +14,12 @@ function page<T>(entries: T[], request: Record<string, unknown>, searchable: (en
   return { total: matches.length, offset, nextOffset: offset + results.length < matches.length ? offset + results.length : null, results }
 }
 
-export function createAssetRequests(project: Pick<BrowserProject, 'files' | 'write'>) {
+// the project's files as the host holds them: the browser's copy, or the files the desktop read for this call
+export interface AssetProject {
+  files(): ReadonlyMap<string, Uint8Array>
+}
+
+export function createAssetRequests(project: AssetProject) {
   return async (request: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
     signal.throwIfAborted()
     if (request.action === 'search_prefabs') {

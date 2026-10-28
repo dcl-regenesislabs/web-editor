@@ -8,9 +8,9 @@
     "server-logs": "sdk-commands sdk-server-logs"
   },
   "devDependencies": {
-    "@dcl/js-runtime": "7.30.2-38470202470.commit-ee06955",
-    "@dcl/sdk": "7.30.2-38470202470.commit-ee06955",
-    "@dcl/sdk-commands": "7.30.2-38470202470.commit-ee06955"
+    "@dcl/js-runtime": "7.31.1-40606969412.commit-24c05c3",
+    "@dcl/sdk": "7.31.1-40606969412.commit-24c05c3",
+    "@dcl/sdk-commands": "7.31.1-40606969412.commit-24c05c3"
   },
   "engines": {
     "node": ">=22"

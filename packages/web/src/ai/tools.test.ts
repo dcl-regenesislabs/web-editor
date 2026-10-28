@@ -7,7 +7,7 @@ function setup() {
   const files = new Map<string, Uint8Array>([['src/scripts/Door.ts', encoder.encode('original')], ['.env.local', encoder.encode('secret')]])
   const scene = vi.fn(async () => ({ attached: ['src/scripts/Door.ts'] }))
   const view = vi.fn(async (request: { entity: string | null }) => ({ mimeType: 'image/jpeg', image: 'AAAA', width: 2, height: 1, framed: request.entity }))
-  const written = vi.fn(async (_path: string, _content: string, created: boolean) => (created ? { id: '512', name: 'Door' } : null))
+  const written = vi.fn(async (_path: string, _content: string) => {})
   const execute = createBrowserTools({
     files: () => files,
     write: async (path, bytes, expected, signal) => {
@@ -44,10 +44,38 @@ describe('assistant browser tools', () => {
     await expect(run('write_file', { path: 'src/scripts/New.ts', revision: null, content: 'new' })).resolves.toContain('"created":true')
   })
 
-  it('tells the model where a newly created script was attached as soon as it is written', async () => {
+  it('searches readable files by text or pattern, never secrets', async () => {
+    const { run, files, encoder } = setup()
+    files.set('src/index.ts', encoder.encode('import { engine } from "@dcl/sdk/ecs"\nexport function main() {\n  engine.addSystem(spin)\n}'))
+    files.set('.env.local', encoder.encode('original secret'))
+    expect(JSON.parse(await run('search_files', { query: 'ORIGINAL' }))).toEqual({ hits: ['src/scripts/Door.ts:1: original'], total: 1 })
+    expect(JSON.parse(await run('search_files', { query: 'add\\w+\\(', regex: true, match: 'index' })).hits).toEqual(['src/index.ts:3: engine.addSystem(spin)'])
+    await expect(run('search_files', { query: '(', regex: true })).rejects.toThrow('regular expression')
+  })
+
+  it('reads a range or the matching lines, numbered, and then edits only by exact text', async () => {
+    const { run, files, encoder, written } = setup()
+    files.set('src/scripts/Long.ts', encoder.encode('one\ntwo\nthree\nfour two'))
+    expect(JSON.parse(await run('read_file', { path: 'src/scripts/Long.ts', offset: 2, limit: 2 }))).toMatchObject({ totalLines: 4, lines: '2| two\n3| three' })
+    const partial = JSON.parse(await run('read_file', { path: 'src/scripts/Long.ts', query: 'two' }))
+    expect(partial).toMatchObject({ matches: ['2| two', '4| four two'], total: 2 })
+    // a whole-file write after a partial read would drop what was not seen
+    await expect(run('write_file', { path: 'src/scripts/Long.ts', revision: partial.revision, content: 'x' })).rejects.toThrow('edit_file')
+    await expect(run('edit_file', { path: 'src/scripts/Long.ts', old: 'two', new: '2' })).rejects.toThrow('2 times')
+    await expect(run('edit_file', { path: 'src/scripts/Long.ts', old: 'five', new: '5' })).rejects.toThrow('not found')
+    expect(JSON.parse(await run('edit_file', { path: 'src/scripts/Long.ts', old: 'four two', new: 'four 2' }))).toMatchObject({ replaced: 1 })
+    expect(JSON.parse(await run('edit_file', { path: 'src/scripts/Long.ts', old: 'o', new: '0', all: true }))).toMatchObject({ replaced: 3 })
+    expect(new TextDecoder().decode(files.get('src/scripts/Long.ts'))).toBe('0ne\ntw0\nthree\nf0ur 2')
+    expect(written).toHaveBeenLastCalledWith('src/scripts/Long.ts', '0ne\ntw0\nthree\nf0ur 2')
+    await expect(run('edit_file', { path: 'src/scripts/Missing.ts', old: 'a', new: 'b' })).rejects.toThrow('write_file')
+    await expect(run('edit_file', { path: '.env.local', old: 'secret', new: 'x' })).rejects.toThrow()
+  })
+
+  // a new script runs nowhere until the model attaches it: the selection is often not where it belongs
+  it('leaves a newly created script unattached', async () => {
     const { run, written } = setup()
-    expect(JSON.parse(await run('write_file', { path: 'src/scripts/Lamp.ts', revision: null, content: 'v1' }))).toMatchObject({ attached: { id: '512', name: 'Door' } })
-    expect(written).toHaveBeenCalledWith('src/scripts/Lamp.ts', 'v1', true)
+    expect(JSON.parse(await run('write_file', { path: 'src/scripts/Lamp.ts', revision: null, content: 'v1' }))).toEqual({ path: 'src/scripts/Lamp.ts', revision: expect.any(String), created: true })
+    expect(written).toHaveBeenCalledWith('src/scripts/Lamp.ts', 'v1')
   })
 
   it('does not expose secrets, traversal, generated runtime, or direct composite writes', async () => {

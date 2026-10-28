@@ -24,17 +24,19 @@ import { hostV1 } from '@ui/engine/hosted'
 import { persistReady } from '@ui/core/persist'
 import { version } from '../../package.json'
 import { createBrowserAssistant } from '../ai/client'
-import { scriptAttacher } from '../ai/attach'
+import { refreshWrittenScript } from '@ui/ai/attach'
 import { state } from '@scene/state'
-import { browserSceneRequest } from '../ai/scene'
+import { browserSceneRequest } from '@ui/ai/scene'
 import { sameBytes } from '../ai/tools'
-import { captureView } from '../ai/view'
-import { createAssetRequests } from '../ai/assets'
-import { setLibraryBase } from '../ai/library-files'
+import { captureView } from '@ui/ai/view'
+import { createAssetRequests } from '@ui/ai/assets'
+import { materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
+import { setLibraryBytes } from '@ui/ai/library-bytes'
 import { runFreshBuild } from '@ui/actions/verify-build'
 import { flushPendingSave } from '@ui/core/autosave'
 import { updateSpawnPoints } from '@ui/spawn-points'
-import { playtest } from '../ai/playtest'
+import { leavePhone, playtest } from '@ui/ai/playtest'
+import { uiLayout } from '@ui/ai/ui-layout'
 import { externalDependencies } from '../archive/dependencies'
 import { createPublisher } from '../publish/publish'
 import { publishWorlds } from '../publish/worlds'
@@ -197,10 +199,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
         tools: {
           files: () => open.files,
           write: (path, bytes, expected, signal) => writeFile(open.id, path, bytes, { expected, signal }),
-          assets: createAssetRequests({
-            files: () => open.files,
-            write: (path, bytes, expected, signal) => writeFile(open.id, path, bytes, { expected, signal })
-          }),
+          assets: createAssetRequests({ files: () => open.files }),
           scene: (request, signal) =>
             browserSceneRequest(request, signal, async (settings) => {
               const layout = (raw: ReturnType<typeof parseSceneJson>) => JSON.stringify([raw?.scene?.parcels, raw?.scene?.base])
@@ -231,9 +230,9 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
                 parcels, base: raw?.scene?.base ?? null, previewReady: true
               }
             }),
-          written: scriptAttacher(),
+          written: refreshWrittenScript,
           view: (request, signal) => captureView(request, signal),
-          playtest,
+          playtest, uiLayout, turnEnded: leavePhone,
           build: async (signal) => {
             signal.throwIfAborted()
             await fileWrites
@@ -553,6 +552,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       : createUserPrefabs(createPrefabsApi(services.services.projects, (url, init) => services.signedFetch(url, init)), contentCid)
   setThreeWorker(threeWorkerSource(host.editorBase))
   setLibraryBase(host.editorBase)
+  setLibraryBytes({ material: materialBytes, sound: soundBytes })
   setPublishedSize(async () => publishedSize(await projects.files(project().id)))
   const prefabs = createPrefabLibrary({
     builtin: createBuiltinPrefabs(host.editorBase, fileIntegrity('prefabs/catalog.json'), fetchVerified),

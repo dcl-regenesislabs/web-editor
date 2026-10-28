@@ -51,6 +51,6 @@
     }
   },
   "dependencies": {
-    "@dcl-regenesislabs/bevy-explorer-web": "0.1.0-32423376134.commit-d18de13"
+    "@dcl-regenesislabs/bevy-explorer-web": "0.1.0-40573340222.commit-8cec5ae"
   }
 }

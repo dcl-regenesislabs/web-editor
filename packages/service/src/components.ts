@@ -96,7 +96,8 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   })
   const telemetry = await createTelemetryComponent({ config, logs }, { stateDir: authPath === undefined ? undefined : dirname(authPath) })
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
-    await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills, telemetry.recordProviderHeaders))
+    await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
+      logs.getLogger('assistant'), telemetry.recordProviderHeaders))
   const admin = createAdminComponent({ logs }, {
     access: adminAccessFromConfig({
       teamDomain: await config.getString('CF_ACCESS_TEAM_DOMAIN'),

@@ -1,9 +1,6 @@
-// Turn-end request executor. The assistant is a coding CLI with the project as
-// its cwd: it can write files and nothing else. Anything that has to happen in
-// the LIVE scene — placing a prefab, naming it, sizing it, setting a script
-// param on it or on something already placed, attaching a script to a named
-// entity — it declares in `.editor/requests.json`, and the renderer performs
-// here when the turn ends.
+// The batch scene changes behind scene_request's placePrefab, setParams and
+// attachScript: placing a prefab, naming it, sizing it, setting a script param
+// on it or on something already placed, attaching a script to a named entity.
 //
 // One thing is resolved rather than copied: a `PrefabRef` param stores a prefab
 // UUID and the assistant only ever sees NAMES, so a name arrives here and
@@ -16,14 +13,11 @@
 // autosave and the bus mirror come for free and there is no invertible-manifest
 // machinery to get wrong. And every failure is local: an unknown request type or
 // an entity name that doesn't resolve skips that one request and adds a notice
-// line — the turn's other work still lands.
-//
-// The file is deleted as soon as it is read, so a stale request can never replay.
+// line — the rest of the batch still lands.
 import { state } from '@scene/state'
 import { entityName } from '@scene/custom-components'
 import { type PrefabPlacement, uiPlaceLibraryPrefab, uiPlacePrefab } from '../actions/prefabs'
 import { uiSyncSpawnSpotFromSnapshot } from '../actions/spawn-spot'
-import { dataLayerReadFile, dataLayerRemoveFile } from '../engine/datalayer'
 import { prefabStore, refreshLibrary, refreshPrefabs } from '../panels/prefab-store'
 import { revealInTree } from '../panels/reveal'
 import { setScriptParams } from '../script/params'
@@ -31,7 +25,6 @@ import { attachScript } from '../script/attach'
 import { baseName } from '../script/project-files'
 import { log } from '../log'
 import {
-  REQUESTS_PATH,
   parseRequests,
   resolveEntityRef,
   resolvePrefabSource,
@@ -51,7 +44,7 @@ export interface RequestRun {
   outcomes: RequestOutcome[]
   /** Things that were skipped — surfaced once, as a single notice. */
   problems: string[]
-  /** Scripts a request already attached; auto-attach must not place them twice. */
+  /** Scripts a request attached. */
   attached: string[]
 }
 
@@ -149,49 +142,6 @@ async function runSetParams(request: SetParamsRequest, out: RequestRun): Promise
   if (applied.length > 0) {
     out.outcomes.push({ tool: 'Set', detail: `${applied.join(', ')} on ${labelOf(target)}` })
   }
-}
-
-// Set when a delete didn't take, so the next turn retries it before running.
-// Without the flag the retry would be an RPC per turn for a file that almost
-// never exists — and the dev server logs every read of a missing path.
-let undeleted = false
-
-async function drop(): Promise<boolean> {
-  try {
-    return await dataLayerRemoveFile(REQUESTS_PATH)
-  } catch (e) {
-    log.warn('could not delete the assistant request file', e)
-    return false
-  }
-}
-
-// Read the request file and delete it in the same breath: whatever happens next,
-// these requests never run twice.
-async function takeRequestFile(): Promise<string | null> {
-  let text: string
-  try {
-    text = await dataLayerReadFile(REQUESTS_PATH)
-  } catch {
-    return null // no requests this turn (the common case), or no data layer
-  }
-  if (text.trim() === '') return null
-  undeleted = !(await drop())
-  return text
-}
-
-/** Retry a delete that didn't take, before the next turn can replay it. */
-export async function clearEditorRequests(): Promise<void> {
-  if (!undeleted) return
-  undeleted = !(await drop())
-}
-
-// Run everything the assistant asked for this turn. `fallbackTarget` is the
-// entity that was active when the turn started — what an attach request without
-// an explicit target means.
-export async function runEditorRequests(fallbackTarget: string | null): Promise<RequestRun> {
-  const text = await takeRequestFile()
-  if (text === null) return { outcomes: [], problems: [], attached: [] }
-  return runRequestText(text, fallbackTarget)
 }
 
 export async function runRequestText(text: string, fallbackTarget: string | null): Promise<RequestRun> {

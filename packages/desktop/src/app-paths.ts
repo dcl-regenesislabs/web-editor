@@ -32,6 +32,31 @@ export function prefabLibraryDirs(): LibraryDirs {
   }
 }
 
+// The editor's own AI skills, kept next to the web service's SDK skills bundle
+// in the repo so both assistants read the same files.
+export function editorSkillsDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'editor-skills') : path.resolve(__dirname, '..', '..', 'service', 'skills')
+}
+
+// The shared sound library (Kenney CC0 mp3s) the game-sounds skill copies from.
+export function soundLibraryDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'sounds') : path.resolve(__dirname, '..', '..', 'ui', 'src', 'sounds')
+}
+
+// The shared surface materials (jpg) buildModel copies into a project.
+export function materialLibraryDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'materials') : path.resolve(__dirname, '..', '..', 'ui', 'src', 'three', 'materials')
+}
+
+// A library file by the path the editor names it (materials/T_Stone_D.jpg, sounds/coin.mp3), or null
+// for anything else: the page can ask for these and nothing more.
+export function libraryFilePath(file: string): string | null {
+  const material = /^materials\/(T_[A-Za-z]+_[DN]\.jpg)$/.exec(file)
+  if (material !== null) return path.join(materialLibraryDir(), material[1])
+  const sound = /^sounds\/([a-z-]+\.mp3)$/.exec(file)
+  return sound === null ? null : path.join(soundLibraryDir(), sound[1])
+}
+
 export function prefabStagingRoot(): string {
   return path.join(app.getPath('userData'), 'prefab-imports')
 }

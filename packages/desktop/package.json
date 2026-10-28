@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@dcl-editor/contract": "*",
-    "@dcl/sdk-auth": "npm:@dcl/sdk@7.30.2-38470202470.commit-ee06955",
+    "@dcl/sdk-auth": "npm:@dcl/sdk@7.31.1-40606969412.commit-24c05c3",
     "@types/qrcode": "^1.5.6",
     "electron": "42.4.1",
     "electron-builder": "^26.0.12",

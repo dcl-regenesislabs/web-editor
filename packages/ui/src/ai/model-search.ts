@@ -1,4 +1,4 @@
-import type { ModelAsset } from '@ui/assets'
+import type { ModelAsset } from '../assets'
 
 const STOP = new Set(['a', 'an', 'the', 'of', 'with', 'for', 'and', 'or', 'to', 'in', 'on', 'some', 'model', 'models'])
 const FLAT_WORDS = new Set(['flat', 'picture', 'photo', 'poster', 'print', 'painting', 'frame', 'sign', 'banner', 'billboard', 'logo', 'nft', 'flag', 'decal', 'sticker', 'skybox'])

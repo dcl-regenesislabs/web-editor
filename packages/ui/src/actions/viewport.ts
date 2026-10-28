@@ -62,3 +62,9 @@ export const uiSetPlayInspect = (on: boolean): void => {
   if (!chrome.rightOpen) setRightOpen(true)
   if (state.activeAction === 'select') uiSetTool(state.lastTool)
 }
+
+// The assistant's view borrows the creator's camera: hold keeps their pose, release puts it back.
+export const uiHoldCamera = (): Promise<void> => sendToScene({ type: 'camera-hold' })
+export const uiReleaseCamera = (): Promise<void> => sendToScene({ type: 'camera-release' })
+export const uiPoseCamera = (position: { x: number; y: number; z: number }, lookAt: { x: number; y: number; z: number } | null): Promise<void> =>
+  sendToScene({ type: 'camera-pose', position, ...(lookAt === null ? {} : { lookAt }) })

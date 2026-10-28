@@ -15,15 +15,16 @@ import { SceneStartSuperseded, serveBevyWeb, startSceneServer, stopAll, stopScen
 import { publishStart, publishStop, isPublishing } from './publish'
 import { deployCapability } from './publish-args'
 import { aiBusy, aiReset, aiSend, aiStop, detectProviders } from './ai'
+import { createPageForwarder, editorMcpConfig, startEditorMcp, type EditorMcp } from './editor-mcp'
 import { initUpdater, installAndRestart, installOnQuit, manualCheck, updateStatus } from './updater'
-import { ensureSkillsCache, linkSkillsIntoProject } from './skills'
+import { addSoundLibrary, ensureSkillsCache, linkSkillsIntoProject } from './skills'
 import { DEEPLINK_PROTOCOLS, isDeeplink, parseSignin } from './deeplink'
 import { spawnWorldPosition, type SceneMeta } from './scene-meta'
 import { importThumbnail, loadSceneSettings, saveSceneSettings } from './scene-settings'
 import { compositeEntityIds } from './composite-entities'
 import { installAuthServerSdk, sdkCapability } from './sdk-capability'
 import { mobilePreview, unityDeepLink, webPreviewUrl } from './preview'
-import { prefabLibraryDirs, prefabStagingRoot } from './app-paths'
+import { editorSkillsDir, libraryFilePath, prefabLibraryDirs, prefabStagingRoot, soundLibraryDir } from './app-paths'
 import { assertRelayHost } from './relay-host'
 import { installEditorChords } from './chords'
 import { buildMenu as buildMenuTemplate } from './menu'
@@ -52,8 +53,8 @@ import {
   stageFromPath
 } from './prefab-library'
 // shared cross-process contracts — single source of truth (also used by ui)
-import { AUTH_SIGNIN_CHANNEL, PUBLISH_EVENT_CHANNEL, EDITOR_CHORD_CHANNEL, UPDATE_EVENT_CHANNEL } from '@dcl-editor/contract'
-import type { AiEvent, AiSendParams, MobilePreview, OpenPreview, PrefabImportInspect, PublishEvent, SceneSettings, ServersReady, UpdateStatus } from '@dcl-editor/contract'
+import { AUTH_SIGNIN_CHANNEL, PUBLISH_EVENT_CHANNEL, EDITOR_CHORD_CHANNEL, UPDATE_EVENT_CHANNEL, EDITOR_TOOL_CALL_CHANNEL, EDITOR_TOOL_RESULT_CHANNEL } from '@dcl-editor/contract'
+import type { AiEvent, AiSendParams, EditorToolResult, MobilePreview, OpenPreview, PrefabImportInspect, PublishEvent, SceneSettings, ServersReady, UpdateStatus } from '@dcl-editor/contract'
 
 let cfg: config.AppConfig
 let win!: BrowserWindow
@@ -238,6 +239,24 @@ function log(line: string): void {
 // the 'stack-log' push; guarded so a late event during teardown can't throw.
 function emitAiEvent(e: AiEvent): void {
   if (win !== undefined && !win.isDestroyed()) win.webContents.send('ai-event', e)
+}
+
+// The editor's MCP server, started with the first assistant turn: the CLI's editor tool calls (view,
+// playtest, ui_layout, scene_request, asset_request, build) go to the page, which runs them.
+const editorTools = createPageForwarder((call) => {
+  if (win === undefined || win.isDestroyed()) return false
+  win.webContents.send(EDITOR_TOOL_CALL_CHANNEL, call)
+  return true
+})
+let mcpServer: Promise<EditorMcp | null> | null = null
+
+async function editorMcp(): Promise<string | undefined> {
+  mcpServer ??= startEditorMcp(editorTools.forward, log).catch((e: unknown) => {
+    log(`⚠ the editor MCP server did not start; the assistant works without seeing the scene: ${String(e)}`)
+    return null
+  })
+  const mcp = await mcpServer
+  return mcp === null ? undefined : editorMcpConfig(mcp)
 }
 
 // Push one publish-job stream event to the renderer's publish modal.
@@ -427,7 +446,10 @@ void app.whenReady().then(async () => {
 
   // refresh the AI assistant's SDK skills in the background (openProject links
   // them into each scene when this resolves)
-  skillsCache = ensureSkillsCache(path.join(app.getPath('userData'), 'sdk-skills'), app.getVersion(), log)
+  skillsCache = ensureSkillsCache(path.join(app.getPath('userData'), 'sdk-skills'), app.getVersion(), log, editorSkillsDir()).then((dir) => {
+    if (dir !== null) addSoundLibrary(dir, soundLibraryDir(), log)
+    return dir
+  })
 
   ipcMain.handle('pick-project', () => pickProject())
   ipcMain.handle('open-project', (_e, dir: string) => openProject(dir))
@@ -446,7 +468,13 @@ void app.whenReady().then(async () => {
   // CLI spawning happens in ./ai (main-process only, per the sandbox). aiSend
   // resolves as soon as the turn's child is running; events stream in async.
   ipcMain.handle('ai-providers', () => detectProviders())
-  ipcMain.handle('ai-send', (_e, params: AiSendParams) => aiSend(params, currentProjectDir, emitAiEvent))
+  ipcMain.handle('ai-send', async (_e, params: AiSendParams) => aiSend(params, currentProjectDir, emitAiEvent, await editorMcp()))
+  ipcMain.handle(EDITOR_TOOL_RESULT_CHANNEL, (_e, id: string, result: EditorToolResult) => editorTools.answer(id, result))
+  ipcMain.handle('library-file', async (_e, file: string) => {
+    const at = libraryFilePath(file)
+    if (at === null) throw new Error(`not a library file: ${file}`)
+    return new Uint8Array(await fs.promises.readFile(at))
+  })
   ipcMain.handle('ai-stop', () => aiStop())
   ipcMain.handle('ai-reset', () => aiReset())
   // Engine boot recovery: a corrupt IndexedDB/Service Worker store makes the
@@ -683,6 +711,7 @@ void app.whenReady().then(async () => {
 function teardown(): void {
   quitting = true
   aiStop() // reap any running AI CLI turn
+  void mcpServer?.then((mcp) => mcp?.close())
   publishStop() // reap a running publish job
   stopAll()
 }

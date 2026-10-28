@@ -68,7 +68,7 @@ it('charges compaction and replies once, including after restoring a conversatio
   }))
   faux.setResponses(Array.from({ length: 50 }, () => fauxAssistantMessage('Done.')))
   const headers: Array<Record<string, string>> = []
-  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token', undefined, (received) => headers.push(received))
+  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token', undefined, undefined, (received) => headers.push(received))
   const params = { provider: 'claude' as const, model: 'test', text: 'Build a game' }
   let agent: AssistantAgent | undefined
   try {
