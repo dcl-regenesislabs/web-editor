@@ -1,7 +1,7 @@
 {
-  "pin": "7.30.2-38470202470.commit-ee06955",
+  "pin": "7.31.1-40606969412.commit-24c05c3",
   "file": "node_modules/@dcl/sdk-commands/dist/logic/runtime-script.js",
   "sha256": "363db486042a98832b33517625b84af46902feb4c3bbb2df584ab371d7816f24",
-  "verifiedAt": "2026-10-13",
+  "verifiedAt": "2026-10-27",
   "notes": "packages/desktop/runtime-modules/spawner.ts is a shadow copy of this file's runScripts(): it must construct a clone's scripts exactly the way the SDK constructs a placed entity's. The pin moves without notice (protocol-squad per-commit builds), so this hash is a standing gate. A mismatch is NOT fixed by updating the hash. Re-read the new runtime-script.js against spawner.ts + runtime-modules/pure/scriptInit.ts, fix any divergence, re-run `node packages/desktop/validate/probe-script-runner.mjs`, and only then update pin/sha256/verifiedAt here, in the same commit as the spawner change. The pin is read from the created scene's package.json (packages/desktop/templates/blank/package.json is its source); the hash is taken from the scene's own installed copy after `openProject` has run npm install."
 }
