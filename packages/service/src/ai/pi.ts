@@ -1,7 +1,7 @@
 import {
   createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager
 } from '@earendil-works/pi-coding-agent'
-import type { FileEntry, ResourceLoader, ToolDefinition } from '@earendil-works/pi-coding-agent'
+import type { Extension, FileEntry, ResourceLoader, ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { Type } from '@earendil-works/pi-ai'
 import { ASSET_KINDS, object } from '../../../contract/src/assistant.ts'
 import type { AiProvider, AiSendParams } from '../../../contract/src/shell.ts'
@@ -15,8 +15,22 @@ import type { SkillsComponent } from '../adapters/skills.ts'
 
 const PROVIDERS = { claude: 'anthropic', codex: 'openai-codex' } as const
 
-function resources(skills: SkillsComponent): ResourceLoader {
-  const extensions = { extensions: [], errors: [], runtime: createExtensionRuntime() }
+// the only extension: hands each provider response's headers (Claude's plan usage) to the service
+function responseHeaders(onHeaders: (headers: Record<string, string>) => void): Extension {
+  const path = '<inline:response-headers>'
+  return {
+    path, resolvedPath: path, hidden: true,
+    sourceInfo: { path, source: 'inline', scope: 'temporary', origin: 'top-level' },
+    handlers: new Map([['after_provider_response', [async (event: unknown) => {
+      if (!object(event) || !object(event.headers)) return
+      onHeaders(Object.fromEntries(Object.entries(event.headers).filter((entry): entry is [string, string] => typeof entry[1] === 'string')))
+    }]]]),
+    tools: new Map(), messageRenderers: new Map(), commands: new Map(), flags: new Map(), shortcuts: new Map()
+  }
+}
+
+function resources(skills: SkillsComponent, onHeaders?: (headers: Record<string, string>) => void): ResourceLoader {
+  const extensions = { extensions: onHeaders === undefined ? [] : [responseHeaders(onHeaders)], errors: [], runtime: createExtensionRuntime() }
   return {
     getExtensions: () => extensions,
     getSkills: () => ({ skills: [], diagnostics: [] }),
@@ -35,7 +49,8 @@ function resources(skills: SkillsComponent): ResourceLoader {
 // one model for every turn: the strongest, and no choice to make in the composer
 export const ASSISTANT_MODEL = 'claude-opus-5-5'
 
-export async function createPiFactory(authPath: string, preferredModel?: string, setupToken?: string, skills?: SkillsComponent): Promise<AgentFactory> {
+export async function createPiFactory(authPath: string, preferredModel?: string, setupToken?: string, skills?: SkillsComponent,
+  onProviderHeaders?: (headers: Record<string, string>) => void): Promise<AgentFactory> {
   const skillLibrary = skills ?? await createSkillsComponent()
   if (setupToken !== undefined) await seedSetupToken(authPath, setupToken)
   const runtime = await ModelRuntime.create({ authPath, modelsPath: null, refreshOnCreate: false })
@@ -154,7 +169,7 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
       tools.push(thumbnailTool(call, images ?? createWalletImages(undefined, undefined, 0)))
       const sessionManager = SessionManager.inMemory(undefined, undefined, restore as FileEntry[] | undefined)
       const { session } = await createAgentSession({
-        modelRuntime: runtime, model, resourceLoader: resources(skillLibrary),
+        modelRuntime: runtime, model, resourceLoader: resources(skillLibrary, onProviderHeaders),
         sessionManager, settingsManager: SettingsManager.inMemory({ retry: { enabled: false } }),
         tools: tools.map((tool) => tool.name), customTools: tools
       })
@@ -162,11 +177,21 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
         session.dispose()
         throw new Error('Unexpected assistant tool')
       }
-      // usage already counted: a restored conversation was paid for when it ran
-      let counted = session.getSessionStats().cost
+      // usage already counted: a restored conversation was paid for when it ran. The session log only
+      // grows (compaction appends its own usage), so deltas never count a call twice.
+      const baseline = session.getSessionStats()
+      let counted = { cost: baseline.cost, ...baseline.tokens }
+      let calls = 0
+      let unreported = 0
+      let responseModel: string | undefined
       let emittedText = false
       let separator = false
       session.subscribe((event) => {
+        if (event.type === 'message_end' && event.message.role === 'assistant') {
+          calls++
+          if (event.message.usage.totalTokens === 0) unreported++
+          responseModel = event.message.responseModel ?? event.message.model
+        }
         if (event.type === 'message_start' && event.message.role === 'assistant') separator = emittedText
         if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
           const delta = event.assistantMessageEvent.delta
@@ -193,10 +218,19 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
         },
         takeUsage() {
           const stats = session.getSessionStats()
-          const cost = Math.max(0, stats.cost - counted)
-          counted = stats.cost
-          return { cost }
+          const next = { cost: stats.cost, ...stats.tokens }
+          const delta = (key: 'input' | 'output' | 'cacheRead' | 'cacheWrite') => Math.max(0, next[key] - counted[key])
+          const usage = {
+            cost: Math.max(0, next.cost - counted.cost),
+            tokens: { input: delta('input'), output: delta('output'), cacheRead: delta('cacheRead'), cacheWrite: delta('cacheWrite') },
+            calls, unreported, responseModel
+          }
+          counted = next
+          calls = 0
+          unreported = 0
+          return usage
         },
+        model: chosen,
         abort: () => session.abort(),
         dispose: () => session.dispose(),
         snapshot: () => {

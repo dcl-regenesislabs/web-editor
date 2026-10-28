@@ -186,6 +186,9 @@ behind Cloudflare. It stores projects and runs the assistant on the team's Claud
   sessions a minute, 4 at once), `/metrics` closed, sockets kept 15 minutes. The client IP comes
   from Cloudflare's header (`/etc/nginx/conf.d/cloudflare-real-ip.conf`, Cloudflare's published
   ranges), or every visitor would share Cloudflare's address and its limits.
+- **Operations dashboard:** `/admin/` behind its own Cloudflare Access application, with events to
+  a Segment source when configured; off until set up. Setup and the event schema:
+  [service README](../packages/service/README.md#operations-dashboard-and-telemetry).
 - **Firewall:** ufw allows SSH, and 80/443 only from Cloudflare's ranges.
 - **Cloudflare:** proxied, with a Configuration Rule setting SSL to **Full (strict)** for this
   hostname. The certificate is Let's Encrypt via certbot (auto-renews).
@@ -219,4 +222,3 @@ behind Cloudflare. It stores projects and runs the assistant on the team's Claud
 
 - A second engine (the scene server frame) sometimes stalls at 95% in `navigator.gpu.requestAdapter()`.
 - Strangers can appear at parcel 0,0 in a local preview: it still opens a global comms session.
-- The service records nothing per assistant turn yet: no duration, tokens or failure data.

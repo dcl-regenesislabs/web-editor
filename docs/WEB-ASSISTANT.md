@@ -264,7 +264,9 @@ The defaults are 50,000 per day and 200,000 per week, plus 50 turns per day
 (`ASSISTANT_TURNS_PER_DAY`) and 2 running at once per wallet across its tabs (`ASSISTANT_TURNS_AT_ONCE`). Usage stays internal: the editor shows neither usage nor context
 meters. A spent allowance refuses new turns until it resets, including in other open tabs.
 Compaction calls count toward usage; completed conversation memory is saved even if a browser
-disconnects while usage is being recorded.
+disconnects while usage is being recorded. Operators see live sessions and turns on the service's
+`/admin/` dashboard, and can send turn outcomes and token counts (never prompts, replies, files or
+wallets) to a Segment source: [operations dashboard and telemetry](../packages/service/README.md#operations-dashboard-and-telemetry).
 
 ## Validation
 

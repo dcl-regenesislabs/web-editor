@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Assistant Operations</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="dashboard.js" defer></script>
+</head>
+<body>
+  <header class="head">
+    <div class="title">
+      <span class="overline">Decentraland editor</span>
+      <h1>Assistant operations</h1>
+    </div>
+    <p id="state" class="pill" data-state="loading" role="status">Loading…</p>
+    <button id="signin" class="btn" type="button" hidden>Sign in again</button>
+  </header>
+
+  <main>
+    <section class="tiles" aria-label="Now">
+      <div class="tile"><span class="overline">Connected sessions</span><span class="value" id="sessions">—</span></div>
+      <div class="tile"><span class="overline">Running turns</span><span class="value" id="running">—</span></div>
+      <div class="tile"><span class="overline">Prompts</span><span class="value" id="prompts">—</span><span class="hint" id="prompts-hint">since the service started</span></div>
+      <div class="tile"><span class="overline">Tokens</span><span class="value" id="tokens">—</span><span class="hint" id="tokens-hint">read + written, cache included</span></div>
+    </section>
+
+    <section class="card" aria-labelledby="quota-title">
+      <h2 id="quota-title" class="overline">Claude plan usage</h2>
+      <div id="quota" class="meters"></div>
+      <p id="quota-note" class="note">—</p>
+    </section>
+
+    <section class="card" aria-labelledby="users-title">
+      <h2 id="users-title" class="overline">Who uses it</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th scope="col">Wallet</th><th scope="col" class="num">Prompts</th><th scope="col" class="num" title="Input, cache reads and cache writes">Read</th>
+            <th scope="col" class="num">Written</th><th scope="col" class="num" title="Estimated share of the Claude plan's 5-hour session">Session</th><th scope="col" class="num">Est. API cost</th>
+            <th scope="col">Daily allowance</th><th scope="col">Weekly allowance</th>
+            <th scope="col" class="num">Running</th><th scope="col">Last active</th>
+          </tr></thead>
+          <tbody id="users"><tr><td colspan="10" class="empty">—</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="turns-title">
+      <h2 id="turns-title" class="overline">Running turns</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th scope="col">Turn</th><th scope="col">Model</th><th scope="col">Started</th><th scope="col" class="num">Elapsed</th></tr></thead>
+          <tbody id="turns"><tr><td colspan="4" class="empty">—</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="pair">
+      <section class="card" aria-labelledby="usage-title">
+        <h2 id="usage-title" class="overline">Usage since the service started</h2>
+        <dl id="usage" class="grid"></dl>
+        <p id="usage-note" class="note"></p>
+      </section>
+      <section class="card" aria-labelledby="since-title">
+        <h2 id="since-title" class="overline">Turn outcomes</h2>
+        <dl id="since" class="grid"></dl>
+      </section>
+    </div>
+
+    <section class="card" aria-labelledby="service-title">
+      <h2 id="service-title" class="overline">Service and telemetry</h2>
+      <dl id="service" class="grid"></dl>
+      <a id="history" class="link" href="#" target="_blank" rel="noopener noreferrer" hidden>Historical reports ↗</a>
+    </section>
+  </main>
+</body>
+</html>

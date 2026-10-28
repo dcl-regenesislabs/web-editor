@@ -41,7 +41,7 @@ it('fails closed when the configured model is unknown', async () => {
   await expect(createPiFactory(await authPath(), 'model-that-does-not-exist')).rejects.toThrow('AI_MODEL')
 })
 
-it('charges compaction and replies once, including after restoring a conversation', async () => {
+it('charges compaction and replies once, including after restoring a conversation, and passes on Claude\'s plan headers', async () => {
   const faux = fauxProvider({ provider: 'anthropic', models: [{ id: 'test', contextWindow: 40_000, maxTokens: 1024 }] })
   const originalCreate = ModelRuntime.create.bind(ModelRuntime)
   vi.spyOn(ModelRuntime, 'create').mockImplementation(async (options) => {
@@ -51,6 +51,7 @@ it('charges compaction and replies once, including after restoring a conversatio
     const streamSimple: Provider['streamSimple'] = (model, context, opts) => {
       const stream = createAssistantMessageEventStream()
       void (async () => {
+        await opts?.onResponse?.({ status: 200, headers: { 'anthropic-ratelimit-unified-5h-utilization': '0.03', 'x-other': 'kept' } }, model)
         for await (const event of faux.provider.streamSimple(model, context, opts)) {
           if (event.type === 'done') event.message.usage.cost = { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, total: 1 }
           stream.push(event)
@@ -66,16 +67,21 @@ it('charges compaction and replies once, including after restoring a conversatio
     ...settings, compaction: { enabled: true, reserveTokens: 1000, keepRecentTokens: 1000 }
   }))
   faux.setResponses(Array.from({ length: 50 }, () => fauxAssistantMessage('Done.')))
-  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token')
+  const headers: Array<Record<string, string>> = []
+  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token', undefined, (received) => headers.push(received))
   const params = { provider: 'claude' as const, model: 'test', text: 'Build a game' }
   let agent: AssistantAgent | undefined
   try {
     agent = await factory.create(params, async () => 'unused', () => {})
     let charged = 0
+    let inputTokens = 0
     for (let turn = 0; turn < 10; turn++) {
       await agent.prompt({ ...params, text: `Request ${turn}: ${'x'.repeat(18_000)}` })
-      charged += agent.takeUsage().cost
-      expect(agent.takeUsage().cost).toBe(0)
+      const usage = agent.takeUsage()
+      charged += usage.cost
+      inputTokens += usage.tokens?.input ?? 0
+      expect(usage).toMatchObject({ calls: 1, unreported: 0, responseModel: 'test' })
+      expect(agent.takeUsage()).toMatchObject({ cost: 0, calls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } })
     }
     const entries = agent.snapshot() as FileEntry[]
     expect(entries.some((entry) => entry.type === 'compaction')).toBe(true)
@@ -85,9 +91,18 @@ it('charges compaction and replies once, including after restoring a conversatio
       return total
     }, 0)
     expect(charged).toBe(actual)
+    expect(headers.length).toBeGreaterThanOrEqual(10)
+    expect(headers[0]).toEqual({ 'anthropic-ratelimit-unified-5h-utilization': '0.03', 'x-other': 'kept' })
+    const actualInput = entries.reduce((total, entry) => {
+      if (entry.type === 'message' && entry.message.role === 'assistant') return total + entry.message.usage.input
+      if (entry.type === 'compaction') return total + (entry.usage?.input ?? 0)
+      return total
+    }, 0)
+    expect(inputTokens).toBeGreaterThan(0)
+    expect(inputTokens).toBe(actualInput)
     agent.dispose()
     agent = await factory.create(params, async () => 'unused', () => {}, entries)
-    expect(agent.takeUsage().cost).toBe(0)
+    expect(agent.takeUsage()).toMatchObject({ cost: 0, calls: 0, tokens: { input: 0, output: 0 } })
     await agent.prompt(params)
     expect(agent.takeUsage().cost).toBe(1)
   } finally { agent?.dispose() }

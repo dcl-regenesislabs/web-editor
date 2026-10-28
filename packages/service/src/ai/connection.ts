@@ -5,6 +5,8 @@ import type { AiSendParams } from '../../../contract/src/shell.ts'
 import { MEMORY_ID, MEMORY_KEY } from './memory.ts'
 import type { MemoryRef, WalletMemory } from './memory.ts'
 import type { WalletUsage } from './usage.ts'
+import type { AssistantTurnOutcome } from '../../../contract/src/analytics.ts'
+import type { SessionOperations } from './operations.ts'
 import type { AgentFactory, AssistantAgent } from './types.ts'
 import type { WalletImages } from './thumbnail.ts'
 
@@ -18,7 +20,22 @@ const TOOL_LABELS: Record<BrowserToolName, string> = {
 
 interface Pending {
   turnId: string
+  tool: BrowserToolName
   finish(ok: boolean, text: string): void
+}
+
+/** Why a turn was stopped before it finished on its own. */
+type StopCause = Exclude<AssistantTurnOutcome, 'completed'>
+
+interface ActiveTurn {
+  id: string
+  controller: AbortController
+  chars: number
+  resumable: boolean
+  steps: number
+  lastStepAt: number
+  cause?: StopCause
+  tools: { toolCalls: number; failedToolCalls: number; builds: number; failedBuilds: number }
 }
 
 export function parsePrompt(value: unknown): AiSendParams | null {
@@ -53,10 +70,11 @@ export function createConnection(options: {
   images?: WalletImages
   toolTimeoutMs?: number
   turnTimeoutMs?: number
+  operations?: SessionOperations
 }) {
   let agent: AssistantAgent | null = null
   let identity = ''
-  let active: { id: string; controller: AbortController; chars: number; resumable: boolean; steps: number; lastStepAt: number } | null = null
+  let active: ActiveTurn | null = null
   let closed = false
   let running: Promise<void> | undefined
   let stopping: Promise<void> | undefined
@@ -65,10 +83,13 @@ export function createConnection(options: {
   const pending = new Map<string, Pending>()
   const send = (message: AssistantServerMessage) => { if (!closed) options.send(message) }
 
-  function abort(message?: string, resumable = false): void {
-    if (message !== undefined && active !== null && !active.controller.signal.aborted) {
-      active.resumable = resumable
-      send({ kind: 'event', event: { kind: 'error', turnId: active.id, message, ...(resumable ? { resumable } : {}) } })
+  function abort(message?: string, resumable = false, cause: StopCause = 'cancelled'): void {
+    if (active !== null && !active.controller.signal.aborted) {
+      active.cause ??= cause
+      if (message !== undefined) {
+        active.resumable = resumable
+        send({ kind: 'event', event: { kind: 'error', turnId: active.id, message, ...(resumable ? { resumable } : {}) } })
+      }
     }
     active?.controller.abort()
     for (const request of pending.values()) request.finish(false, 'The turn was cancelled.')
@@ -92,8 +113,9 @@ export function createConnection(options: {
       return new Promise<string>((resolve, reject) => {
         const cancel = () => finish(false, 'The turn was cancelled.')
         const timer = setTimeout(() => {
+          tally(live, tool, false)
           finish(false, 'The browser did not answer the tool request.')
-          abort(`${label ?? TOOL_LABELS[tool]} timed out. The turn stopped; check the scene before retrying.`)
+          abort(`${label ?? TOOL_LABELS[tool]} timed out. The turn stopped; check the scene before retrying.`, false, 'timed_out')
         }, options.toolTimeoutMs ?? (tool === 'read_file' || tool === 'list_files' ? 60_000 : 15 * 60_000))
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return
@@ -105,7 +127,7 @@ export function createConnection(options: {
           if (ok) resolve(text)
           else reject(new Error(text))
         }
-        pending.set(callId, { turnId: turn.id, finish })
+        pending.set(callId, { turnId: turn.id, tool, finish })
         signal?.addEventListener('abort', cancel, { once: true })
         turn.controller.signal.addEventListener('abort', cancel, { once: true })
         send({ kind: 'call', turnId: turn.id, callId, tool, args, ...(label === undefined ? {} : { label }) })
@@ -115,16 +137,30 @@ export function createConnection(options: {
     return result
   }
 
+  function tally(turn: ActiveTurn, tool: BrowserToolName, ok: boolean): void {
+    turn.tools.toolCalls++
+    if (!ok) turn.tools.failedToolCalls++
+    if (tool === 'build') {
+      turn.tools.builds++
+      if (!ok) turn.tools.failedBuilds++
+    }
+  }
+
   async function prompt(turnId: string, projectId: string, params: AiSendParams, ref: MemoryRef | null): Promise<void> {
     const startedAt = Date.now()
-    const turn = { id: turnId, controller: new AbortController(), chars: 0, resumable: false, steps: 0, lastStepAt: startedAt }
+    const turn: ActiveTurn = {
+      id: turnId, controller: new AbortController(), chars: 0, resumable: false, steps: 0, lastStepAt: startedAt,
+      tools: { toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0 }
+    }
     active = turn
     let started = false
     let turnAgent: AssistantAgent | null = null
     let ok = false
-    const timer = setTimeout(() => abort('The turn reached its 60-minute limit.', true), options.turnTimeoutMs ?? 60 * 60_000)
+    let tracked: string | undefined
+    const timer = setTimeout(() => abort('The turn reached its 60-minute limit.', true, 'timed_out'), options.turnTimeoutMs ?? 60 * 60_000)
     try {
       if (options.usage !== undefined && await options.usage.exhausted()) {
+        options.operations?.rejected('allowance')
         const balance = await options.usage.balance()
         const resetAt = balance.weeklyPercent >= 100 ? balance.weeklyResetAt : balance.dailyResetAt
         send({ kind: 'failure', message: `This account has used its assistant allowance for now. Try again after ${resetAt}.` })
@@ -132,6 +168,7 @@ export function createConnection(options: {
       }
       turn.controller.signal.throwIfAborted()
       started = true
+      tracked = options.operations?.turnStarted()
       send({ kind: 'event', event: { kind: 'started', turnId } })
       const key = JSON.stringify([projectId, params.provider, params.model, ref?.id, ref?.key])
       if (identity !== key) {
@@ -152,6 +189,7 @@ export function createConnection(options: {
         agent = created
       }
       turnAgent = agent
+      if (tracked !== undefined) options.operations?.turnModel(tracked, agent.model ?? params.model)
       await stopping
       turn.controller.signal.throwIfAborted()
       await agent.prompt(params)
@@ -159,10 +197,14 @@ export function createConnection(options: {
     } catch {
       if (!turn.controller.signal.aborted) {
         if (started) send({ kind: 'event', event: { kind: 'error', turnId, message: 'The assistant could not finish. Check the service connection and provider sign-in, then retry.' } })
-        else send({ kind: 'failure', message: 'The assistant allowance could not be checked. Try again shortly.' })
+        else {
+          options.operations?.rejected('unavailable')
+          send({ kind: 'failure', message: 'The assistant allowance could not be checked. Try again shortly.' })
+        }
       }
     } finally {
       clearTimeout(timer)
+      const cause = turn.cause ?? (closed ? 'disconnected' : undefined)
       turn.controller.abort()
       if (ok && turnAgent !== null && ref !== null && options.memory !== undefined) {
         const memory = options.memory
@@ -173,6 +215,9 @@ export function createConnection(options: {
       const spent = turnAgent?.takeUsage()
       // a slow turn shows where it went: no prompt or scene content, only shape and timing
       options.logger.info(`assistant turn=${turnId} ms=${Date.now() - startedAt} ok=${ok} steps=${turn.steps}`)
+      if (tracked !== undefined) {
+        options.operations?.turnFinished(tracked, { outcome: ok ? 'completed' : cause ?? 'failed', ...turn.tools, usage: spent })
+      }
       if (spent !== undefined && options.usage !== undefined) {
         await options.usage.record(spent.cost).catch(() => { options.logger.error('Assistant usage could not be recorded') })
       }
@@ -195,9 +240,10 @@ export function createConnection(options: {
         const request = pending.get(message.callId)
         if (request?.turnId !== message.turnId || active?.id !== message.turnId) return
         active.chars += message.text.length
+        tally(active, request.tool, active.chars <= MAX_TURN_RESULT_CHARS && message.ok)
         if (active.chars > MAX_TURN_RESULT_CHARS) {
           request.finish(false, 'The tool results for this turn are too large.')
-          abort('The turn read as much as one turn can hold.', true)
+          abort('The turn read as much as one turn can hold.', true, 'failed')
           return
         }
         request.finish(message.ok, message.text)
@@ -227,11 +273,13 @@ export function createConnection(options: {
       if (typeof message.turnId !== 'string' || !ASSISTANT_ID.test(message.turnId) ||
         typeof message.projectId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(message.projectId) || params === null ||
         ref === undefined) {
+        options.operations?.rejected('invalid')
         send({ kind: 'failure', message: 'Invalid prompt. Use up to four images, at most 2 MB each.' })
         return
       }
       const allowed = active !== null ? 'A turn is already running.' : options.allowTurn()
       if (allowed !== true) {
+        options.operations?.rejected(active !== null ? 'busy' : 'limited')
         send({ kind: 'failure', message: allowed })
         return
       }
@@ -239,7 +287,7 @@ export function createConnection(options: {
     },
     async close(): Promise<void> {
       closed = true
-      abort()
+      abort(undefined, false, 'disconnected')
       await Promise.all([running, stopping])
       agent?.dispose()
       agent = null
