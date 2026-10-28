@@ -12,6 +12,12 @@
 // a preset index to a column of individual settings. PRESET_VALUES + resolveValue
 // below are copied verbatim from the explorer's settings scene (bridge-scene) so
 // our Low is byte-identical to the dropdown's Low. Update if the engine changes.
+//
+// EDITOR_OVERRIDES then turns off the post effects an editor viewport has no use
+// for. Engine settings apply to every camera, including the editor's gizmo and
+// relations TextureCameras, so with Bloom + Depth of Field on each frame ran 79
+// render passes (48 of them bloom mips); off, 19 — and the viewport holds 60 fps
+// where it used to drop to ~53.
 import { BevyApi } from './bevy-api'
 import type { EngineSetting } from './bevy-api/interface'
 
@@ -36,6 +42,12 @@ const PRESET_VALUES: Record<string, [number | string, number | string, number | 
   'Max Videos': [1, 2, 4]
 }
 
+// Depth of field blurs whatever is being edited; bloom halos selection outlines and gizmos.
+const EDITOR_OVERRIDES: Record<string, number | string> = {
+  Bloom: 'Off',
+  'Depth of Field': 'Off'
+}
+
 // A named-variant value ("Low") resolves to its index in the setting's variants;
 // a numeric value is used directly. Returns undefined if the variant is unknown.
 function resolveValue(setting: EngineSetting, value: number | string): number | undefined {
@@ -44,11 +56,26 @@ function resolveValue(setting: EngineSetting, value: number | string): number | 
   return ix < 0 ? undefined : ix
 }
 
-// Drop graphics to Low, dodging the WebGPU shadow-pass crash that hit some heavy
-// scenes at the default (Medium) quality. Best-effort and non-blocking; a build
-// without the settings API just no-ops.
-export async function forceLowGraphics(): Promise<void> {
+// The Low column plus the editor overrides, resolved against what this engine exposes;
+// settings it lacks, or variants it doesn't know, are skipped.
+export function editorGraphicsTargets(settings: EngineSetting[]): Array<{ name: string; value: number }> {
   const presetIx = PRESET_NAMES.indexOf('Low')
+  const wanted = new Map<string, number | string>(Object.entries(PRESET_VALUES).map(([name, values]) => [name, values[presetIx]]))
+  for (const [name, value] of Object.entries(EDITOR_OVERRIDES)) wanted.set(name, value)
+  const targets: Array<{ name: string; value: number }> = []
+  for (const [name, wantedValue] of wanted) {
+    const setting = settings.find((s) => s.name === name)
+    if (setting === undefined) continue
+    const value = resolveValue(setting, wantedValue)
+    if (value !== undefined) targets.push({ name, value })
+  }
+  return targets
+}
+
+// Drop graphics to Low, dodging the WebGPU shadow-pass crash that hit some heavy
+// scenes at the default (Medium) quality, minus the editor's overrides. Best-effort
+// and non-blocking; a build without the settings API just no-ops.
+export async function forceLowGraphics(): Promise<void> {
   let settings: EngineSetting[]
   try {
     settings = await BevyApi.getSettings()
@@ -64,13 +91,7 @@ export async function forceLowGraphics(): Promise<void> {
     console.log('[graphics] settings API unavailable — skipping preset')
     return
   }
-  const targets: Array<{ name: string; value: number }> = []
-  for (const [name, values] of Object.entries(PRESET_VALUES)) {
-    const setting = settings.find((s) => s.name === name)
-    if (setting === undefined) continue
-    const value = resolveValue(setting, values[presetIx])
-    if (value !== undefined) targets.push({ name, value })
-  }
+  const targets = editorGraphicsTargets(settings)
   await Promise.all(
     targets.map(async (t) => {
       try {
@@ -80,5 +101,5 @@ export async function forceLowGraphics(): Promise<void> {
       }
     })
   )
-  console.log(`[graphics] applied Low preset (${targets.length} settings)`)
+  console.log(`[graphics] applied Low preset with editor overrides (${targets.length} settings)`)
 }
