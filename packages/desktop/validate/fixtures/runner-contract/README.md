@@ -70,7 +70,7 @@ this pin; it never assumes one. Observations are also written to
 `packages/desktop/validate/artifacts/runner-contract-observed.json`.
 
 What the last verified run observed on pin `7.30.2-…commit-24c42ea`; the current
-pin `7.30.2-38470202470.commit-ee06955` ships the same `runtime-script.js` (same
+pin `7.31.1-40606969412.commit-24c05c3` (auth-server with experimental-bevy merged in) ships the same `runtime-script.js` (same
 sha256 in `runner-fingerprint.json`). Both counter-intuitive:
 
 - `start()` — priority **0 ran before** priority −100. `runScripts` iterates
