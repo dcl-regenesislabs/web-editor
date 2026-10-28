@@ -22,6 +22,12 @@ export interface ViewportQuality {
 }
 
 const DEFAULTS: ViewportQuality = { renderScale: '0.75', grass: 'low', fpsCap: '60' }
+// A Retina screen at full scale renders ~4x the pixels of 1080p; half scale lands near it.
+const DENSE_DEFAULTS: ViewportQuality = { renderScale: '0.5', grass: 'low', fpsCap: '30' }
+
+export function defaultQuality(pixelRatio: number): ViewportQuality {
+  return pixelRatio >= 2 ? DENSE_DEFAULTS : DEFAULTS
+}
 
 const KEY = 'eui:viewport-quality'
 
@@ -29,7 +35,7 @@ function oneOf<T extends string>(options: readonly T[], value: unknown, fallback
   return options.find((o) => o === value) ?? fallback
 }
 
-export function parseQuality(raw: string | null): ViewportQuality {
+export function parseQuality(raw: string | null, defaults: ViewportQuality = DEFAULTS): ViewportQuality {
   let stored: Partial<Record<keyof ViewportQuality, unknown>> = {}
   try {
     const parsed: unknown = raw === null ? null : JSON.parse(raw)
@@ -38,9 +44,9 @@ export function parseQuality(raw: string | null): ViewportQuality {
     // an unreadable record is a first run
   }
   return {
-    renderScale: oneOf(RENDER_SCALES, stored.renderScale, DEFAULTS.renderScale),
-    grass: oneOf(GRASS_DETAILS, stored.grass, DEFAULTS.grass),
-    fpsCap: oneOf(FPS_CAPS, stored.fpsCap, DEFAULTS.fpsCap)
+    renderScale: oneOf(RENDER_SCALES, stored.renderScale, defaults.renderScale),
+    grass: oneOf(GRASS_DETAILS, stored.grass, defaults.grass),
+    fpsCap: oneOf(FPS_CAPS, stored.fpsCap, defaults.fpsCap)
   }
 }
 
@@ -55,7 +61,7 @@ export function sessionCommands(before: ViewportQuality | null, next: ViewportQu
   return commands
 }
 
-const read = (): ViewportQuality => parseQuality(storedValue('viewport-quality'))
+const read = (): ViewportQuality => parseQuality(storedValue('viewport-quality'), defaultQuality(window.devicePixelRatio))
 
 let quality = read()
 const listeners = new Set<() => void>()
