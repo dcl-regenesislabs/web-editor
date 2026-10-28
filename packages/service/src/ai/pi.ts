@@ -47,6 +47,30 @@ function resources(skills: SkillsComponent, onHeaders?: (headers: Record<string,
   }
 }
 
+// A turn that changed screen UI or player input is not finished until mobile_check ran after the last such
+// change: the prompt asks for it, and this asks once more when the model ended the turn without it.
+const MOBILE_GATE_PROMPT = 'You changed screen UI or player input in this turn and did not run mobile_check after the last change. ' +
+  'Run mobile_check now, fix what it reports and run it again; if an issue cannot be fixed, say which and why in your reply.'
+
+function touchesUi(args: Record<string, unknown>): boolean {
+  const path = typeof args.path === 'string' ? args.path : ''
+  if (!path.startsWith('src/') || /(^|\/)runtime\//.test(path)) return false
+  const text = [args.content, args.new].filter((value): value is string => typeof value === 'string').join('\n')
+  return path.endsWith('.tsx') || /addHudItem|declareTouchButtons|TouchScreenControls|InputAction|ReactEcsRenderer/.test(text)
+}
+
+export function mobileGate() {
+  let changed = false
+  return {
+    saw(tool: string, args: Record<string, unknown>): void {
+      if ((tool === 'write_file' || tool === 'edit_file') && touchesUi(args)) changed = true
+      if (tool === 'mobile_check') changed = false
+    },
+    pending: (): boolean => changed,
+    reset(): void { changed = false }
+  }
+}
+
 // one model for every turn, and no choice to make in the composer (contract/assistant.ts)
 export { ASSISTANT_MODEL }
 
@@ -126,6 +150,7 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
           y: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })), label
         }),
         ui_layout: Type.Object({ label }),
+        mobile_check: Type.Object({ label }),
         view: Type.Object({
           target: Type.Optional(Type.Union([Type.Literal('editor'), Type.Literal('mobile')])),
           openIfClosed: Type.Optional(Type.Boolean({ description: 'Open the mobile preview if closed. Use only when the creator asks to see or check mobile UI.' })),
@@ -137,11 +162,13 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
       }
       // the browser's tools are the editor tools both assistants share
       const descriptions: Record<BrowserToolName, string> = EDITOR_TOOL_DESCRIPTIONS
+      const gate = mobileGate()
       const tools: ToolDefinition[] = (Object.keys(schema) as BrowserToolName[]).map((name) => ({
         name, label: name, description: descriptions[name], parameters: schema[name],
         execute: async (_id, args, signal) => {
           if (!object(args)) throw new Error('Invalid tool arguments')
           const text = await call(name, args, signal)
+          gate.saw(name, args)
           if (isEditorTool(name)) return { content: editorToolContent(name, text), details: {} }
           return { content: [{ type: 'text' as const, text }], details: {} }
         }
@@ -198,12 +225,19 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
         async prompt(next: AiSendParams) {
           emittedText = false
           separator = false
+          gate.reset()
           const images = next.images?.map((image) => {
             const match = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image.dataUrl)
             if (match === null) throw new Error('Invalid image')
             return { type: 'image' as const, mimeType: match[1], data: match[2] }
           })
           await session.prompt(`${next.context ?? ''}\n\n${next.text}`, { images })
+          const ended = session.messages.at(-1)
+          if (gate.pending() && ended?.role === 'assistant' && ended.stopReason === 'stop') {
+            logger?.info('assistant mobile gate: screen UI changed without a mobile check, asking for one')
+            gate.reset()
+            await session.prompt(MOBILE_GATE_PROMPT)
+          }
           const last = session.messages.at(-1)
           if (last?.role === 'assistant' && (last.stopReason === 'error' || last.stopReason === 'aborted')) {
             throw new Error('The model did not complete this turn.')

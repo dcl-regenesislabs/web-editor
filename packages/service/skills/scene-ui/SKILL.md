@@ -130,8 +130,13 @@ wrappers at all. Never both: an area inside an inset renderer applies the inset 
 `addHudItem(slot, render)` from `./runtime/hudLayout` (read its header), never your own
 `ReactEcsRenderer.addUiRenderer`. The shared layout draws inside `UI_CANVAS` (`screenInset: 'interactable'`),
 stacks panels in the `left`, `right`, `top` and `bottom` slots, leaves the bottom corners to the phone's
-joystick and jump/E/F buttons, and hides the touch controls while a `modal` panel is open. Style panels with
-`sceneUiTheme` from `./runtime/uiTheme` and the components from `./runtime/uiComponents`.
+joystick and jump/E/F buttons, and hides the touch controls while a `modal` panel is open. The native buttons the
+scene uses are declared with `declareTouchButtons([...], { main })` from the same module (C2, C3 and C7 are then
+the layout's job; never call `TouchScreenControls` yourself). A modal's render draws the dialog whenever it is
+called, and its panel carries a `uiTransform` `elementId`. Style panels with
+`sceneUiTheme` from `./runtime/uiTheme` and the components from `./runtime/uiComponents`. In the editor,
+`mobile_check` measures every HUD state and modal on a phone and checks L1–L5, L8, C1 and C2 in code: run it
+after every UI or input change, instead of judging a picture.
 `UiButton` is 52 units tall: below L3, so give it `uiTransform={{ height: 80 }}` (96 for the primary action)
 wherever a phone player has to press it.
 

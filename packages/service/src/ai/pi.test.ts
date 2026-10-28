@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
 import type { FileEntry } from '@earendil-works/pi-coding-agent'
-import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
+import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai'
 import type { Provider } from '@earendil-works/pi-ai'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createPiFactory } from './pi.ts'
@@ -106,4 +106,41 @@ it('charges compaction and replies once, including after restoring a conversatio
     await agent.prompt(params)
     expect(agent.takeUsage().cost).toBe(1)
   } finally { agent?.dispose() }
+})
+
+it('asks once for mobile_check when a turn changed screen UI without one, and not when it ran', async () => {
+  const faux = fauxProvider({ provider: 'anthropic', models: [{ id: 'test', contextWindow: 40_000, maxTokens: 1024 }] })
+  const originalCreate = ModelRuntime.create.bind(ModelRuntime)
+  vi.spyOn(ModelRuntime, 'create').mockImplementation(async (options) => {
+    const runtime = await originalCreate(options)
+    const auth = runtime.getProvider('anthropic')?.auth
+    if (auth === undefined) throw new Error('Missing synthetic OAuth provider')
+    runtime.registerNativeProvider({ ...faux.provider, auth })
+    return runtime
+  })
+  const hud = { path: 'src/scripts/hud.tsx', content: 'addHudItem("left", () => null)', revision: null }
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('write_file', hud), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Done.'),
+    fauxAssistantMessage(fauxToolCall('mobile_check', {}), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Checked on a phone.'),
+    fauxAssistantMessage(fauxToolCall('write_file', hud), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('mobile_check', {}), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Done and checked.')
+  ])
+  const calls: string[] = []
+  const call = async (tool: string) => {
+    calls.push(tool)
+    return tool === 'mobile_check' ? JSON.stringify({ passed: true, issues: [], states: [] }) : '{}'
+  }
+  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token')
+  const params = { provider: 'claude' as const, model: 'test', text: 'Add a HUD' }
+  const agent = await factory.create(params, call, () => {})
+  try {
+    await agent.prompt(params)
+    expect(calls).toEqual(['write_file', 'mobile_check'])
+    await agent.prompt(params)
+    expect(calls).toEqual(['write_file', 'mobile_check', 'write_file', 'mobile_check'])
+    expect(faux.state.callCount).toBe(7)
+  } finally { agent.dispose() }
 })

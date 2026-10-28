@@ -7,7 +7,7 @@ function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export const EDITOR_TOOLS = ['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout'] as const
+export const EDITOR_TOOLS = ['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout', 'mobile_check'] as const
 export type EditorToolName = (typeof EDITOR_TOOLS)[number]
 
 export function isEditorTool(name: string): name is EditorToolName {
@@ -77,7 +77,8 @@ export const EDITOR_TOOL_SCHEMAS: Record<EditorToolName, Record<string, unknown>
     },
     required: ['action']
   },
-  ui_layout: { type: 'object', properties: {} }
+  ui_layout: { type: 'object', properties: {} },
+  mobile_check: { type: 'object', properties: {} }
 }
 
 export const EDITOR_TOOL_DESCRIPTIONS: Record<EditorToolName, string> = {
@@ -91,6 +92,7 @@ export const EDITOR_TOOL_DESCRIPTIONS: Record<EditorToolName, string> = {
   build: 'Compile and run the project once. Return compiler diagnostics and runtime errors (on the web, also the mobile preview status); does not publish it.',
   playtest: 'Check the running game with the real player controller and UI: a quick run after a build, or reproducing what the creator reports. start reloads the client scene at spawn and plays, as on desktop or, with platform mobile, as on a 1600×720 phone (the scene is told it runs on mobile, gets the mobile interactable area, and the viewport becomes phone-shaped) until stop; stop restores edit mode on desktop and discards client runtime changes. The multiplayer server can retain progress across reloads: click the game restart button and verify its initial HUD before a fresh attempt. status reports player world position, HUD text and runtime errors. input holds the interaction keys E/F for durationMs (0–5000), and with waitFor first waits (up to 15 s) for HUD text containing it, for presses inside a short window; wait advances time; walk uses the controller towards to in world metres, on the ground only. click presses at x/y fractions of the viewport: a scene UI button, or a 3D object under that point (an NPC, a lever) found in a view picture first. Does not grant progress. Use view during play to see the HUD and route.',
   ui_layout: 'Measure the screen UI as the engine laid it out right now, for the layout checks of the scene-ui skill (L1–L8). Needs a running playtest: start it with platform mobile to measure the phone layout. Changes nothing, so open each dialog or panel (playtest click or input) and measure it open too. Returns the platform, the canvas the scene was told (width, height, interactableArea, in canvas units), every visible UI node that has an elementId (entity, parent, elementId, draw order, rect [x, y, w, h] in canvas units from the top-left, pointer when it takes presses, text, fontSize, visibleRect when clipped; nodes without one are only counted, so name every node you need to check) and a picture. Native touch controls are not drawn.',
+  mobile_check: 'Check the screen UI on a phone, the same way every time: plays the scene as on a 1600×720 phone (it restarts a playtest if none runs as mobile), measures the HUD, opens every modal placed with addHudItem and measures it, and applies the layout rules (L1–L5, L8, overlapping HUD items) and the touch-button rules (C1, C2: the native buttons a phone shows against the input actions the code reads) in code. Returns passed, issues (rule, state, node, detail), the buttons used and visible, and a picture per state. Leaves the mobile playtest running. Run it after any change to screen UI, HUD, menus or player input, fix every issue, and run it again until it passes.',
   view: 'A picture of the scene. As is; or framed on entity (an id or unique name); or from a world position `from` looking at `lookAt`, in metres (16 per parcel), for a plan view from above, a facade or a close-up. Use it to check what you placed, moved or built. target mobile pictures the open mobile preview instead, with its touch controls, from the player camera (no entity, from or lookAt); with no target or camera arguments an embedded mobile preview is pictured.'
 }
 
@@ -105,9 +107,15 @@ function picture(value: unknown): string {
 
 // What the model reads from a tool's JSON answer: pictures as images, not as base64 text.
 export function editorToolContent(name: EditorToolName, text: string): EditorToolContent[] {
-  if (name !== 'view' && name !== 'ui_layout') return [{ type: 'text', text }]
+  if (name !== 'view' && name !== 'ui_layout' && name !== 'mobile_check') return [{ type: 'text', text }]
   const answer: unknown = JSON.parse(text)
   if (!object(answer)) throw new Error('The editor sent no answer.')
+  if (name === 'mobile_check') {
+    const states = Array.isArray(answer.states) ? answer.states.filter(object) : []
+    const pictures = states.map((s): EditorToolContent => ({ type: 'image', mimeType: 'image/jpeg', data: picture(s.view) }))
+    const report = { ...answer, states: states.map(({ view: _view, ...rest }) => rest) }
+    return [...pictures, { type: 'text', text: JSON.stringify(report) }]
+  }
   if (name === 'ui_layout') {
     const { view, ...layout } = answer
     return [{ type: 'image', mimeType: 'image/jpeg', data: picture(view) }, { type: 'text', text: JSON.stringify(layout) }]

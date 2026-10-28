@@ -102,7 +102,7 @@ function Completion(props: { run: RunHudProps; theme: UiTheme }) {
   const stats = (run.collectibles > 0 ? 1 : 0) + (run.checkpoints > 0 ? 1 : 0)
   return <UiEntity uiTransform={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}
     uiBackground={{ color: { r: 0, g: 0, b: 0, a: 0.28 } }}>
-    <UiPanel theme={theme} uiTransform={{ width: 520, maxWidth: '90%', height: stats === 0 ? 312 : 420, padding: 28 }}>
+    <UiPanel theme={theme} uiTransform={{ elementId: 'game:completion', width: 520, maxWidth: '90%', height: stats === 0 ? 312 : 420, padding: 28 }}>
       <UiText value="RUN COMPLETE" color={theme.accentText} size={16} height={28} align="middle-center" />
       <UiText value={run.title} color={theme.text} size={28} height={44} align="middle-center" />
       <UiText value={formatRunTime(run.elapsedMs)} color={theme.text} size={64} height={88} align="middle-center" mono />
@@ -176,7 +176,7 @@ export function mountRunHud(read: () => RunHudProps): () => void {
     addHudItem('right', () => playing() ? <UiButton theme={theme()} label="Restart run" secondary onClick={run.restart}
       uiTransform={{ width: 172 }} /> : null, { order: -90 }),
     addHudItem('bottom', () => playing() && run.notice !== '' ? <UiNotice theme={theme()} text={run.notice} uiTransform={{ width: HUD_NOTICE_WIDTH }} /> : null),
-    addHudItem('modal', () => playing() ? null : <Completion run={run} theme={theme()} />, { open: () => !playing() })
+    addHudItem('modal', () => <Completion run={run} theme={theme()} />, { open: () => !playing() })
   ]
   return () => {
     engine.removeSystem(refresh)

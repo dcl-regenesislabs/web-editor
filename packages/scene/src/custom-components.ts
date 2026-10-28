@@ -5,7 +5,7 @@
 // definitions, decode the bytes into typed values for display, and — for write-back — encode an
 // edited value and emit it via /set_component_raw (which needs a newer timestamp to win LWW).
 
-import { Name, Tags, SyncComponents, NetworkEntity, NetworkParent } from '@dcl/sdk/ecs'
+import { engine, Name, Tags, SyncComponents, NetworkEntity, NetworkParent, Schemas } from '@dcl/sdk/ecs'
 import { ReadWriteByteBuffer } from '@dcl/ecs/dist/serialization/ByteBuffer'
 import { CUSTOM_REGISTRY_DEFS } from './custom-registry'
 import { type Snapshot } from './state'
@@ -34,9 +34,15 @@ const CUSTOM_DEFS = [
   ...CUSTOM_REGISTRY_DEFS
 ] as unknown as CustomDef[]
 
+// The editor's own signals to the running scene, written with /set_component_raw and never saved:
+// runtime-modules/hudLayout.tsx reads editor::HudPreview (the modal the mobile check opens, -1 for none).
+const RUNTIME_DEFS = [
+  engine.defineComponent('editor::HudPreview', { modal: Schemas.Int })
+] as unknown as CustomDef[]
+
 const BY_ID = new Map<number, CustomDef>()
 const BY_NAME = new Map<string, CustomDef>()
-for (const def of CUSTOM_DEFS) {
+for (const def of [...CUSTOM_DEFS, ...RUNTIME_DEFS]) {
   BY_ID.set(def.componentId, def)
   BY_NAME.set(def.componentName, def)
 }
@@ -158,7 +164,7 @@ export function customComponentId(name: string): number | undefined {
 // (core-schema::, asset-packs::), excluding the inspector:: tooling state the editor keeps but
 // never surfaces.
 export function customComponentNames(): string[] {
-  return [...BY_NAME.keys()].filter((n) => !n.startsWith('inspector::'))
+  return [...BY_NAME.keys()].filter((n) => !n.startsWith('inspector::') && !RUNTIME_DEFS.some((def) => def.componentName === n))
 }
 
 // A fresh default value for a custom component, built locally from its SDK schema (the engine's

@@ -27,7 +27,7 @@ describe('editor MCP server', () => {
     expect((await rpc(server, { jsonrpc: '2.0', method: 'notifications/initialized' })).status).toBe(202)
 
     const list = await (await rpc(server, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json()
-    expect(list.result.tools.map((tool: { name: string }) => tool.name)).toEqual(['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout'])
+    expect(list.result.tools.map((tool: { name: string }) => tool.name)).toEqual(['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout', 'mobile_check'])
 
     const call = await (await rpc(server, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'ui_layout', arguments: {} } })).json()
     expect(call.result.content).toEqual([

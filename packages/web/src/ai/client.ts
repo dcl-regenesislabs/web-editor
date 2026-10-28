@@ -70,6 +70,7 @@ export function createBrowserAssistant(options: {
       case 'view': return { tool: 'View', detail: call.args.target === 'mobile' ? 'Mobile preview' : call.args.target === 'editor' ? 'Editor' : 'Current view' }
       case 'playtest': return { tool: 'Playtest', detail: `${String(call.args.action ?? '')}${call.args.platform === 'mobile' ? ' (mobile)' : ''}` }
       case 'ui_layout': return { tool: 'UI layout', detail: 'Screen' }
+      case 'mobile_check': return { tool: 'Mobile check', detail: 'HUD and dialogs' }
       case 'scene_request':
         if (request.type === 'batch' && Array.isArray(request.requests)) return { tool: 'Scene', detail: `${request.requests.length} changes` }
         if (request.type === 'sceneSettings') return { tool: 'Scene', detail: 'Settings' }
