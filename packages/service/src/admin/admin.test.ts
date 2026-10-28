@@ -37,7 +37,7 @@ describe('admin dashboard access', () => {
     const status = await viaEdge?.json() as AdminStatus
     expect(status).toMatchObject({ sessions: 1, version: 'v1', historyUrl: 'https://reports.example/assistant', quota: { state: 'disabled' }, telemetry: { enabled: false } })
     expect(status.turns).toHaveLength(1)
-    expect(status.users).toMatchObject([{ wallet: '0x' + 'a'.repeat(40), prompts: 1, sessions: 1, running: 1, allowance: { dailyPercent: 12.5, weeklyPercent: 3 } }])
+    expect(status.users).toMatchObject([{ wallet: '0x' + 'a'.repeat(40), prompts: 1, sessions: 1, running: 1 }])
     expect(status.users[0].allowance).toEqual({ dailyPercent: 12.5, weeklyPercent: 3 })
     const direct = await component.handle(new Request(`${BASE}/admin/`, { headers: { cookie: `other=1; CF_Authorization=${token}` } }))
     expect(direct?.status).toBe(200)

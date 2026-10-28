@@ -107,7 +107,7 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     }),
     basePath: env.basePath, version: env.version, historyUrl: telemetry.historyUrl,
     operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery,
-    allowance: usage === undefined ? undefined : (wallet) => usage.forWallet(wallet).balance()
+    allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance()
   })
   const assistant = createAssistantComponent({ logs }, {
     factory, allowedOrigins: env.allowedOrigins, basePath: env.basePath,

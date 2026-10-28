@@ -347,7 +347,7 @@ Every event is `Assistant Operation` with an `action` and flat properties, typed
 | `turn_finished` | `turn_id`, `session_id`, `model` (as the provider answered), `outcome` (`completed`, `failed`, `cancelled`, `disconnected`, `timed_out`), `duration_ms`, `tool_calls`, `failed_tool_calls`, `builds`, `failed_builds`, `model_calls`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `usage_complete`, `estimated_api_cost_usd` |
 | `turn_rejected` | `reason` (`invalid`, `busy`, `limited`, `allowance`, `unavailable`) |
 | `image_generated` | `ok` (thumbnails; separate from turn tokens) |
-| `capacity_snapshot` | every 5 minutes: `sessions`, `running_turns`, `quota_state`, `quota_five_hour_percent`, `quota_seven_day_percent` |
+| `capacity_snapshot` | every 5 minutes: `sessions`, `running_turns`, `quota_state` (`disabled`, `unavailable`, `ok`), `quota_five_hour_percent`, `quota_seven_day_percent` |
 
 - `outcome: completed` means the assistant finished; whether its tools and builds worked is in the
   tool counts.

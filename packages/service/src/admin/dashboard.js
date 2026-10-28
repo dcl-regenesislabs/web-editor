@@ -90,7 +90,6 @@ function renderTurns() {
 const WINDOW_NAMES = { five_hour: 'Session (5 hours)', seven_day: 'Week', seven_day_opus: 'Week · Opus', seven_day_sonnet: 'Week · Sonnet' }
 const QUOTA_NOTES = {
   disabled: 'The assistant is not configured on this service.',
-  unsupported: 'The signed-in Claude credential does not report plan usage.',
   unavailable: 'Appears with the next Claude reply.',
   ok: 'Shared by everything signed in to the Claude account, not only this service.'
 }

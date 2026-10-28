@@ -26,7 +26,7 @@ export const ASSISTANT_OPERATION_EVENT = 'Assistant Operation'
 
 export type AssistantTurnOutcome = 'completed' | 'failed' | 'cancelled' | 'disconnected' | 'timed_out'
 export type AssistantRejection = 'invalid' | 'busy' | 'limited' | 'allowance' | 'unavailable'
-export type AssistantQuotaState = 'disabled' | 'unsupported' | 'unavailable' | 'ok'
+export type AssistantQuotaState = 'disabled' | 'unavailable' | 'ok'
 
 export interface AssistantTurnUsageProps {
   input_tokens: number
