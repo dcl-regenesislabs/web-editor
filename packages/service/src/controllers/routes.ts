@@ -11,6 +11,11 @@ export async function setupRouter({ components }: GlobalContext): Promise<Router
     // Local artifact bytes are streamed unchanged; preserve their declared length.
     return { ...fromNativeResponse(response), headers: response.headers }
   })
+  // ahead of the catch-all below; admin answers 404 until Cloudflare Access is configured
+  for (const path of ['/admin', '/admin/:path(.*)']) {
+    router.all(base + path, async ({ request, components }) =>
+      fromNativeResponse(await components.admin.handle(request) ?? new Response(null, { status: 404 })))
+  }
   router.get(`${base}/assistant/socket`, async ({ request, components }) => components.assistant.upgrade(request))
   const paths = [
     '/health', '/projects', '/projects/:id', '/projects/:id/manifest',

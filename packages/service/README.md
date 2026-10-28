@@ -284,9 +284,107 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `ASSISTANT_WEEKLY_LIMIT` | 200000 | the same per week, from Monday 00:00 UTC |
 | `AI_IMAGE_AUTH_PATH` | none | ChatGPT (Codex) OAuth session file for the image model behind `make_thumbnail` (`--ai-image-auth`); must be outside `STORAGE_DIR` in production. Unset, the assistant says thumbnails are unavailable |
 | `ASSISTANT_IMAGES_PER_DAY` | 10 | thumbnail images per wallet per UTC day, counted in `image-usage/` beside that file |
+| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | none: `/admin/` answers 404 | set both to serve the [operations dashboard](#operations-dashboard-and-telemetry): the Access team slug and the dashboard application's audience tag |
+| `ADMIN_LOCAL` | none | `1` serves `/admin/` without sign-in; only on a loopback `HTTP_SERVER_HOST` outside production |
+| `SEGMENT_WRITE_KEY` | none: no events leave the service | write key of a Segment HTTP API source for the assistant's events; needs the assistant configured |
+| `ANALYTICS_USER_SALT` | required with `SEGMENT_WRITE_KEY`, 32+ characters | hashes wallets into the installation's pseudonymous user ids; changing it starts new ids |
+| `SEGMENT_ENDPOINT` | `https://api.segment.io/v1/batch` | the batch endpoint, e.g. Segment's EU region |
+| `ANALYTICS_HISTORY_URL` | none | https link to the historical reports, shown on the dashboard |
 
 Fixed in code: signed-fetch window 60 seconds, ticket lifetime 15 minutes, JSON body 2 MB, project
 name 100 characters, path 512 characters, 3 auth-chain links, 500 spent tickets per purge run.
+
+## Operations dashboard and telemetry
+
+`<BASE_PATH>/admin/` is a read-only page for operators, styled with the editor's design tokens.
+It shows:
+
+- connected assistant sessions and running turns (opaque server ids, model, start, elapsed);
+- prompts, tokens and estimated API cost since the service started;
+- the Claude plan's session (5-hour) and weekly usage, when available;
+- a per-wallet table (prompts, tokens, cost, the service's own daily and weekly allowance used,
+  last activity), most tokens first;
+- outcomes, refusals, and how event delivery is doing.
+
+Wallets appear only on this signed-in page, never in events. It polls
+`<BASE_PATH>/admin/api/status` every 5 seconds while visible. When a poll fails or the sign-in
+expires it says so and keeps the last counters; it never shows zeros it did not read. It has no
+controls.
+
+**Live state is in memory** (`src/ai/operations.ts`): a restart clears it and changes "Service
+started". History lives only in the events below; the live count is never derived from them, and a
+`turn_started` with no `turn_finished` (a crash) is incomplete data.
+
+**Sign-in** is Cloudflare Access, as in the wearable validator (`src/admin/access.ts`): the service
+checks the Access JWT's RS256 signature against the team's cached keys (refreshed at most once a
+minute for an unknown key, 5 s timeout), its issuer, expiry and audience. The application's Access policy is the admin
+list; the service keeps no copy of it. The token comes from Cloudflare's `cf-access-jwt-assertion` header, or the
+`CF_Authorization` cookie when a request reaches the origin directly. Anything else is 401; keys that
+cannot be fetched are 503. Creator routes keep wallet signatures. Admin responses are `no-store`
+with a strict CSP.
+
+Setting it up:
+
+1. Zero Trust → Access → Applications → Add → Self-hosted, in the same team and sign-in provider
+   as the wearable validator. Domain: the service host, path `<BASE_PATH>/admin`.
+2. Policy: Allow, include emails ending in `@dclregenesislabs.xyz`. Settings → Cookies → SameSite **Lax**.
+3. Copy the application's **AUD tag** to `CF_ACCESS_AUD`, the team slug (before
+   `.cloudflareaccess.com`) to `CF_ACCESS_TEAM_DOMAIN`.
+   Restart. `curl <service>/admin/api/status` from outside should now answer 401.
+
+**Events** go from the backend to the operator's own Segment source; nothing runs in the browser
+and there is no session recording. Create a Segment **HTTP API** source for the service, set
+`SEGMENT_WRITE_KEY` and `ANALYTICS_USER_SALT` (e.g. `openssl rand -hex 32`, kept for good), and
+connect the source to the team's destination. Reports and retention are the destination's: check its
+retention plan before promising a period (Mixpanel was discussed but is neither chosen nor configured).
+
+Every event is `Assistant Operation` with an `action` and flat properties, typed in
+`packages/contract/src/analytics.ts`; those types are the allowlist.
+
+| `action` | Properties |
+|---|---|
+| `turn_started` | `turn_id`, `session_id` |
+| `turn_finished` | `turn_id`, `session_id`, `model` (as the provider answered), `outcome` (`completed`, `failed`, `cancelled`, `disconnected`, `timed_out`), `duration_ms`, `tool_calls`, `failed_tool_calls`, `builds`, `failed_builds`, `model_calls`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `usage_complete`, `estimated_api_cost_usd` |
+| `turn_rejected` | `reason` (`invalid`, `busy`, `limited`, `allowance`, `unavailable`) |
+| `image_generated` | `ok` (thumbnails; separate from turn tokens) |
+| `capacity_snapshot` | every 5 minutes: `sessions`, `running_turns`, `quota_state` (`disabled`, `unavailable`, `ok`), `quota_five_hour_percent`, `quota_seven_day_percent` |
+
+- `outcome: completed` means the assistant finished; whether its tools and builds worked is in the
+  tool counts.
+- Tokens are the provider's own counts, including compaction calls, and are never recounted when a
+  conversation is restored. `model_calls` counts the agent's replies, not compaction.
+  `usage_complete: false` means a call ended without usage, so the counts are a floor.
+- `estimated_api_cost_usd` is priced at public API rates. It is not the subscription's bill.
+- `userId` is an HMAC of the wallet with `ANALYTICS_USER_SALT`: pseudonymous and only comparable
+  within this installation. Snapshots use `anonymousId: dcl-editor-service`.
+- Never sent: prompts, replies, file names or contents, screenshots, images, tool arguments or
+  results, error text, credentials, wallets, emails or IP addresses.
+
+Events wait in `<assistant dir>/analytics/queue.json`: on the persistent volume beside the
+credential, outside `STORAGE_DIR`. At most 2,000 are kept (oldest dropped first). Batches of 100
+go every 10 seconds; network errors, 408, 429 and 5xx are retried with backoff up to 5 minutes, and
+other refusals are dropped. Each event keeps its `messageId` across retries, so Segment discards
+duplicates. Delivery never holds up a turn, and the dashboard shows the queue size, deliveries,
+failed attempts and dropped events. The queue is only for delivery, not a local analytics store.
+Saved conversation memory (`.assistant/memory`, encrypted with the browser's key) is separate and
+never sent.
+
+**Claude plan usage** comes from the headers Claude puts on every subscription reply,
+`anthropic-ratelimit-unified-5h-utilization` (the session) and `-7d-utilization` (the week), with
+their reset times; Claude Code's `/usage` reads the same. A pi extension hands each reply's headers
+to the service (`src/ai/quota.ts`): no extra request, and it works with a `claude setup-token`,
+whose token Claude refuses on the `/api/oauth/usage` endpoint (403). The reading covers everything
+signed in to that Claude account, appears with the first reply after a restart, and is marked out of
+date after 30 minutes without one.
+
+The per-user "Session" column and "≈ N% of a session each" are estimates. Between readings in the
+same 5-hour window, the service relates how far the reading rose to how much it spent itself (API-rate
+cost, which weighs input, output and cache like the limits do). It applies that ratio once at least $1
+of spend backs it. Other use of the same Claude account inflates the estimate. Nothing estimates a
+percentage without a real plan reading.
+
+Local check without Cloudflare: start the dev server with `ADMIN_LOCAL=1` on `127.0.0.1` and open
+`http://127.0.0.1:8787/admin/`.
 
 ## For tests
 

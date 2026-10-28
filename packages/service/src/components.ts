@@ -7,6 +7,8 @@ import { createServiceConfig } from './adapters/config.ts'
 import { createProjectStorageComponent } from './adapters/project-storage.ts'
 import { createPurgeJobComponent } from './adapters/purge-job.ts'
 import { createSkillsComponent } from './adapters/skills.ts'
+import { createTelemetryComponent } from './adapters/telemetry.ts'
+import { adminAccessFromConfig, createAdminComponent } from './admin/admin.ts'
 import { createAssistantComponent, DEFAULT_ASSISTANT_LIMITS } from './ai/server.ts'
 import type { AssistantLimits } from './ai/server.ts'
 import { createAssistantMemory } from './ai/memory.ts'
@@ -82,23 +84,38 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   }
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const logs = await createLogComponent({ config, metrics })
-  const factory = options.agentFactory ?? (authPath === undefined ? undefined :
-    await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills, logs.getLogger('assistant')))
   if (authInStorage) {
     logs.getLogger('assistant').warn('The assistant credential is inside STORAGE_DIR; set AI_AUTH_PATH to a secret mount outside it')
   }
   if (imageAuthInStorage) {
     logs.getLogger('assistant').warn('The image model credential is inside STORAGE_DIR; set AI_IMAGE_AUTH_PATH to a secret mount outside it')
   }
+  const usage = authPath === undefined ? undefined : createUsageMeter(join(dirname(authPath), 'usage'), {
+    daily: (await config.getNumber('ASSISTANT_DAILY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.daily,
+    weekly: (await config.getNumber('ASSISTANT_WEEKLY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.weekly
+  })
+  const telemetry = await createTelemetryComponent({ config, logs }, { stateDir: authPath === undefined ? undefined : dirname(authPath) })
+  const factory = options.agentFactory ?? (authPath === undefined ? undefined :
+    await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
+      logs.getLogger('assistant'), telemetry.recordProviderHeaders))
+  const admin = createAdminComponent({ logs }, {
+    access: adminAccessFromConfig({
+      teamDomain: await config.getString('CF_ACCESS_TEAM_DOMAIN'),
+      audience: await config.getString('CF_ACCESS_AUD'),
+      local: await config.getString('ADMIN_LOCAL'),
+      host: await config.getString('HTTP_SERVER_HOST'),
+      production: process.env.NODE_ENV === 'production'
+    }),
+    basePath: env.basePath, version: env.version, historyUrl: telemetry.historyUrl,
+    operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery,
+    allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance()
+  })
   const assistant = createAssistantComponent({ logs }, {
     factory, allowedOrigins: env.allowedOrigins, basePath: env.basePath,
-    limits,
+    limits, operations: telemetry.operations,
     // beside the credential, outside STORAGE_DIR and its project backups
     memory: authPath === undefined ? undefined : createAssistantMemory(join(dirname(authPath), 'memory')),
-    usage: authPath === undefined ? undefined : createUsageMeter(join(dirname(authPath), 'usage'), {
-      daily: (await config.getNumber('ASSISTANT_DAILY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.daily,
-      weekly: (await config.getNumber('ASSISTANT_WEEKLY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.weekly
-    }),
+    usage,
     // one image counts 1, so the meter's daily limit is the image cap
     images: imageAuthPath === undefined ? undefined : {
       provider: createCodexImageProvider({ token: await codexTokenSource(imageAuthPath) }),
@@ -112,6 +129,7 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   const projectStorage = createProjectStorageComponent({ assistant, logs }, env)
   const purgeJob = createPurgeJobComponent({ projectStorage, logs })
 
-  // Stop WebSockets before the HTTP listener, then drain the purge job before storage.
-  return { config, logs, metrics, store, skills, projectStorage, purgeJob, server, statusChecks, assistant }
+  // Stop WebSockets before the HTTP listener, then drain the purge job before storage; telemetry
+  // stops after the assistant so the last turns' events are queued.
+  return { config, logs, metrics, store, skills, telemetry, admin, projectStorage, purgeJob, server, statusChecks, assistant }
 }

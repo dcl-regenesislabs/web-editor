@@ -7,6 +7,7 @@ import { ASSISTANT_MAX_MESSAGE_BYTES, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFI
 import { createRateLimiter } from '../config.ts'
 import { createConnection } from './connection.ts'
 import type { AssistantMemory } from './memory.ts'
+import type { Operations } from './operations.ts'
 import type { UsageMeter } from './usage.ts'
 import type { ImageProvider } from './images.ts'
 import { createWalletImages, DEFAULT_IMAGES_PER_DAY } from './thumbnail.ts'
@@ -55,6 +56,7 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
   memory?: AssistantMemory
   /** The image model and its per-wallet day count; without it thumbnails report themselves unavailable. */
   images?: { provider: ImageProvider; usage: UsageMeter }
+  operations?: Operations
 }): AssistantComponent {
   const limits = options.limits ?? DEFAULT_ASSISTANT_LIMITS
   const days = new Map<string, { day: number; count: number }>()
@@ -103,6 +105,7 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
     if (stopped || factory === undefined || reservation === undefined) { socket.terminate(); return }
     const { wallet } = reservation
     sockets.set(socket, wallet)
+    const operations = options.operations?.openSession(wallet)
     let connection: ReturnType<typeof createConnection> | null = null
     const deadline = setTimeout(() => socket.terminate(), 5000)
     const idle = setTimeout(() => {
@@ -133,9 +136,22 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
       if (socket.readyState !== WebSocket.OPEN) return
       clearTimeout(deadline)
       const usage = options.usage?.forWallet(wallet)
-      const images = createWalletImages(options.images?.provider, options.images?.usage.forWallet(wallet), limits.imagesPerDay,
+      const walletImages = createWalletImages(options.images?.provider, options.images?.usage.forWallet(wallet), limits.imagesPerDay,
         (signal) => profileAvatar(wallet, signal))
-      connection = createConnection({ factory, logger, send, allowTurn: () => allowTurn(wallet), memory: memory?.forWallet(wallet), usage, images })
+      const images = options.operations === undefined ? walletImages : {
+        ...walletImages,
+        generate: async (...args: Parameters<typeof walletImages.generate>) => {
+          try {
+            const picture = await walletImages.generate(...args)
+            options.operations?.imageGenerated(wallet, true)
+            return picture
+          } catch (error) {
+            options.operations?.imageGenerated(wallet, false)
+            throw error
+          }
+        }
+      }
+      connection = createConnection({ factory, logger, send, allowTurn: () => allowTurn(wallet), memory: memory?.forWallet(wallet), usage, images, operations })
       connections.set(socket, connection)
       send({ kind: 'ready', providers })
     }).catch(() => socket.close(1011, 'Assistant unavailable'))
@@ -147,10 +163,10 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
       sockets.delete(socket)
       connections.delete(socket)
       if (connection !== null) {
-        const pending = connection.close().catch(() => { logger.error('Assistant cleanup failed') })
+        const pending = connection.close().catch(() => { logger.error('Assistant cleanup failed') }).finally(() => operations?.closed())
         closing.add(pending)
         void pending.then(() => closing.delete(pending))
-      }
+      } else operations?.closed()
     })
   }
   return {

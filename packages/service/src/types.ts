@@ -5,6 +5,8 @@ import type { metricDeclarations } from './metrics.ts'
 import type { PurgeResult } from './purge.ts'
 import type { BlobStore } from './store.ts'
 import type { SkillsComponent } from './adapters/skills.ts'
+import type { TelemetryComponent } from './adapters/telemetry.ts'
+import type { AdminComponent } from './admin/admin.ts'
 
 export interface ProjectStorageComponent {
   handle(request: Request): Promise<Response>
@@ -24,9 +26,11 @@ export interface BaseComponents {
   skills: SkillsComponent
   projectStorage: ProjectStorageComponent
   assistant: AssistantComponent
+  admin: AdminComponent
 }
 
 export type AppComponents = BaseComponents & {
+  telemetry: TelemetryComponent
   statusChecks: IBaseComponent
   purgeJob: IBaseComponent
 }
