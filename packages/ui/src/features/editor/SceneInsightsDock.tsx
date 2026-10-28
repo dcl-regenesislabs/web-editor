@@ -6,6 +6,7 @@ import { IconExpand } from '../../icons'
 import { registerCss } from '../../ds/styles/registry'
 import { cmd } from '../../engine/cmd'
 import { engineFrames, type EngineFrames } from '../../engine/engine-frames'
+import { ViewportQualitySection } from './ViewportQualitySection'
 import { useUnusedFiles } from '../../unused-files'
 import { sceneBudget, sceneModels, type ModelRow } from '../../scene-budget'
 import { uiFocusEntity, uiSelectEntity } from '../../actions/selection'
@@ -217,6 +218,7 @@ function Dock(): JSX.Element {
               <div><b>{stats?.now.entities ?? '…'}</b><span>live entities</span></div>
             </div>
           </section>
+          <ViewportQualitySection />
           <section>
             <h3>Limits{budget !== null ? ` · ${budget.parcels} parcel${budget.parcels === 1 ? '' : 's'}` : ''}</h3>
             {budget === null ? <p>Counting…</p> : (

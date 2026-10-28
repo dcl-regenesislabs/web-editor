@@ -45,3 +45,4 @@
 .eui-insights-fps small, .eui-insights-stats b small { font-size: var(--fs-xs); font-weight: 400; color: var(--text-3); }
 .eui-insights-size { color: var(--text-3); }
 .eui-insights-size b { color: var(--text-2); font-weight: 500; }
+.eui-insights-quality { display: grid; grid-template-columns: max-content max-content; align-items: center; gap: var(--space-2) var(--space-4); font-size: var(--fs-sm); color: var(--text-2); }

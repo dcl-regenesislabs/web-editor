@@ -10,6 +10,7 @@ import { pinTimeOfDay } from '@scene/inspector'
 import { setEngineWindow, engineReady } from '../../engine/console'
 import { getHost, startEditorScene } from '../../engine/hosted'
 import { installHostedInput } from '../../engine/hosted-input'
+import { installViewportQuality } from '../../engine/viewport-quality'
 import { cmd } from '../../engine/cmd'
 import { log } from '../../log'
 import { ENGINE_BOOT_WATCHDOG_MS, INSPECTOR_STALL_MS, SLOW_BOOT_HINT_MS } from '../../config'
@@ -255,6 +256,7 @@ export function Editor(props: { params: URLSearchParams; preview?: number }): JS
     host?.setMode(ready && !frozen ? 'play' : 'edit')
   }, [host, ready, frozen, settling])
   playingRef.current = playing
+  useEffect(() => installViewportQuality(), [])
   useEffect(() => {
     if (playing) return
     setLogsInPlay(false)
