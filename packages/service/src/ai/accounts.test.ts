@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { AccountError, CLAUDE_PROVIDER, createAccountPool } from './accounts.ts'
+import { AccountError, createAccountPool } from './accounts.ts'
 import { seedSetupToken } from './setup-token.ts'
 
 const directories: string[] = []
@@ -18,7 +18,7 @@ async function pool(now?: () => number) {
 }
 
 const token = async (accounts: Awaited<ReturnType<typeof createAccountPool>>) => {
-  const credential = await accounts.store.read(CLAUDE_PROVIDER)
+  const credential = await accounts.store.read('anthropic')
   return credential?.type === 'oauth' ? credential.access : undefined
 }
 

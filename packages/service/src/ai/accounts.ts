@@ -6,8 +6,8 @@ import { object } from '../../../contract/src/assistant.ts'
 import { createQuotaMonitor, DISABLED_QUOTA } from './quota.ts'
 import type { QuotaMonitor, QuotaView } from './quota.ts'
 
-export const CLAUDE_PROVIDER = 'anthropic'
-export const PRIMARY_ACCOUNT = 'primary'
+const CLAUDE_PROVIDER = 'anthropic'
+const PRIMARY_ACCOUNT = 'primary'
 const SETUP_TOKEN = /^sk-ant-oat[\w-]{1,400}$/
 const ACCOUNT_FILE = /^([a-f0-9]{16})\.json$/
 const MAX_ACCOUNTS = 20
@@ -31,7 +31,7 @@ export interface AccountView {
   quota: QuotaView
 }
 
-export type AccountErrorCode = 'invalid-token' | 'invalid-label' | 'duplicate' | 'too-many' | 'not-found' | 'not-removable'
+type AccountErrorCode = 'invalid-token' | 'invalid-label' | 'duplicate' | 'too-many' | 'not-found' | 'not-removable'
 
 export class AccountError extends Error {
   readonly code: AccountErrorCode
