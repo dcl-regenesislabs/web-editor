@@ -45,22 +45,44 @@ it('parks a burst briefly, a plan limit until its reset, and skips a token Claud
   const { accounts } = await pool(() => clock)
   await accounts.add('Second', 'sk-ant-oat-second')
   await accounts.add('Third', 'sk-ant-oat-third')
+  await accounts.scope(async () => {
+    expect(await token(accounts)).toBe('sk-ant-oat-first')
+    accounts.responded(accounts.current(), 429, {})
+    expect(await token(accounts)).toBe('sk-ant-oat-second')
+    clock += 61_000
+    // the first is free again, but the pool stays on the account that works
+    expect(await token(accounts)).toBe('sk-ant-oat-second')
 
-  expect(await token(accounts)).toBe('sk-ant-oat-first')
-  accounts.responded(accounts.current(), 429, {})
-  expect(await token(accounts)).toBe('sk-ant-oat-second')
-  clock += 61_000
-  // the first is free again, but the pool stays on the account that works
-  expect(await token(accounts)).toBe('sk-ant-oat-second')
-
-  const reset = clock / 1000 + 5 * 3600
-  accounts.responded(accounts.current(), 429, {
-    'anthropic-ratelimit-unified-status': 'rejected', 'anthropic-ratelimit-unified-reset': String(reset)
+    const reset = clock / 1000 + 5 * 3600
+    accounts.responded(accounts.current(), 429, {
+      'anthropic-ratelimit-unified-status': 'rejected', 'anthropic-ratelimit-unified-reset': String(reset)
+    })
+    expect(await token(accounts)).toBe('sk-ant-oat-first')
+    accounts.responded(accounts.current(), 401, {})
+    expect(await token(accounts)).toBe('sk-ant-oat-third')
+    accounts.responded(accounts.current(), 429, { 'anthropic-ratelimit-unified-7d-utilization': '1.0', 'anthropic-ratelimit-unified-7d-reset': String(reset + 3600) })
+    expect(accounts.blockedUntil()).toBe(reset * 1000)
   })
-  expect(await token(accounts)).toBe('sk-ant-oat-first')
-  accounts.responded(accounts.current(), 401, {})
-  expect(await token(accounts)).toBe('sk-ant-oat-third')
-  accounts.responded(accounts.current(), 429, { 'anthropic-ratelimit-unified-7d-utilization': '1.0', 'anthropic-ratelimit-unified-7d-reset': String(reset + 3600) })
-  expect(accounts.blockedUntil()).toBe(reset * 1000)
   expect((await accounts.list()).map((account) => account.state)).toEqual(['rejected', 'limited', 'limited'])
+})
+
+it('credits each response to the account its own turn was handed, while turns overlap', async () => {
+  const { accounts } = await pool()
+  await accounts.add('Second', 'sk-ant-oat-second')
+  let answer!: () => void
+  const answered = new Promise<void>((resolve) => { answer = resolve })
+  const slow = accounts.scope(async () => {
+    expect(await token(accounts)).toBe('sk-ant-oat-first')
+    await answered
+    accounts.responded(accounts.current(), 401, {})
+  })
+  // another turn hits the first account's limit, and the next one moves to the second
+  await accounts.scope(async () => {
+      await token(accounts)
+      accounts.responded(accounts.current(), 429, { 'anthropic-ratelimit-unified-status': 'rejected' })
+  })
+  await accounts.scope(async () => expect(await token(accounts)).toBe('sk-ant-oat-second'))
+  answer()
+  await slow
+  expect((await accounts.list()).map((account) => account.state)).toEqual(['rejected', 'active'])
 })

@@ -12,6 +12,8 @@ import { adminAccessFromConfig, createAdminComponent } from './admin/admin.ts'
 import { createAssistantComponent, DEFAULT_ASSISTANT_LIMITS } from './ai/server.ts'
 import type { AssistantLimits } from './ai/server.ts'
 import { createAccountPool } from './ai/accounts.ts'
+import type { AccountPool } from './ai/accounts.ts'
+import { DISABLED_QUOTA } from './ai/quota.ts'
 import { createAssistantMemory } from './ai/memory.ts'
 import { createUsageMeter, DEFAULT_USAGE_LIMITS } from './ai/usage.ts'
 import { ASSISTANT_MODEL, createPiFactory } from './ai/pi.ts'
@@ -100,11 +102,17 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     daily: (await config.getNumber('ASSISTANT_DAILY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.daily,
     weekly: (await config.getNumber('ASSISTANT_WEEKLY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.weekly
   })
-  const accounts = authPath === undefined ? undefined : await createAccountPool({
-    primaryPath: authPath, dir: join(dirname(authPath), 'claude-accounts'), logger: logs.getLogger('assistant'),
-    spend: () => telemetry.operations.snapshot().sinceStart.usage.estimatedCostUsd
+  // the pool estimates each account's share from telemetry's spend, and telemetry reports the pool's reading
+  let accounts: AccountPool | undefined
+  const telemetry = await createTelemetryComponent({ config, logs }, {
+    stateDir: authPath === undefined ? undefined : dirname(authPath), quota: () => accounts?.quota() ?? DISABLED_QUOTA
   })
-  const telemetry = await createTelemetryComponent({ config, logs }, { stateDir: authPath === undefined ? undefined : dirname(authPath), quota: accounts?.quota })
+  if (authPath !== undefined) {
+    accounts = await createAccountPool({
+      primaryPath: authPath, dir: join(dirname(authPath), 'claude-accounts'), logger: logs.getLogger('assistant'),
+      spend: () => telemetry.operations.snapshot().sinceStart.usage.estimatedCostUsd
+    })
+  }
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
       logs.getLogger('assistant'), accounts))

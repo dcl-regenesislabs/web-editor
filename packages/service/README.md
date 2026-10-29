@@ -104,13 +104,17 @@ is shared: 32 sockets (3 per wallet, 8 per client address), 100 unused connect t
 30 connects a minute per address) and `ASSISTANT_TURNS_PER_MINUTE` turns (10 per wallet, 20 per
 address). Prompts per UTC day are capped per wallet, per address and for everyone together
 (`ASSISTANT_TURNS_PER_DAY`, `_PER_IP_PER_DAY`, `_PER_DAY_TOTAL`); the counts are kept in
-`<assistant dir>/prompt-counts.json`, so a restart does not hand out a fresh day. With `*`, a handful
+`<assistant dir>/prompt-counts.json`, so a restart does not hand out a fresh day. That file holds
+today's wallet and client addresses with their counts (mode 0600, beside the credential); the first turn of
+the next UTC day replaces it, so it never holds more than the current day and, until then, the last one. With `*`, a handful
 of free wallets can still hold most of it and lock everyone else out, so list wallets when that matters.
 
 **Client addresses.** Every request also counts against `IP_REQUESTS_PER_MINUTE` for its address.
 The service takes the address from the socket; behind a reverse proxy that is the proxy's, so set
 `CLIENT_IP_HEADER` to the header the proxy writes (`x-real-ip` with the included Nginx and Compose
-files). The header is believed only from a private or loopback peer. Without it, requests from
+files). The header is believed only from a private or loopback peer (10/8, 172.16/12, 192.168/16,
+100.64/10, loopback): set it only where the proxy is the one peer that can reach the service, as with
+Compose's loopback port, or every host on that private network can claim any address. Without it, requests from
 private peers are not counted per address, and production logs a warning. IPv6 clients count per
 /64. With Cloudflare in front of Nginx, `$remote_addr` is Cloudflare's: add `real_ip_header
 CF-Connecting-IP` and `set_real_ip_from` for Cloudflare's ranges so Nginx passes on the visitor's.
@@ -338,19 +342,22 @@ controls add and remove Claude accounts.
 or `AI_AUTH_PATH`) is the first account. To add another, run `claude setup-token` signed in to that
 Claude account and paste the token with a name under *Claude accounts*. Each added account is a 0600
 file in `<assistant dir>/claude-accounts/`, beside the credential and outside `STORAGE_DIR`; the
-dashboard shows only its last four characters and never sends a token back. Up to 20 accounts.
+dashboard shows only its last four characters and never sends a token back. Up to 20 accounts. Removing one
+takes effect from the next model request; a request already sent with it finishes.
 
 pi reads the Claude credential before every model request from one store that hands out the account
 in use. A turn stays on one account (its prompt cache keeps paying off) until Claude answers 429:
 a plan limit (`anthropic-ratelimit-unified-status: rejected`, or a window at 100%) parks the account
 until its reset time, a burst for `retry-after` or a minute. pi then retries the request (3 times,
-from 2 seconds) and the retry reads the next ready account, so a running turn carries on. A token
+from 2 seconds) and the retry reads the next ready account, so a running turn carries on. Each turn's
+requests run in their own async context, so a response is credited to the account that request was given
+even while other turns switch accounts. A token
 Claude refuses (401/403) is skipped until it answers again or the service restarts. When every
 account is limited the turn stops at once with "Try again after <first reset>". Limits are in memory:
 after a restart the first request to a still-limited account finds out again.
 
 Account writes need the Access sign-in, a same-origin `Origin` (and `Sec-Fetch-Site` when sent),
-a JSON body of at most 2 KB, and at most 20 changes a minute; the log names the admin and the account,
+a JSON body of at most 2 KB with a `Content-Length`, and at most 20 changes a minute; the log names the admin and the account,
 never the token. A pasted token is checked by the first reply it serves.
 
 **Live state is in memory** (`src/ai/operations.ts`): a restart clears it and changes "Service

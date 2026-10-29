@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomBytes } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -47,10 +48,12 @@ export class AccountError extends Error {
  */
 export interface AccountPool {
   store: CredentialStore
-  /** The account the last Claude credential was handed out for: the next response belongs to it. */
+  /** Runs one turn's model requests, so each response is credited to the account its own request used. */
+  scope<T>(work: () => Promise<T>): Promise<T>
+  /** The account this turn's last Claude credential was handed out for: its next response belongs to it. */
   current(): string | undefined
   responded(id: string | undefined, status: number, headers: Record<string, string>): void
-  /** null while an account can take a request; else when the first limited one frees up (Infinity: none will). */
+  /** null while an account can take a request; else when the first limited one frees up (Infinity: none will, or there is none). */
   blockedUntil(): number | null
   quota(): QuotaView
   list(): Promise<AccountView[]>
@@ -167,7 +170,8 @@ export async function createAccountPool(options: {
   accounts.splice(1, accounts.length, ...accounts.slice(1).sort((a, b) => (a.addedAt ?? 0) - (b.addedAt ?? 0)))
 
   let active: string | undefined
-  let issued: string | undefined
+  // concurrent turns share the store, so what each was handed out lives in its own async context
+  const requests = new AsyncLocalStorage<{ issued?: string }>()
   const byId = (id: string | undefined) => accounts.find((account) => account.id === id)
   const usable = (account: Account, at: number) => account.credential !== undefined && !account.rejected && account.limitedUntil <= at
 
@@ -197,7 +201,8 @@ export async function createAccountPool(options: {
       if (providerId !== CLAUDE_PROVIDER) return (await readPrimary())[providerId]
       await refreshPrimary()
       const chosen = choose()
-      issued = chosen?.id
+      const request = requests.getStore()
+      if (request !== undefined) request.issued = chosen?.id
       return chosen?.credential
     },
     async list() {
@@ -208,8 +213,8 @@ export async function createAccountPool(options: {
       return claude === undefined ? listed : [...listed, { providerId: CLAUDE_PROVIDER, type: claude.type }]
     },
     async modify(providerId, change) {
-      // pi refreshes inside modify right after a read: the issued account is the one being refreshed
-      const account = providerId === CLAUDE_PROVIDER ? byId(issued) : undefined
+      // pi refreshes inside modify right after a read: the account just issued to this turn is the one being refreshed
+      const account = providerId === CLAUDE_PROVIDER ? byId(requests.getStore()?.issued) ?? choose() : undefined
       if (account === undefined || account.file === null) {
         let result: Credential | undefined
         await updatePrimary(async (data) => {
@@ -262,7 +267,8 @@ export async function createAccountPool(options: {
 
   return {
     store,
-    current: () => issued,
+    scope: (work) => requests.run({}, work),
+    current: () => requests.getStore()?.issued,
     responded(id, status, headers) {
       const account = byId(id)
       if (account === undefined) return
@@ -282,7 +288,8 @@ export async function createAccountPool(options: {
     blockedUntil() {
       const at = now()
       const signedIn = accounts.filter((account) => account.credential !== undefined)
-      if (signedIn.length === 0 || signedIn.some((account) => usable(account, at))) return null
+      if (signedIn.length === 0) return Infinity
+      if (signedIn.some((account) => usable(account, at))) return null
       const limited = signedIn.filter((account) => !account.rejected).map((account) => account.limitedUntil)
       return limited.length === 0 ? Infinity : Math.min(...limited)
     },

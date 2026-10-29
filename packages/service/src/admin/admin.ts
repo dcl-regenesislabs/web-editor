@@ -74,9 +74,10 @@ function sameOrigin(request: Request): boolean {
   return new URL(origin).host === (request.headers.get('host') ?? new URL(request.url).host)
 }
 
+// the page always sends a length, so a body without one (or a longer one) is refused before it is read
 async function readSmallBody(request: Request): Promise<string | null> {
-  const declared = Number(request.headers.get('content-length') ?? 0)
-  if (declared > MAX_BODY) return null
+  const declared = Number(request.headers.get('content-length') ?? NaN)
+  if (!Number.isSafeInteger(declared) || declared > MAX_BODY) return null
   const text = await request.text()
   return new TextEncoder().encode(text).byteLength > MAX_BODY ? null : text
 }

@@ -209,10 +209,14 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
       let unreported = 0
       let responseModel: string | undefined
       let emittedText = false
+      let retryCancelled = false
       let separator = false
       session.subscribe((event) => {
         // a retry only helps when another account can take it; pi arms the retry's abort just after this event
-        if (event.type === 'auto_retry_start' && claude && accounts?.blockedUntil() != null) queueMicrotask(() => session.abortRetry())
+        if (event.type === 'auto_retry_start' && claude && accounts?.blockedUntil() != null) {
+          retryCancelled = true
+          queueMicrotask(() => session.abortRetry())
+        }
         if (event.type === 'message_end' && event.message.role === 'assistant') {
           calls++
           if (event.message.usage.totalTokens === 0) unreported++
@@ -237,11 +241,14 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
             if (match === null) throw new Error('Invalid image')
             return { type: 'image' as const, mimeType: match[1], data: match[2] }
           })
-          await session.prompt(`${next.context ?? ''}\n\n${next.text}`, { images })
+          retryCancelled = false
+          const run = () => session.prompt(`${next.context ?? ''}\n\n${next.text}`, { images })
+          await (claude && accounts !== undefined ? accounts.scope(run) : run())
           const last = session.messages.at(-1)
-          // a cancelled retry leaves the failed reply out of the messages, so no reply at all is a failure too
-          if (last?.role !== 'assistant' || last.stopReason === 'error' || last.stopReason === 'aborted') {
-            if (last?.role !== 'assistant' || last.stopReason === 'error') blocked()
+          // a cancelled retry leaves the failed reply out of the messages
+          const failed = last?.role === 'assistant' && (last.stopReason === 'error' || last.stopReason === 'aborted')
+          if (retryCancelled || failed) {
+            if (retryCancelled || last?.role === 'assistant' && last.stopReason === 'error') blocked()
             throw new Error('The model did not complete this turn.')
           }
         },

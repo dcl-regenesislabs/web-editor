@@ -499,12 +499,12 @@ async function route(request: Request, env: Env, client: string | undefined): Pr
   const path = url.pathname.slice(base.length)
   const method = request.method
 
-  if (method === 'OPTIONS') return preflight(request)
-  if (path === '/health') return json(200, { ok: true, ...(env.version === undefined ? {} : { version: env.version }) })
   if (client !== undefined) {
     const wait = limited(run, `ip:${client}`, run.limits.ipRequestsPerMinute)
     if (wait != null) return wait
   }
+  if (method === 'OPTIONS') return preflight(request)
+  if (path === '/health') return json(200, { ok: true, ...(env.version === undefined ? {} : { version: env.version }) })
   const blob = /^\/blobs\/([^/]+)$/.exec(path)
   if (blob != null) return method === 'PUT' ? putBlob(run, env, request, blob[1]) : fail(405, 'method-not-allowed')
   if (path.startsWith('/assistant/')) {

@@ -102,8 +102,12 @@ describe('Claude accounts from the dashboard', () => {
     const accounts = await createAccountPool({ primaryPath: join(dir, '.auth.json'), dir: join(dir, 'claude-accounts') })
     const { component } = await admin(undefined, accounts)
     const signedIn = { 'cf-access-jwt-assertion': accessToken(key.privateKey, 'k1', now) }
-    const add = (headers: Record<string, string>, body: unknown = { label: 'Team 2', token: 'sk-ant-oat-second-secret' }) =>
-      component.handle(new Request(`${BASE}/admin/api/accounts`, { method: 'POST', headers: { ...signedIn, ...headers }, body: JSON.stringify(body) }))
+    const add = (headers: Record<string, string>, body: unknown = { label: 'Team 2', token: 'sk-ant-oat-second-secret' }) => {
+      const text = JSON.stringify(body)
+      return component.handle(new Request(`${BASE}/admin/api/accounts`, {
+        method: 'POST', headers: { ...signedIn, 'content-length': String(text.length), ...headers }, body: text
+      }))
+    }
     return { component, accounts, signedIn, add }
   }
   const page = { origin: 'https://editor.example', 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' }

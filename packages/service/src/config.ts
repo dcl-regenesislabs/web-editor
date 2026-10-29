@@ -138,9 +138,6 @@ export function envFromVars(vars: Vars, store: BlobStore): Env {
   const ticketSecret = vars.TICKET_SECRET ?? ''
   if (ticketSecret.length < 32) throw new Error('TICKET_SECRET must be at least 32 characters')
 
-  const clientIpHeader = vars.CLIENT_IP_HEADER?.trim().toLowerCase() || undefined
-  if (clientIpHeader !== undefined && !/^[a-z0-9-]+$/.test(clientIpHeader)) throw new Error('CLIENT_IP_HEADER must be a header name')
-
   const limits: Partial<Limits> = {}
   for (const [name, variable] of Object.entries(LIMIT_VARS) as Array<[keyof Limits, string]>) {
     const text = vars[variable]
@@ -158,9 +155,15 @@ export function envFromVars(vars: Vars, store: BlobStore): Env {
     publicUrl: vars.PUBLIC_URL?.replace(/\/$/, '') || undefined,
     ethRpcUrl: vars.ETH_RPC_URL || undefined,
     version: vars.SERVICE_VERSION || undefined,
-    clientIpHeader,
+    clientIpHeader: clientIpHeader(vars.CLIENT_IP_HEADER),
     limits
   }
+}
+
+export function clientIpHeader(value: string | undefined): string | undefined {
+  const header = value?.trim().toLowerCase() || undefined
+  if (header !== undefined && !/^[a-z0-9-]+$/.test(header)) throw new Error('CLIENT_IP_HEADER must be a header name')
+  return header
 }
 
 export function walletAllowlist(value: string | undefined, name: string): ReadonlySet<string> | null {
