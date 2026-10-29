@@ -1517,6 +1517,16 @@ describe('the evidence lines the editor reads', () => {
     ).toEqual(['[studio] before the realm answers', '[studio] after the realm answers'])
   })
 
+  it('publishes on the web editor’s preview realm, served from the explorer’s own host', async () => {
+    expect(
+      await published({
+        isPreview: false,
+        baseUrl: 'https://decentraland.zone/play/preview/pb18f3c5fe3931602830f97f78dcfb294',
+        realmName: 'LocalPreview'
+      })
+    ).toEqual(['[studio] before the realm answers', '[studio] after the realm answers'])
+  })
+
   it('publishes when only the realm name is the local one', async () => {
     expect(await published({ isPreview: false, baseUrl: '', realmName: 'ws://localhost:9000' })).toEqual([
       '[studio] before the realm answers',
