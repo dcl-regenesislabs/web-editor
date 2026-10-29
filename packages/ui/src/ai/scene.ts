@@ -6,6 +6,11 @@ import { entityName, NAME_COMPONENT } from '@scene/custom-components'
 import { isAllowedComponent } from '@scene/allowed-components'
 import { uiAddEntity } from '../actions/entities'
 import { uiDeleteComponent, uiSetComponentValue } from '../actions/components'
+import { createPrefabFrom } from '../actions/prefabs'
+import { uiSetSpawnedOnly } from '../actions/spawned-only'
+import { flushPendingSave } from '../core/autosave'
+import { prefabStore, refreshPrefabs } from '../panels/prefab-store'
+import { prefabAssetId } from '../prefabs/provenance'
 import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
 import { dataLayerListFiles, dataLayerReadFile, dataLayerReadFileBytes, dataLayerSaveFile, dataLayerSaveFileBytes } from '../engine/datalayer'
 import { inspectModel } from '../model-info'
@@ -309,6 +314,26 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     if (state.snapshot[id]?.[name] === undefined) return { id, component: name, removed: false }
     uiDeleteComponent(id, name)
     return { id, component: name, components: state.snapshot[id] }
+  }
+  if (request.type === 'createPrefab') {
+    const id = entity(request.from)
+    const spawnedOnly = request.spawnedOnly !== false
+    const assetId = prefabAssetId(state.snapshot[id])
+    const items = assetId === null ? [] : await refreshPrefabs()
+    // a refresh that bailed answers [] or stale items; a second prefab would orphan the first
+    const existing = [...items, ...prefabStore.items].find((item) => item.data.id === assetId)
+    const name = typeof request.name === 'string' && request.name.trim() ? request.name.trim() : entityName(state.snapshot, id) ?? 'Prefab'
+    if (name.length > 100) throw new Error('Choose a prefab name of 1–100 characters.')
+    // the assistant's prefabs serve this scene; the creator's library is theirs to fill
+    const made = existing !== undefined
+      ? { id: existing.data.id, folder: existing.folder, name: existing.data.name, warnings: [] }
+      : await createPrefabFrom([id], name, { spawnedOnly, library: false })
+    // also walks a folder's members, and undoes an earlier mark when asked to stay in the game
+    await uiSetSpawnedOnly(id, spawnedOnly)
+    // the spawn registry is regenerated on save; a build later this turn must see it
+    const saved = await flushPendingSave()
+    const warnings = saved.ok ? made.warnings : [...made.warnings, 'The scene could not be saved, so a build may not see this prefab yet; retry before building.']
+    return { entity: id, prefab: made.id, folder: made.folder, name: made.name, ...(existing !== undefined ? { reused: true } : {}), ...(warnings.length > 0 ? { warnings } : {}) }
   }
   if (!['attachScript', 'setParams', 'placePrefab'].includes(String(request.type))) throw new Error('Unsupported scene request.')
   if (request.type !== 'placePrefab') entity(request.to)

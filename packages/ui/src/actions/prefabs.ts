@@ -173,25 +173,30 @@ export const uiPlacePrefab = async (
 // spawns copies from the folder while it plays.
 export interface CreatePrefabOptions {
   spawnedOnly?: boolean
+  /** Also copy it to the creator's cross-scene library when they have one (default true). */
+  library?: boolean
 }
 
-// Save the selection as a prefab and turn the selected root into an instance of it
+export interface CreatedPrefab {
+  id: string
+  folder: string
+  name: string
+  warnings: string[]
+}
+
+// Save `roots` as a prefab and turn a single root into an instance of it
 // (inspector::CustomAsset). The entities stay exactly where they are — nothing is
 // deleted and re-created, so undo keeps working. With `spawnable`, the same
 // gesture also flips Spawnable on and resolves where the captured copy sits, so a
 // creator answers "what is this for" once instead of hunting two more surfaces.
-export const uiCreatePrefabFromSelection = async (
+export async function createPrefabFrom(
+  roots: string[],
   name: string,
   options: CreatePrefabOptions = {}
-): Promise<void> => {
-  const roots = topLevelSelected(state.snapshot)
-  if (roots.length === 0) {
-    state.saveStatus = 'select an entity to save as a prefab'
-    return
-  }
+): Promise<CreatedPrefab> {
   state.assetBusy = true
   try {
-    const created = await createPrefabFromSelection(name)
+    const created = await createPrefabFromSelection(name, { roots })
     // Marking without an instance identity would remove entities from the
     // running game that no check can ever attribute to a prefab — so the mark
     // is single-root only, exactly like the instance stamp, and the two writes
@@ -215,11 +220,11 @@ export const uiCreatePrefabFromSelection = async (
       state.assetBusy = true
     }
     await refreshPrefabs()
-    const notes = [`in ${created.folder}`, ...created.warnings]
+    const notes = [...created.warnings]
     if (roots.length > 1) notes.push('the selection has several roots, so none was marked as an instance')
     // every prefab goes straight to the cross-scene library — a project deleted from
     // the terminal must not take the only copy with it (signed out on the web: project-only)
-    if (userLibraryState() === 'on') {
+    if (options.library !== false && userLibraryState() === 'on') {
       try {
         await savePrefabToLibrary(created.folder)
         await refreshLibrary()
@@ -228,7 +233,6 @@ export const uiCreatePrefabFromSelection = async (
         notes.push(`could not add it to your library: ${String(e)}`)
       }
     }
-    state.saveStatus = withNotes(`Created ${created.data.name} — find it in the Prefabs tab`, notes)
     // Both after the refresh: the card has to exist before the flash lands on it.
     announceCreated({
       folder: created.folder,
@@ -236,10 +240,26 @@ export const uiCreatePrefabFromSelection = async (
       placement: spawnedOnly ? 'unplaced' : 'editorAndPlay'
     })
     revealPrefab(created.folder)
-  } catch (e) {
-    state.saveStatus = `could not save the prefab: ${String(e)}`
+    return { id: created.data.id, folder: created.folder, name: created.data.name, warnings: notes }
   } finally {
     state.assetBusy = false
+  }
+}
+
+export const uiCreatePrefabFromSelection = async (
+  name: string,
+  options: CreatePrefabOptions = {}
+): Promise<void> => {
+  const roots = topLevelSelected(state.snapshot)
+  if (roots.length === 0) {
+    state.saveStatus = 'select an entity to save as a prefab'
+    return
+  }
+  try {
+    const created = await createPrefabFrom(roots, name, options)
+    state.saveStatus = withNotes(`Created ${created.name} — find it in the Prefabs tab`, [`in ${created.folder}`, ...created.warnings])
+  } catch (e) {
+    state.saveStatus = `could not save the prefab: ${String(e)}`
   }
 }
 
