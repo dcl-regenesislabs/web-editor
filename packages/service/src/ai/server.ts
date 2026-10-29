@@ -2,8 +2,10 @@ import type { IHttpServerComponent } from '@dcl/core-commons'
 import { upgradeWebSocketResponse } from '@dcl/http-server/dist/ws.js'
 import { STOP_COMPONENT } from '@well-known-components/interfaces'
 import type { IBaseComponent } from '@well-known-components/interfaces'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { WebSocketServer, WebSocket } from 'ws'
-import { ASSISTANT_MAX_MESSAGE_BYTES, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX } from '../../../contract/src/assistant.ts'
+import { ASSISTANT_MAX_MESSAGE_BYTES, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, object } from '../../../contract/src/assistant.ts'
 import { createRateLimiter } from '../config.ts'
 import { createConnection } from './connection.ts'
 import type { AssistantMemory } from './memory.ts'
@@ -23,7 +25,7 @@ function json(status: number, value: unknown): Response {
 
 export interface AssistantComponent extends AssistantService, IBaseComponent {
   ws: WebSocketServer
-  upgrade(request: Request): IHttpServerComponent.IResponse
+  upgrade(request: Request, client?: string): IHttpServerComponent.IResponse
 }
 
 export interface AssistantLimits {
@@ -31,18 +33,44 @@ export interface AssistantLimits {
   wallets: ReadonlySet<string> | null
   /** Turns across all wallets per minute. */
   turnsPerMinute: number
-  /** Turns one wallet may start per day. */
+  /** Turns one wallet may start per UTC day. */
   turnsPerDay: number
+  /** Turns one client address may start per UTC day, whichever wallets it signs in with. */
+  turnsPerIpPerDay: number
+  /** Turns all wallets together may start per UTC day: what protects the Claude plans. */
+  turnsPerDayTotal: number
   /** Turns one wallet may have running at once, across its tabs. */
   turnsAtOnce: number
   /** Images (thumbnails) one wallet may have made per UTC day. */
   imagesPerDay: number
 }
 
-export const DEFAULT_ASSISTANT_LIMITS: AssistantLimits = { wallets: null, turnsPerMinute: 30, turnsPerDay: 50, turnsAtOnce: 2, imagesPerDay: DEFAULT_IMAGES_PER_DAY }
+// few creators use it: generous, a guard against runaway scripts rather than a quota anyone meets
+export const DEFAULT_ASSISTANT_LIMITS: AssistantLimits = {
+  wallets: null, turnsPerMinute: 30, turnsPerDay: 100, turnsPerIpPerDay: 300, turnsPerDayTotal: 2000, turnsAtOnce: 2,
+  imagesPerDay: DEFAULT_IMAGES_PER_DAY
+}
 
 const MAX_SOCKETS = 32
 const SOCKETS_PER_WALLET = 3
+const SOCKETS_PER_IP = 8
+const TURNS_PER_MINUTE_PER_WALLET = 10
+const TURNS_PER_MINUTE_PER_IP = 20
+const CONNECTS_PER_MINUTE_PER_IP = 30
+
+interface DayCounts { day: number; used: Map<string, number> }
+
+function loadCounts(path: string | undefined): DayCounts {
+  const empty = { day: 0, used: new Map<string, number>() }
+  if (path === undefined) return empty
+  try {
+    const saved: unknown = JSON.parse(readFileSync(path, 'utf8'))
+    if (!object(saved) || typeof saved.day !== 'number' || !object(saved.used)) return empty
+    return { day: saved.day, used: new Map(Object.entries(saved.used).filter((entry): entry is [string, number] => typeof entry[1] === 'number')) }
+  } catch {
+    return empty
+  }
+}
 // Proxies drop a silent socket (Cloudflare after 100 s), and a model step can be quiet that long;
 // a peer that missed the last ping is gone.
 const KEEPALIVE_MS = 30_000
@@ -54,18 +82,21 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
   limits?: AssistantLimits
   usage?: UsageMeter
   memory?: AssistantMemory
+  /** Where today's prompt counts are kept, so a restart does not hand out a fresh day. */
+  countsPath?: string
   /** The image model and its per-wallet day count; without it thumbnails report themselves unavailable. */
   images?: { provider: ImageProvider; usage: UsageMeter }
   operations?: Operations
 }): AssistantComponent {
   const limits = options.limits ?? DEFAULT_ASSISTANT_LIMITS
-  const days = new Map<string, { day: number; count: number }>()
+  const counts = loadCounts(options.countsPath)
+  let saveTimer: ReturnType<typeof setTimeout> | undefined
   const factory = options.factory
   const logger = logs.getLogger('assistant')
-  const tickets = new Map<string, { wallet: string; origin: string; expires: number }>()
-  const sockets = new Map<WebSocket, string>()
+  const tickets = new Map<string, { wallet: string; origin: string; client?: string; expires: number }>()
+  const sockets = new Map<WebSocket, { wallet: string; client?: string }>()
   const connections = new Map<WebSocket, ReturnType<typeof createConnection>>()
-  const pending = new Map<string, { wallet: string; timer: ReturnType<typeof setTimeout> }>()
+  const pending = new Map<string, { wallet: string; client?: string; timer: ReturnType<typeof setTimeout> }>()
   const limiter = createRateLimiter()
   const closing = new Set<Promise<void>>()
   let stopped = false
@@ -85,17 +116,40 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
     for (const [token, ticket] of tickets) if (ticket.expires < Date.now()) tickets.delete(token)
     return { all: tickets.size, held: (wallet) => [...tickets.values()].filter((ticket) => ticket.wallet === wallet).length }
   }
-  function allowTurn(wallet: string): true | string {
-    const running = [...connections].filter(([socket, connection]) => sockets.get(socket) === wallet && connection.isRunning()).length
+  function writeCounts(path: string): void {
+    saveTimer = undefined
+    try {
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+      writeFileSync(`${path}.tmp`, JSON.stringify({ day: counts.day, used: Object.fromEntries(counts.used) }), { mode: 0o600 })
+      renameSync(`${path}.tmp`, path)
+    } catch {
+      logger.error('Assistant prompt counts could not be saved')
+    }
+  }
+  function saveCounts(): void {
+    const path = options.countsPath
+    if (path === undefined || saveTimer !== undefined) return
+    saveTimer = setTimeout(() => writeCounts(path), 1000)
+    saveTimer.unref()
+  }
+  function allowTurn(wallet: string, client: string | undefined): true | string {
+    const running = [...connections].filter(([socket, connection]) => sockets.get(socket)?.wallet === wallet && connection.isRunning()).length
     if (running >= limits.turnsAtOnce) return `${limits.turnsAtOnce} turns are already running in your other tabs. Wait for one to finish.`
     const now = Date.now()
     const day = Math.floor(now / 86_400_000)
-    const used = days.get(wallet)
-    const count = used?.day === day ? used.count : 0
-    if (count >= limits.turnsPerDay) return `You have used today's ${limits.turnsPerDay} prompts. They reset at 00:00 UTC.`
-    if (limiter.take(wallet, now, 10) > 0 || limiter.take('turns', now, limits.turnsPerMinute) > 0) return 'Too many requests. Try again shortly.'
-    if (days.size > 10_000) for (const [other, entry] of days) if (entry.day !== day) days.delete(other)
-    days.set(wallet, { day, count: count + 1 })
+    if (counts.day !== day) {
+      counts.day = day
+      counts.used.clear()
+    }
+    const ip = client === undefined ? undefined : `ip:${client}`
+    const used = (key: string) => counts.used.get(key) ?? 0
+    if (used(wallet) >= limits.turnsPerDay) return `You have used today's ${limits.turnsPerDay} prompts. They reset at 00:00 UTC.`
+    if (ip !== undefined && used(ip) >= limits.turnsPerIpPerDay) return 'Your network has used today\'s prompts. They reset at 00:00 UTC.'
+    if (used('all') >= limits.turnsPerDayTotal) return 'The assistant has used today\'s prompts for everyone. They reset at 00:00 UTC.'
+    if (limiter.take(wallet, now, TURNS_PER_MINUTE_PER_WALLET) > 0 || (ip !== undefined && limiter.take(ip, now, TURNS_PER_MINUTE_PER_IP) > 0) ||
+      limiter.take('turns', now, limits.turnsPerMinute) > 0) return 'Too many requests. Try again shortly.'
+    for (const key of [wallet, ip, 'all']) if (key !== undefined) counts.used.set(key, used(key) + 1)
+    saveCounts()
     return true
   }
   function connect(socket: WebSocket, token: string) {
@@ -103,8 +157,8 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
     if (reservation !== undefined) clearTimeout(reservation.timer)
     pending.delete(token)
     if (stopped || factory === undefined || reservation === undefined) { socket.terminate(); return }
-    const { wallet } = reservation
-    sockets.set(socket, wallet)
+    const { wallet, client } = reservation
+    sockets.set(socket, { wallet, client })
     const operations = options.operations?.openSession(wallet)
     let connection: ReturnType<typeof createConnection> | null = null
     const deadline = setTimeout(() => socket.terminate(), 5000)
@@ -151,7 +205,7 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
           }
         }
       }
-      connection = createConnection({ factory, logger, send, allowTurn: () => allowTurn(wallet), memory: memory?.forWallet(wallet), usage, images, operations })
+      connection = createConnection({ factory, logger, send, allowTurn: () => allowTurn(wallet, client), memory: memory?.forWallet(wallet), usage, images, operations })
       connections.set(socket, connection)
       send({ kind: 'ready', providers })
     }).catch(() => socket.close(1011, 'Assistant unavailable'))
@@ -171,7 +225,7 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
   }
   return {
     ws,
-    upgrade(request) {
+    upgrade(request, client) {
       if (stopped || factory === undefined) return { status: 503 }
       const url = new URL(request.url)
       const origin = request.headers.get('origin') ?? ''
@@ -182,15 +236,18 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
       const token = protocols[1].slice(ASSISTANT_TICKET_PREFIX.length)
       const ticket = tickets.get(token)
       if (ticket === undefined || ticket.expires <= Date.now() || ticket.origin !== origin) return { status: 403 }
-      const walletConnections = [...sockets.values(), ...[...pending.values()].map((entry) => entry.wallet)]
-      if (walletConnections.length >= MAX_SOCKETS || walletConnections.filter((wallet) => wallet === ticket.wallet).length >= SOCKETS_PER_WALLET) return { status: 429 }
+      const held = [...sockets.values(), ...pending.values()]
+      // the ticket's address: a proxy that hides this one must not let the socket escape the count
+      const address = client ?? ticket.client
+      if (held.length >= MAX_SOCKETS || held.filter((entry) => entry.wallet === ticket.wallet).length >= SOCKETS_PER_WALLET ||
+        (address !== undefined && held.filter((entry) => entry.client === address).length >= SOCKETS_PER_IP)) return { status: 429 }
       tickets.delete(token)
       const timer = setTimeout(() => pending.delete(token), 5000)
       timer.unref()
-      pending.set(token, { wallet: ticket.wallet, timer })
+      pending.set(token, { wallet: ticket.wallet, client: address, timer })
       return upgradeWebSocketResponse((socket: WebSocket) => connect(socket, token))
     },
-    async handle(request, route, wallet) {
+    async handle(request, route, wallet, client) {
       if (stopped || factory === undefined) return json(503, { error: 'assistant-unavailable' })
       const allowed = limits.wallets === null || limits.wallets.has(wallet)
       if (route === '/assistant/providers' && request.method === 'GET') {
@@ -204,16 +261,21 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
       if (typeof origin !== 'string' || !options.allowedOrigins.includes(origin)) return json(403, { error: 'origin-not-allowed' })
       if (!allowed) return json(403, { error: 'assistant-not-allowed' })
       const live = liveTickets()
-      if (live.all >= 100 || live.held(wallet) >= SOCKETS_PER_WALLET || limiter.take(`connect:${wallet}`, Date.now(), 10) > 0) {
+      if (live.all >= 100 || live.held(wallet) >= SOCKETS_PER_WALLET || limiter.take(`connect:${wallet}`, Date.now(), 10) > 0 ||
+        (client !== undefined && limiter.take(`connect-ip:${client}`, Date.now(), CONNECTS_PER_MINUTE_PER_IP) > 0)) {
         return json(429, { error: 'rate-limited' })
       }
       const token = crypto.randomUUID()
-      tickets.set(token, { wallet, origin, expires: Date.now() + 30_000 })
+      tickets.set(token, { wallet, origin, client, expires: Date.now() + 30_000 })
       return json(200, { token, path })
     },
     async [STOP_COMPONENT]() {
       stopped = true
       clearInterval(sweeper)
+      if (saveTimer !== undefined && options.countsPath !== undefined) {
+        clearTimeout(saveTimer)
+        writeCounts(options.countsPath)
+      }
       tickets.clear()
       for (const reservation of pending.values()) clearTimeout(reservation.timer)
       pending.clear()

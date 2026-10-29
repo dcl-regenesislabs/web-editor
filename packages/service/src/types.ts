@@ -9,7 +9,7 @@ import type { TelemetryComponent } from './adapters/telemetry.ts'
 import type { AdminComponent } from './admin/admin.ts'
 
 export interface ProjectStorageComponent {
-  handle(request: Request): Promise<Response>
+  handle(request: Request, client?: string): Promise<Response>
   purge(): Promise<PurgeResult>
 }
 

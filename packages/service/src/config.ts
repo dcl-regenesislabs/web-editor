@@ -31,6 +31,8 @@ export interface Limits {
   uploadMinBytesPerSecond: number
   /** Assistant requests per wallet, counted apart from project requests. */
   assistantRequestsPerMinute: number
+  /** Requests per client address, every route and wallet together. */
+  ipRequestsPerMinute: number
   /** Wallets one purge run visits; the next run carries on after the last. */
   purgeWalletsPerRun: number
 }
@@ -55,6 +57,7 @@ export const DEFAULT_LIMITS: Limits = {
   uploadTimeoutSeconds: 30,
   uploadMinBytesPerSecond: 64 * 1024,
   assistantRequestsPerMinute: 60,
+  ipRequestsPerMinute: 3000,
   purgeWalletsPerRun: 20
 }
 
@@ -79,6 +82,8 @@ export interface Env {
   publicUrl?: string
   /** JSON-RPC endpoint for ERC-1654 wallets; unset, they are refused. */
   ethRpcUrl?: string
+  /** Header the reverse proxy puts the client address in, e.g. x-real-ip; unset, only direct peers are told apart. */
+  clientIpHeader?: string
   /** the release this build is, reported by /health */
   version?: string
   limits?: Partial<Limits>
@@ -109,11 +114,12 @@ const LIMIT_VARS: Record<keyof Limits, string> = {
   uploadTimeoutSeconds: 'UPLOAD_TIMEOUT_SECONDS',
   uploadMinBytesPerSecond: 'UPLOAD_MIN_BYTES_PER_SECOND',
   assistantRequestsPerMinute: 'ASSISTANT_REQUESTS_PER_MINUTE',
+  ipRequestsPerMinute: 'IP_REQUESTS_PER_MINUTE',
   purgeWalletsPerRun: 'PURGE_WALLETS_PER_RUN'
 }
 
 export async function envFromConfig(config: IConfigComponent, store: BlobStore): Promise<Env> {
-  const names = ['ALLOWED_ORIGINS', 'STORAGE_WALLETS', 'TICKET_SECRET', 'BASE_PATH', 'PUBLIC_URL', 'ETH_RPC_URL', 'SERVICE_VERSION', ...Object.values(LIMIT_VARS)]
+  const names = ['ALLOWED_ORIGINS', 'STORAGE_WALLETS', 'TICKET_SECRET', 'BASE_PATH', 'PUBLIC_URL', 'ETH_RPC_URL', 'SERVICE_VERSION', 'CLIENT_IP_HEADER', ...Object.values(LIMIT_VARS)]
   const values = await Promise.all(names.map(async (name) => [name, await config.getString(name)] as const))
   return envFromVars(Object.fromEntries(values), store)
 }
@@ -132,6 +138,9 @@ export function envFromVars(vars: Vars, store: BlobStore): Env {
   const ticketSecret = vars.TICKET_SECRET ?? ''
   if (ticketSecret.length < 32) throw new Error('TICKET_SECRET must be at least 32 characters')
 
+  const clientIpHeader = vars.CLIENT_IP_HEADER?.trim().toLowerCase() || undefined
+  if (clientIpHeader !== undefined && !/^[a-z0-9-]+$/.test(clientIpHeader)) throw new Error('CLIENT_IP_HEADER must be a header name')
+
   const limits: Partial<Limits> = {}
   for (const [name, variable] of Object.entries(LIMIT_VARS) as Array<[keyof Limits, string]>) {
     const text = vars[variable]
@@ -149,6 +158,7 @@ export function envFromVars(vars: Vars, store: BlobStore): Env {
     publicUrl: vars.PUBLIC_URL?.replace(/\/$/, '') || undefined,
     ethRpcUrl: vars.ETH_RPC_URL || undefined,
     version: vars.SERVICE_VERSION || undefined,
+    clientIpHeader,
     limits
   }
 }

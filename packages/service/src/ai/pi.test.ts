@@ -1,12 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
 import type { FileEntry } from '@earendil-works/pi-coding-agent'
 import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
 import type { Provider } from '@earendil-works/pi-ai'
 import { afterEach, expect, it, vi } from 'vitest'
+import { createAccountPool } from './accounts.ts'
 import { createPiFactory } from './pi.ts'
+import { ProviderLimited } from './types.ts'
 import type { AssistantAgent } from './types.ts'
 
 const directories: string[] = []
@@ -41,7 +43,7 @@ it('fails closed when the configured model is unknown', async () => {
   await expect(createPiFactory(await authPath(), 'model-that-does-not-exist')).rejects.toThrow('AI_MODEL')
 })
 
-it('charges compaction and replies once, including after restoring a conversation, and passes on Claude\'s plan headers', async () => {
+it('charges compaction and replies once, including after restoring a conversation, and credits Claude\'s plan headers to the account', async () => {
   const faux = fauxProvider({ provider: 'anthropic', models: [{ id: 'test', contextWindow: 40_000, maxTokens: 1024 }] })
   const originalCreate = ModelRuntime.create.bind(ModelRuntime)
   vi.spyOn(ModelRuntime, 'create').mockImplementation(async (options) => {
@@ -67,8 +69,9 @@ it('charges compaction and replies once, including after restoring a conversatio
     ...settings, compaction: { enabled: true, reserveTokens: 1000, keepRecentTokens: 1000 }
   }))
   faux.setResponses(Array.from({ length: 50 }, () => fauxAssistantMessage('Done.')))
-  const headers: Array<Record<string, string>> = []
-  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token', undefined, undefined, (received) => headers.push(received))
+  const file = await authPath()
+  const accounts = await createAccountPool({ primaryPath: file, dir: join(dirname(file), 'claude-accounts') })
+  const factory = await createPiFactory(file, 'test', 'sk-ant-oat-synthetic-test-token', undefined, undefined, accounts)
   const params = { provider: 'claude' as const, model: 'test', text: 'Build a game' }
   let agent: AssistantAgent | undefined
   try {
@@ -91,8 +94,7 @@ it('charges compaction and replies once, including after restoring a conversatio
       return total
     }, 0)
     expect(charged).toBe(actual)
-    expect(headers.length).toBeGreaterThanOrEqual(10)
-    expect(headers[0]).toEqual({ 'anthropic-ratelimit-unified-5h-utilization': '0.03', 'x-other': 'kept' })
+    expect(accounts.quota().windows).toEqual([{ name: 'five_hour', percent: 3, resetsAt: null }])
     const actualInput = entries.reduce((total, entry) => {
       if (entry.type === 'message' && entry.message.role === 'assistant') return total + entry.message.usage.input
       if (entry.type === 'compaction') return total + (entry.usage?.input ?? 0)
@@ -107,3 +109,52 @@ it('charges compaction and replies once, including after restoring a conversatio
     expect(agent.takeUsage().cost).toBe(1)
   } finally { agent?.dispose() }
 })
+
+it('moves a turn to the next Claude account when one reaches its limit, and says so when all have', async () => {
+  const faux = fauxProvider({ provider: 'anthropic', models: [{ id: 'test', contextWindow: 40_000, maxTokens: 1024 }] })
+  const limited = new Set<string>()
+  const served: string[] = []
+  const originalCreate = ModelRuntime.create.bind(ModelRuntime)
+  vi.spyOn(ModelRuntime, 'create').mockImplementation(async (options) => {
+    const runtime = await originalCreate(options)
+    const auth = runtime.getProvider('anthropic')?.auth
+    if (auth === undefined) throw new Error('Missing synthetic OAuth provider')
+    const streamSimple: Provider['streamSimple'] = (model, context, opts) => {
+      const stream = createAssistantMessageEventStream()
+      const token = String(opts?.apiKey)
+      void (async () => {
+        if (limited.has(token)) {
+          const reset = String(Math.floor(Date.now() / 1000) + 3600)
+          await opts?.onResponse?.({ status: 429, headers: { 'anthropic-ratelimit-unified-status': 'rejected', 'anthropic-ratelimit-unified-reset': reset } }, model)
+          stream.push({ type: 'error', reason: 'error', error: fauxAssistantMessage('', { stopReason: 'error', errorMessage: '429 rate_limit_error' }) })
+          return
+        }
+        served.push(token)
+        await opts?.onResponse?.({ status: 200, headers: {} }, model)
+        for await (const event of faux.provider.streamSimple(model, context, opts)) stream.push(event)
+      })()
+      return stream
+    }
+    runtime.registerNativeProvider({ ...faux.provider, auth, streamSimple })
+    return runtime
+  })
+  faux.setResponses(Array.from({ length: 5 }, () => fauxAssistantMessage('Done.')))
+  const file = await authPath()
+  const accounts = await createAccountPool({ primaryPath: file, dir: join(dirname(file), 'claude-accounts') })
+  const factory = await createPiFactory(file, 'test', 'sk-ant-oat-first', undefined, undefined, accounts)
+  await accounts.add('Second', 'sk-ant-oat-second')
+  const params = { provider: 'claude' as const, model: 'test', text: 'Build a game' }
+  const agent = await factory.create(params, async () => 'unused', () => {})
+  try {
+    await agent.prompt(params)
+    limited.add('sk-ant-oat-first')
+    await agent.prompt(params)
+    expect(served).toEqual(['sk-ant-oat-first', 'sk-ant-oat-second'])
+    expect((await accounts.list()).map((account) => account.state)).toEqual(['limited', 'active'])
+
+    limited.add('sk-ant-oat-second')
+    const failure = await agent.prompt(params).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(ProviderLimited)
+    expect(Date.parse((failure as ProviderLimited).until ?? '')).toBeGreaterThan(Date.now())
+  } finally { agent.dispose() }
+}, 30_000)

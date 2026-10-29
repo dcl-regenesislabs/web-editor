@@ -265,6 +265,15 @@ describe('who may call', () => {
     expect(third.status).toBe(429)
     expect(Number(third.headers.get('retry-after'))).toBeGreaterThan(0)
   })
+
+  it('slows one address down across all its wallets, and leaves other addresses alone', async () => {
+    const ctx = setup({ ipRequestsPerMinute: 2 })
+    const [one, two] = [await ctx.wallet(), await ctx.wallet()]
+    const from = async (wallet: typeof one, client: string) =>
+      (await handle(new Request(`${BASE}/projects`, { headers: wallet.headers('GET', `${BASE}/projects`) }), ctx.env, client)).status
+    expect([await from(one, '203.0.113.7'), await from(two, '203.0.113.7'), await from(two, '203.0.113.7')]).toEqual([200, 200, 429])
+    expect(await from(two, '198.51.100.1')).toBe(200)
+  })
 })
 
 describe('assistant routes', () => {
