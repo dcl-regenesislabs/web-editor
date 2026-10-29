@@ -117,7 +117,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     if (logs.length > MAX_LOG_LINES) logs.splice(0, logs.length - MAX_LOG_LINES)
     for (const listener of logListeners) listener(line)
   }
-  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId), previewEnvironment(services?.services.worldsContent ?? null))
+  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null, location.search), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId), previewEnvironment(services?.services.worldsContent ?? null))
   const emit = (event: SceneBuildEvent): void => {
     for (const listener of buildListeners) listener(event)
     if (event.type === 'bundleSaved' && current !== null) phone.built(current.id).catch((error: unknown) => console.error('[editor] mobile preview reload failed', error))

@@ -2,8 +2,15 @@ import { object, type OpenPreview, type PhonePreviewCapture, type PhonePreviewSt
 import { previewEntityId } from '@dcl-editor/scene-compiler'
 import { createPreviewTransport } from './phone-preview-transport'
 
-export function mobilePreviewEntry(pageDir: string, service: string | null): string | null {
-  if (['localhost', '127.0.0.1', '[::1]'].includes(new URL(pageDir).hostname)) return 'http://127.0.0.1:8788/mobile-preview/index.html'
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]']
+
+// a local page's runtime is the dev stack's own server; `?editor-mobile=` names another stack's
+export function mobilePreviewEntry(pageDir: string, service: string | null, search = ''): string | null {
+  if (LOOPBACK.includes(new URL(pageDir).hostname)) {
+    const asked = new URLSearchParams(search).get('editor-mobile')
+    const origin = asked !== null && URL.canParse(asked) && LOOPBACK.includes(new URL(asked).hostname) ? new URL(asked).origin : 'http://127.0.0.1:8788'
+    return `${origin}/mobile-preview/index.html`
+  }
   return service === null ? null : new URL('mobile-preview/index.html', service.replace(/\/$/, '') + '/').href
 }
 
