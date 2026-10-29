@@ -491,7 +491,7 @@ async function routePrefabs(run: Runtime, env: Env, wallet: string, request: Req
   return fail(405, 'method-not-allowed')
 }
 
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env, client: string | undefined): Promise<Response> {
   const run = runtime(env)
   const url = new URL(request.url)
   const base = env.basePath ?? ''
@@ -499,6 +499,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const path = url.pathname.slice(base.length)
   const method = request.method
 
+  if (client !== undefined) {
+    const wait = limited(run, `ip:${client}`, run.limits.ipRequestsPerMinute)
+    if (wait != null) return wait
+  }
   if (method === 'OPTIONS') return preflight(request)
   if (path === '/health') return json(200, { ok: true, ...(env.version === undefined ? {} : { version: env.version }) })
   const blob = /^\/blobs\/([^/]+)$/.exec(path)
@@ -510,7 +514,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const wait = limited(run, `assistant:${auth.wallet}`, run.limits.assistantRequestsPerMinute)
     if (wait !== null) return wait
     if ((await readBody(request, 0)) == null) return fail(413, 'body-too-large')
-    return env.assistant?.handle(request, path, auth.wallet) ?? fail(503, 'assistant-unavailable')
+    return env.assistant?.handle(request, path, auth.wallet, client) ?? fail(503, 'assistant-unavailable')
   }
   const match = /^\/projects(?:\/([^/]+)(?:\/(manifest|uploads|restore)|\/files\/([^/]+))?)?$/.exec(path)
   const prefab = /^\/prefabs(?:\/([^/]+)(?:\/(manifest|uploads)|\/files\/([^/]+))?)?$/.exec(path)
@@ -536,13 +540,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   return fail(405, 'method-not-allowed')
 }
 
-/** The whole service: every route, on web-standard APIs only. */
-export async function handle(request: Request, env: Env): Promise<Response> {
+/**
+ * The whole service: every route, on web-standard APIs only. `client` is the caller's address
+ * (src/client-ip.ts); undefined skips the per-address limit.
+ */
+export async function handle(request: Request, env: Env, client?: string): Promise<Response> {
   const origin = request.headers.get('origin')
   const allowed = origin != null && env.allowedOrigins.includes(origin)
   let response: Response
   try {
-    response = origin != null && !allowed ? fail(403, 'origin-not-allowed') : await route(request, env)
+    response = origin != null && !allowed ? fail(403, 'origin-not-allowed') : await route(request, env, client)
   } catch (error) {
     if (error instanceof StorageFull) {
       response = retry(503, 'storage-full', 300)

@@ -1,4 +1,5 @@
-// Read-only: polls the service's in-memory status every five seconds while the page is visible.
+// Polls the service's in-memory status every five seconds while the page is visible; its only writes add and
+// remove Claude accounts.
 const POLL_MS = 5000
 const STALE_MS = 15000
 const $ = (id) => document.getElementById(id)
@@ -108,6 +109,81 @@ function renderQuota(quota) {
   $('quota-note').textContent = `${QUOTA_NOTES[quota.state] ?? quota.state}${checked}${quota.stale ? ' No reply since, so it may be out of date.' : ''}`
 }
 
+const ACCOUNT_STATES = { active: 'In use', ready: 'Ready', limited: 'At its limit', rejected: 'Token refused', 'signed-out': 'Not signed in' }
+let confirming = null
+
+function windowPercent(quota, name) {
+  const window = quota.windows.find((entry) => entry.name === name)
+  return window === undefined ? '—' : `${window.percent}%`
+}
+
+async function removeAccount(id) {
+  const response = await fetch(`api/accounts/${id}`, { method: 'DELETE', credentials: 'same-origin' })
+  confirming = null
+  if (!response.ok) message(`Could not remove it (${(await response.json().catch(() => ({}))).error ?? response.status}).`, 'error')
+  await poll()
+}
+
+function renderAccounts(accounts) {
+  // no assistant credential, no account pool to add to
+  $('add-account').hidden = last.quota.state === 'disabled'
+  rows('accounts', 7, accounts.map((account) => {
+    const limited = account.limitedUntil === null ? '' : ` · until ${time(account.limitedUntil)}`
+    const state = el('td', 'state', `${ACCOUNT_STATES[account.state] ?? account.state}${limited}`)
+    state.dataset.state = account.state
+    if (account.limitedUntil !== null) state.title = `Until ${time(account.limitedUntil)}`
+    const actions = el('td', 'num')
+    if (account.removable) {
+      const button = el('button', 'btn quiet', confirming === account.id ? 'Confirm' : 'Remove')
+      button.type = 'button'
+      button.addEventListener('click', () => {
+        if (confirming !== account.id) { confirming = account.id; renderAccounts(last.accounts); return }
+        button.disabled = true
+        void removeAccount(account.id)
+      })
+      actions.append(button)
+    }
+    return [
+      el('td', '', account.label), state, el('td', 'num', windowPercent(account.quota, 'five_hour')), el('td', 'num', windowPercent(account.quota, 'seven_day')),
+      el('td', 'mono', account.hint === null ? '—' : `…${account.hint}`), el('td', '', account.addedAt === null ? 'configured' : time(account.addedAt)), actions
+    ]
+  }), 'No Claude account is configured.')
+}
+
+function message(text, tone) {
+  const note = $('account-message')
+  note.textContent = text
+  note.dataset.tone = tone ?? ''
+}
+
+const ADD_ERRORS = {
+  'invalid-token': 'That is not a token from claude setup-token.', 'invalid-label': 'Give it a name of up to 60 characters.',
+  duplicate: 'That token is already added.', 'too-many': 'Remove an account before adding another.', 'rate-limited': 'Too many changes; wait a minute.'
+}
+
+$('add-account').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const button = event.target.querySelector('button')
+  button.disabled = true
+  message('Adding…')
+  try {
+    const response = await fetch('api/accounts', {
+      method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: $('account-label').value, token: $('account-token').value })
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) { message(ADD_ERRORS[body.error] ?? `Could not add it (${body.error ?? response.status}).`, 'error'); return }
+    $('account-token').value = ''
+    $('account-label').value = ''
+    message(`Added "${body.account.label}". It is checked on the first reply it serves.`)
+    await poll()
+  } catch {
+    message('Could not reach the service.', 'error')
+  } finally {
+    button.disabled = false
+  }
+})
+
 function allowanceCell(percent) {
   const cell = el('td')
   if (typeof percent !== 'number') { cell.textContent = '—'; return cell }
@@ -133,6 +209,7 @@ function render(status) {
     : 'Session % is estimated from how the plan\'s 5-hour reading moved with this service\'s use; other use of the account inflates it.'
   renderTurns()
   renderQuota(status.quota)
+  renderAccounts(status.accounts)
 
   rows('users', 10, status.users.map((user) => {
     const wallet = el('td', 'mono', shortWallet(user.wallet))

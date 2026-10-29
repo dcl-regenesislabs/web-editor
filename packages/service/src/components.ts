@@ -11,6 +11,9 @@ import { createTelemetryComponent } from './adapters/telemetry.ts'
 import { adminAccessFromConfig, createAdminComponent } from './admin/admin.ts'
 import { createAssistantComponent, DEFAULT_ASSISTANT_LIMITS } from './ai/server.ts'
 import type { AssistantLimits } from './ai/server.ts'
+import { createAccountPool } from './ai/accounts.ts'
+import type { AccountPool } from './ai/accounts.ts'
+import { DISABLED_QUOTA } from './ai/quota.ts'
 import { createAssistantMemory } from './ai/memory.ts'
 import { createUsageMeter, DEFAULT_USAGE_LIMITS } from './ai/usage.ts'
 import { ASSISTANT_MODEL, createPiFactory } from './ai/pi.ts'
@@ -46,6 +49,8 @@ async function assistantLimits(config: IConfigComponent, enabled: boolean): Prom
     wallets: walletAllowlist(listed, 'ASSISTANT_WALLETS'),
     turnsPerMinute: await count('ASSISTANT_TURNS_PER_MINUTE', DEFAULT_ASSISTANT_LIMITS.turnsPerMinute),
     turnsPerDay: await count('ASSISTANT_TURNS_PER_DAY', DEFAULT_ASSISTANT_LIMITS.turnsPerDay),
+    turnsPerIpPerDay: await count('ASSISTANT_TURNS_PER_IP_PER_DAY', DEFAULT_ASSISTANT_LIMITS.turnsPerIpPerDay),
+    turnsPerDayTotal: await count('ASSISTANT_TURNS_PER_DAY_TOTAL', DEFAULT_ASSISTANT_LIMITS.turnsPerDayTotal),
     turnsAtOnce: await count('ASSISTANT_TURNS_AT_ONCE', DEFAULT_ASSISTANT_LIMITS.turnsAtOnce),
     imagesPerDay: await count('ASSISTANT_IMAGES_PER_DAY', DEFAULT_ASSISTANT_LIMITS.imagesPerDay)
   }
@@ -87,6 +92,9 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   if (authInStorage) {
     logs.getLogger('assistant').warn('The assistant credential is inside STORAGE_DIR; set AI_AUTH_PATH to a secret mount outside it')
   }
+  if (process.env.NODE_ENV === 'production' && env.clientIpHeader === undefined) {
+    logs.getLogger('service').warn('CLIENT_IP_HEADER is unset: behind a reverse proxy every client shares one address, so per-IP limits are off')
+  }
   if (imageAuthInStorage) {
     logs.getLogger('assistant').warn('The image model credential is inside STORAGE_DIR; set AI_IMAGE_AUTH_PATH to a secret mount outside it')
   }
@@ -94,10 +102,20 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     daily: (await config.getNumber('ASSISTANT_DAILY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.daily,
     weekly: (await config.getNumber('ASSISTANT_WEEKLY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.weekly
   })
-  const telemetry = await createTelemetryComponent({ config, logs }, { stateDir: authPath === undefined ? undefined : dirname(authPath) })
+  // the pool estimates each account's share from telemetry's spend, and telemetry reports the pool's reading
+  let accounts: AccountPool | undefined
+  const telemetry = await createTelemetryComponent({ config, logs }, {
+    stateDir: authPath === undefined ? undefined : dirname(authPath), quota: () => accounts?.quota() ?? DISABLED_QUOTA
+  })
+  if (authPath !== undefined) {
+    accounts = await createAccountPool({
+      primaryPath: authPath, dir: join(dirname(authPath), 'claude-accounts'), logger: logs.getLogger('assistant'),
+      spend: () => telemetry.operations.snapshot().sinceStart.usage.estimatedCostUsd
+    })
+  }
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
-      logs.getLogger('assistant'), telemetry.recordProviderHeaders))
+      logs.getLogger('assistant'), accounts))
   const admin = createAdminComponent({ logs }, {
     access: adminAccessFromConfig({
       teamDomain: await config.getString('CF_ACCESS_TEAM_DOMAIN'),
@@ -107,7 +125,7 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
       production: process.env.NODE_ENV === 'production'
     }),
     basePath: env.basePath, version: env.version, historyUrl: telemetry.historyUrl,
-    operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery,
+    operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery, accounts,
     allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance()
   })
   const assistant = createAssistantComponent({ logs }, {
@@ -115,6 +133,7 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     limits, operations: telemetry.operations,
     // beside the credential, outside STORAGE_DIR and its project backups
     memory: authPath === undefined ? undefined : createAssistantMemory(join(dirname(authPath), 'memory')),
+    countsPath: authPath === undefined ? undefined : join(dirname(authPath), 'prompt-counts.json'),
     usage,
     // one image counts 1, so the meter's daily limit is the image cap
     images: imageAuthPath === undefined ? undefined : {
