@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { state } from '@scene/state'
 import { cmd } from '../../engine/cmd'
+import { hostV1 } from '../../engine/hosted'
 import { log } from '../../log'
 import { Chip } from '../../ds'
 import { useStore } from '../../core/store'
@@ -22,6 +23,7 @@ export function PlayGame(props: { onLogs: () => void; logsLink?: boolean }): JSX
   const [now, setNow] = useState(() => Date.now())
   const [problems, setProblems] = useState(0)
   const startedAt = useRef(Date.now())
+  const seen = useRef<GameLife | null>(null)
   const attached = useMemo(() => sceneScriptRows(snapshot).map((row) => row.path), [snapshot])
   const game = useMemo(() => usesGame(scripts, attached), [scripts, attached])
   useEffect(() => ensureConsumersLoaded(), [])
@@ -32,7 +34,7 @@ export function PlayGame(props: { onLogs: () => void; logsLink?: boolean }): JSX
     const seeded = beginRun()
     setProblems(0)
     let live = true
-    let seen: GameLife | null = null
+    seen.current = null
     setServer('unknown')
     readServerPresence()
       .then((presence) => {
@@ -46,8 +48,8 @@ export function PlayGame(props: { onLogs: () => void; logsLink?: boolean }): JSX
           if (!live) return
           setProblems(runProblems(text))
           const next = parseGameLife(text)
-          if (next === null || next === seen) return
-          seen = next
+          if (next === null || next === seen.current) return
+          seen.current = next
           setReported({ life: next, at: Date.now() })
         })
         .catch((e) => log.debug('game-life poll failed', e))
@@ -63,6 +65,14 @@ export function PlayGame(props: { onLogs: () => void; logsLink?: boolean }): JSX
     }
   }, [game])
   if (!game) return null
+  const restartServer = hostV1()?.previewChanged
+  // the client's last unreachable line stays in the tail; `seen` keeps it from reddening the strip again
+  const restart = (): void => {
+    restartServer?.()
+    startedAt.current = Date.now()
+    setReported(null)
+    setNow(Date.now())
+  }
   const life = gameLife(reported?.life ?? null, now - startedAt.current, server)
   // a healthy running game is the normal case; the bar speaks only when something is off
   if (life === 'running' && problems === 0) return null
@@ -75,6 +85,11 @@ export function PlayGame(props: { onLogs: () => void; logsLink?: boolean }): JSX
         {strip.logs && props.logsLink !== false && (
           <button className="eui-play-game-logs" onClick={props.onLogs}>
             Logs
+          </button>
+        )}
+        {strip.restart && restartServer !== undefined && (
+          <button className="eui-play-game-logs" onClick={restart}>
+            Restart
           </button>
         )}
       </Chip>

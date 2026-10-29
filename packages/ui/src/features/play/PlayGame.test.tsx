@@ -7,6 +7,7 @@ import { consumerStore } from '../../prefabs/consumers'
 import { mount, run } from '../../test/render'
 import { PROBLEM_MARKER } from '../editor/log-roles'
 import { resetForTest } from './run-window'
+import { setHost, type DclEditorHostV1 } from '../../engine/hosted'
 
 const { sceneLogs } = vi.hoisted(() => ({ sceneLogs: vi.fn(async () => '') }))
 const { readServerPresence } = vi.hoisted(() => ({ readServerPresence: vi.fn(async () => 'unknown') }))
@@ -100,6 +101,7 @@ afterEach(() => {
   readServerPresence.mockReset()
   readServerPresence.mockResolvedValue('unknown')
   delete shellHost.editorShell
+  setHost(null)
   vi.useRealTimers()
   run(() => {
     consumerStore.scripts = {}
@@ -139,6 +141,29 @@ describe('the Game strip', () => {
     expect(hud.text()).toContain('Can’t reach the Multiplayer Server')
     hud.click(hud.find('.eui-play-game-logs'))
     expect(onLogs).toHaveBeenCalledOnce()
+    // no host to restart the server through
+    expect(hud.byText('Restart', 'button')).toBeNull()
+    hud.unmount()
+  })
+
+  it('restarts an unreachable server through the host, and waits for it again', async () => {
+    vi.useFakeTimers()
+    const previewChanged = vi.fn()
+    setHost({ version: 1, engineConsole: vi.fn(async () => ''), previewChanged } as Partial<DclEditorHostV1> as DclEditorHostV1)
+    scene({ 'src/race.ts': GAME_SCRIPT })
+    const unreachable = `[1.0] Log: ${GAME_LIFE_MARKER} unreachable`
+    sceneLogs.mockResolvedValue(unreachable)
+    const hud = mount(<PlayGame onLogs={() => {}} />)
+    await hud.settle()
+    expect(hud.text()).toContain('Can’t reach the Multiplayer Server')
+    hud.click(hud.byText('Restart', 'button'))
+    expect(previewChanged).toHaveBeenCalledOnce()
+    // the client's old unreachable line is still in the tail; it must not turn the strip red again
+    await nextPoll()
+    expect(hud.text()).toContain('Waking…')
+    sceneLogs.mockResolvedValue(`${unreachable}\n[30.0] Log: ${GAME_LIFE_MARKER} running`)
+    await nextPoll()
+    expect(hud.text()).toBe('')
     hud.unmount()
   })
 

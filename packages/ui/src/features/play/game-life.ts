@@ -107,21 +107,23 @@ export interface GameStrip {
   tone: 'server' | 'danger' | 'default'
   /** the state offers the Logs drawer as its next gesture */
   logs: boolean
+  /** the state offers restarting the Multiplayer Server */
+  restart: boolean
 }
 
 /** `seconds` is how long this state has been showing — only Waking spends it. */
 export function gameStrip(life: GameLife, seconds: number): GameStrip {
   switch (life) {
     case 'running':
-      return { text: '● Game running', tone: 'server', logs: false }
+      return { text: '● Game running', tone: 'server', logs: false, restart: false }
     case 'waking':
-      return { text: `◐ Waking… ${Math.max(0, Math.floor(seconds))}s`, tone: 'default', logs: false }
+      return { text: `◐ Waking… ${Math.max(0, Math.floor(seconds))}s`, tone: 'default', logs: false, restart: false }
     case 'asleep':
-      return { text: '○ Game asleep — wakes when a player arrives.', tone: 'default', logs: false }
+      return { text: '○ Game asleep — wakes when a player arrives.', tone: 'default', logs: false, restart: false }
     case 'unreachable':
-      return { text: '✕ Can’t reach the Multiplayer Server —', tone: 'danger', logs: true }
+      return { text: '✕ Can’t reach the Multiplayer Server —', tone: 'danger', logs: true, restart: true }
     case 'no-server':
-      return { text: '○ This scene has no Multiplayer Server — place a Game Flow item to add one.', tone: 'default', logs: false }
+      return { text: '○ This scene has no Multiplayer Server — place a Game Flow item to add one.', tone: 'default', logs: false, restart: false }
   }
 }
 
@@ -132,5 +134,5 @@ export function gameStrip(life: GameLife, seconds: number): GameStrip {
 /** The strip with the problems the console has printed, when there are any. */
 export function withProblems(strip: GameStrip, problems: number): GameStrip {
   if (problems < 1 || strip.logs) return strip
-  return { text: `${strip.text} · ${problems} ${problems === 1 ? 'problem' : 'problems'}`, tone: 'danger', logs: true }
+  return { ...strip, text: `${strip.text} · ${problems} ${problems === 1 ? 'problem' : 'problems'}`, tone: 'danger', logs: true }
 }
