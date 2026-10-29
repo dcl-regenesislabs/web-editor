@@ -61,11 +61,11 @@ if (slot !== 0 && !fs.readFileSync(path.join(reactWeb, 'vite.config.ts'), 'utf8'
   process.exit(1)
 }
 // a taken port would leave half a stack talking to another one's servers
-const taken = await Promise.all([PAGE_PORT, SERVICE_PORT, MOBILE_PORT].map((port) => new Promise((resolve) => {
+const taken = (await Promise.all([PAGE_PORT, SERVICE_PORT, MOBILE_PORT].map((port) => new Promise((resolve) => {
   const probe = net.createConnection({ port, host: '127.0.0.1' })
   probe.once('connect', () => { probe.destroy(); resolve(port) })
   probe.once('error', () => resolve(null))
-}))).filter((port) => port !== null)
+})))).filter((port) => port !== null)
 if (taken.length > 0) {
   console.error(`Port ${taken.join(', ')} is in use, probably by another stack; pass --slot ${slot + 1}.`)
   process.exit(1)
