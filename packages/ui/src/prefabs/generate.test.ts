@@ -41,6 +41,9 @@ vi.mock('../engine/datalayer', () => ({
   },
   dataLayerSaveFile: async (path: string, text: string) => {
     disk.set(path, text)
+  },
+  dataLayerSaveFileBytes: async (path: string, bytes: Uint8Array) => {
+    disk.set(path, `png:${bytes.length}`)
   }
 }))
 
@@ -387,6 +390,33 @@ describe('the modules a project script imports', () => {
 // The shipped tree has generic names — rng.ts, schedule.ts, outcomes.ts,
 // pure/normalize.ts. A creator who writes one of those in src/scripts/runtime/
 // and imports it must not have it swapped for ours the next time they save.
+describe('the action icons a script draws', () => {
+  const icons = (): string[] => [...disk.keys()].filter((p) => p.startsWith('assets/images/action-icons/')).sort()
+  const HINT = "import { actionIcon } from './runtime/actionIcons'\nexport const chop = actionIcon('chop')\n"
+
+  it('copies every icon into the scene once a script imports the icon module, and only then', async () => {
+    disk.set('src/scripts/hud.tsx', "import { addHudItem } from './runtime/hudLayout'\n")
+    await regenerateSpawnables()
+    expect(icons()).toEqual([])
+
+    disk.set('src/scripts/kitchen.tsx', HINT)
+    const result = await regenerateSpawnables()
+    expect(icons()).toContain('assets/images/action-icons/chop.png')
+    expect(icons()).toHaveLength(12)
+    expect(result.vendored).toEqual(expect.arrayContaining(icons()))
+    expect(disk.get('assets/images/action-icons/chop.png')).toMatch(/^png:\d+$/)
+    expect((await regenerateSpawnables()).vendored).toEqual([])
+  })
+
+  it('leaves an icon the creator redrew as it is', async () => {
+    disk.set('src/scripts/kitchen.tsx', HINT)
+    disk.set('assets/images/action-icons/chop.png', 'my own knife')
+    await ensureScriptRuntime()
+    expect(disk.get('assets/images/action-icons/chop.png')).toBe('my own knife')
+    expect(icons()).toHaveLength(12)
+  })
+})
+
 describe('a creator file standing where a runtime module goes', () => {
   const CREATOR_OWNED = "export const roll = (sides: number): number => 1 + (sides % 6)\n"
   const DICE = "import { roll } from './runtime/rng'\nexport class Dice {}\n"

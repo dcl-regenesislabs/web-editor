@@ -72,6 +72,7 @@ Rules for modules in this folder:
 | `uiTheme`, `pure/uiTheme` | the scene's UI Theme palette and `UI_CANVAS`, which keeps HUDs clear of the Explorer's reserved screen space |
 | `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices; `.tsx` |
 | `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls, modals that hide them, the touch buttons the scene declares, and an elementId on every item for the mobile check; `.tsx` |
+| `actionIcons` | the action-icon set (`actionIcon(name)`, `ActionIcon`, `ActionHint`) for touch buttons and HUD hints; its PNGs live in `../runtime-assets/action-icons/` and are copied into a scene's `assets/images/action-icons/` only when a script imports this module; `.tsx` |
 | `statusHud` | a one-line themed status readout in the shared HUD layout; `.tsx` |
 | `authoring` | `ColorHex`, `EntityName(s)` and `ZoneName(s)` parameter types that get pickers in the inspector |
 
