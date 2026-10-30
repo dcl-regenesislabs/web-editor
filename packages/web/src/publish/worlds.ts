@@ -56,8 +56,11 @@ async function deployable(worldsContent: string, wallet: string): Promise<Publis
   return worlds
 }
 
-export async function publishWorlds(wallet: string, worldsContent: string): Promise<PublishWorld[]> {
+// none while signed out
+export async function publishWorlds(wallet: string | null, server: string): Promise<PublishWorld[]> {
+  if (wallet === null) return []
   const address = wallet.toLowerCase()
+  const worldsContent = server.replace(/\/+$/, '')
   const lambdas = lambdasFor(worldsContent)
   const [names, listed] = await Promise.all([
     lambdas === null ? [] : ownedNames(lambdas, address),

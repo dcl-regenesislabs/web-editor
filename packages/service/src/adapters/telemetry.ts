@@ -5,7 +5,7 @@ import { createSegmentAnalytics, DISABLED_DELIVERY, SEGMENT_BATCH_URL } from '..
 import type { Analytics, DeliveryHealth } from '../ai/analytics.ts'
 import { createOperations } from '../ai/operations.ts'
 import type { Operations } from '../ai/operations.ts'
-import { createQuotaMonitor, DISABLED_QUOTA } from '../ai/quota.ts'
+import { DISABLED_QUOTA } from '../ai/quota.ts'
 import type { QuotaView } from '../ai/quota.ts'
 
 const SNAPSHOT_MS = 5 * 60_000
@@ -21,8 +21,6 @@ export interface TelemetryComponent extends IBaseComponent {
   operations: Operations
   quota(): QuotaView
   delivery(): DeliveryHealth
-  /** Hand it every Claude response's headers; they carry the plan's usage. */
-  recordProviderHeaders(headers: Record<string, string>): void
   historyUrl?: string
 }
 
@@ -30,6 +28,8 @@ export interface TelemetryComponent extends IBaseComponent {
 export async function createTelemetryComponent({ config, logs }: { config: IConfigComponent; logs: ILoggerComponent }, options: {
   /** The assistant's secret directory on the persistent volume, outside STORAGE_DIR; unset, there is no assistant to report. */
   stateDir?: string
+  /** The Claude plan reading of the account in use (src/ai/accounts.ts). */
+  quota?: () => QuotaView
 }): Promise<TelemetryComponent> {
   const logger = logs.getLogger('telemetry')
   const writeKey = (await config.getString('SEGMENT_WRITE_KEY'))?.trim()
@@ -45,9 +45,7 @@ export async function createTelemetryComponent({ config, logs }: { config: IConf
     })
   }
   const operations = createOperations(analytics)
-  const quota = options.stateDir === undefined ? undefined
-    : createQuotaMonitor({ spend: () => operations.snapshot().sinceStart.usage.estimatedCostUsd })
-  const view = () => quota?.view() ?? DISABLED_QUOTA
+  const view = options.quota ?? (() => DISABLED_QUOTA)
   let snapshots: ReturnType<typeof setInterval> | undefined
   const snapshot = () => {
     const live = operations.snapshot()
@@ -62,7 +60,6 @@ export async function createTelemetryComponent({ config, logs }: { config: IConf
     operations,
     quota: view,
     delivery: () => analytics?.health() ?? DISABLED_DELIVERY,
-    recordProviderHeaders: (headers) => quota?.record(headers),
     historyUrl: historyUrl(await config.getString('ANALYTICS_HISTORY_URL')),
     async [START_COMPONENT]() {
       if (analytics !== undefined) {

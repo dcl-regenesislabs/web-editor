@@ -21,6 +21,7 @@ import {
   moveLine,
   NO_NAME_HEADING,
   NO_NAME_NOTE,
+  NO_NAME_SHARED_NOTE,
   pickTimeLine,
   PUBLISHED_AT,
   publishingHeadline,
@@ -29,6 +30,7 @@ import {
   scopeLine,
   SDK_DOCS_URL,
   SDK_TOO_OLD_HEADING,
+  SHARED_WORLD,
   SIGN_IN_NOTE,
   SIGN_IN_TO_PUBLISH,
   SIGNING_NOTE,
@@ -51,6 +53,7 @@ import {
   previewMove,
   resetPublish,
   startPublish,
+  startSharedPublish,
   type ConflictReview,
   type PublishState
 } from './publish-flow'
@@ -317,7 +320,7 @@ export function publishView(input: PublishViewInput): PublishView {
   const checking = job.phase === 'checking'
   const review = job.phase === 'review' || checking ? job.review : null
   const conflict = review !== null && review.kind === 'conflict' ? review : null
-  const world = job.world ?? picked ?? ''
+  const world = job.world ?? (job.shared ? SHARED_WORLD : (picked ?? ''))
   const mine = job.dir === input.dir
   const title = mine ? input.sceneTitle : null
 
@@ -349,8 +352,9 @@ export function publishView(input: PublishViewInput): PublishView {
       job.total !== null && job.total > 1 && job.at !== null
         ? successLine(title, job.at, live ?? '', job.total)
         : successFallbackLine(title)
+    // a shared world is the pool's: there is nothing in it for the guest to manage
     const manageWorld: PublishAction | undefined =
-      manage !== undefined && live !== null
+      manage !== undefined && live !== null && !job.shared
         ? {
             label: 'Manage world',
             onClick: () => {
@@ -387,7 +391,7 @@ export function publishView(input: PublishViewInput): PublishView {
     // Try again means try again: rewinding to the picker made the creator press
     // Publish a second time to do what the word promised once. It can only run
     // the job over when the job is this scene's and we know where it was going.
-    const retry = mine && world !== '' ? () => startPublish(input.dir, world) : resetPublish
+    const retry = !mine ? resetPublish : job.shared ? () => startSharedPublish(input.dir) : world !== '' ? () => startPublish(input.dir, world) : resetPublish
     const detailLog =
       failure.detail.length > 0 ? <pre className="eui-publish-errlog">{failure.detail.join('\n')}</pre> : undefined
     return state({
@@ -508,15 +512,21 @@ export function publishView(input: PublishViewInput): PublishView {
   }
 
   if (worldsStatus === 'ready' && worlds.length === 0) {
+    const shared = window.editorShell?.publishShared !== undefined
     return state({
       family: 'blocked',
       mark: 'world',
       headline: NO_NAME_HEADING,
-      note: NO_NAME_NOTE,
-      actions: {
-        secondary: { label: 'Check again', onClick: refreshWorlds },
-        primary: { label: 'Get a NAME', onClick: () => openExternal(NAME_MARKETPLACE) }
-      },
+      note: shared ? NO_NAME_SHARED_NOTE : NO_NAME_NOTE,
+      actions: shared
+        ? {
+            secondary: { label: 'Get a NAME', onClick: () => openExternal(NAME_MARKETPLACE) },
+            primary: { label: 'Publish to a shared world', onClick: () => startSharedPublish(input.dir) }
+          }
+        : {
+            secondary: { label: 'Check again', onClick: refreshWorlds },
+            primary: { label: 'Get a NAME', onClick: () => openExternal(NAME_MARKETPLACE) }
+          },
       scrimClose: true
     })
   }

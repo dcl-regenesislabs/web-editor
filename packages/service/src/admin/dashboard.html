@@ -27,9 +27,29 @@
     </section>
 
     <section class="card" aria-labelledby="quota-title">
-      <h2 id="quota-title" class="overline">Claude plan usage</h2>
+      <h2 id="quota-title" class="overline">Claude plan usage · account in use</h2>
       <div id="quota" class="meters"></div>
       <p id="quota-note" class="note">—</p>
+    </section>
+
+    <section class="card" aria-labelledby="accounts-title">
+      <h2 id="accounts-title" class="overline">Claude accounts</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th scope="col">Account</th><th scope="col">State</th><th scope="col" class="num">Session</th><th scope="col" class="num">Week</th>
+            <th scope="col">Token</th><th scope="col">Added</th><th scope="col"><span class="sr-only">Actions</span></th>
+          </tr></thead>
+          <tbody id="accounts"><tr><td colspan="7" class="empty">—</td></tr></tbody>
+        </table>
+      </div>
+      <p class="note">Turns use one account until it reaches its plan's limit, then move to the next ready one without the creator noticing. Run <code>claude setup-token</code> while signed in to another Claude account and paste the token here.</p>
+      <form id="add-account" class="add" autocomplete="off" hidden>
+        <label>Name<input id="account-label" class="input" maxlength="60" required placeholder="e.g. Team Max 2"></label>
+        <label class="grow">Setup token<input id="account-token" class="input mono" type="password" required placeholder="sk-ant-oat…" spellcheck="false"></label>
+        <button class="btn" type="submit">Add account</button>
+        <p id="account-message" class="note" role="status"></p>
+      </form>
     </section>
 
     <section class="card" aria-labelledby="users-title">
@@ -68,6 +88,23 @@
         <dl id="since" class="grid"></dl>
       </section>
     </div>
+
+    <section class="card" id="pool-card" aria-labelledby="pool-title" hidden>
+      <h2 id="pool-title" class="overline">Shared worlds</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th scope="col">NAME</th><th scope="col" class="num">Leases</th><th scope="col" class="num" title="Shared by every NAME of the owner">Owner storage</th><th scope="col">Pool may deploy</th><th scope="col">Owner</th></tr></thead>
+          <tbody id="pool-names"><tr><td colspan="5" class="empty">—</td></tr></tbody>
+        </table>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th scope="col">Guest</th><th scope="col">Zone</th><th scope="col">Scene</th><th scope="col" class="num">Size</th><th scope="col">Last publish</th></tr></thead>
+          <tbody id="pool-leases"><tr><td colspan="5" class="empty">—</td></tr></tbody>
+        </table>
+      </div>
+      <dl id="pool-service" class="grid"></dl>
+    </section>
 
     <section class="card" aria-labelledby="service-title">
       <h2 id="service-title" class="overline">Service and telemetry</h2>

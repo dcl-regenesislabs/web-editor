@@ -54,10 +54,15 @@ Claude's credential; restarting with the same token preserves its recorded expir
 A setup token has no refresh token: replace it when it expires or is revoked.
 The provider controls actual expiry; redeploying does not renew the token.
 
+More Claude accounts take over when one reaches its plan's limit: paste a `claude setup-token` from
+each under *Claude accounts* on the operations dashboard, no restart needed. Running turns move to the
+next ready account on their own ([how it works](../packages/service/README.md#operations-dashboard-and-telemetry)).
+
 Keep that file out of the project data: pass `--ai-auth` (or `AI_AUTH_PATH`) pointing at a
 secret mount, or the service warns at startup. In production (`NODE_ENV=production`) the service
 refuses to start the assistant without `ASSISTANT_WALLETS` (a wallet list, or `*`), and caps turns
-with `ASSISTANT_TURNS_PER_MINUTE` (all wallets) and `ASSISTANT_TURNS_PER_DAY` (per wallet).
+with `ASSISTANT_TURNS_PER_MINUTE` (all wallets), `ASSISTANT_TURNS_PER_DAY` (per wallet),
+`ASSISTANT_TURNS_PER_IP_PER_DAY` and `ASSISTANT_TURNS_PER_DAY_TOTAL`.
 
 Thumbnails use a second OAuth file, a ChatGPT (Codex) session: run
 `npm run -w @dcl-editor/service image-login -- --out /absolute/path/image-auth.json` where a browser

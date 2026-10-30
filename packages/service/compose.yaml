@@ -12,6 +12,8 @@ services:
       HTTP_SERVER_HOST: 0.0.0.0
       HTTP_SERVER_PORT: "8787"
       STORAGE_DIR: /data/projects
+      # nginx on the host sets it; Docker's gateway is a private peer, so the service believes it
+      CLIENT_IP_HEADER: x-real-ip
     volumes:
       - editor-data:/data
     restart: unless-stopped

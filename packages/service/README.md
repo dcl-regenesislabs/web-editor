@@ -100,9 +100,31 @@ CORS answers only allowlisted origins, with that exact origin, and allows the `x
 `STORAGE_WALLETS` admits specific wallet addresses to storage, or `*` explicitly
 opens storage to anyone who can generate a wallet. Production requires this policy.
 `ASSISTANT_WALLETS` independently controls access to the paid assistant credential. Its capacity
-is shared: 32 sockets (3 per wallet), 100 unused connect tickets (3 per wallet) and
-`ASSISTANT_TURNS_PER_MINUTE` turns (10 per wallet). With `*`, a handful of free wallets can hold
-all of it and lock everyone else out of the assistant, so list wallets when that matters.
+is shared: 32 sockets (3 per wallet, 8 per client address), 100 unused connect tickets (3 per wallet;
+30 connects a minute per address) and `ASSISTANT_TURNS_PER_MINUTE` turns (10 per wallet, 20 per
+address). Prompts per UTC day are capped per wallet, per address and for everyone together
+(`ASSISTANT_TURNS_PER_DAY`, `_PER_IP_PER_DAY`, `_PER_DAY_TOTAL`); the counts are kept in
+`<assistant dir>/prompt-counts.json`, so a restart does not hand out a fresh day. That file holds
+today's wallet and client addresses with their counts (mode 0600, beside the credential); the first turn of
+the next UTC day replaces it, so it never holds more than the current day and, until then, the last one. With `*`, a handful
+of free wallets can still hold most of it and lock everyone else out, so list wallets when that matters.
+
+**Client addresses.** Every request also counts against `IP_REQUESTS_PER_MINUTE` for its address.
+The service takes the address from the socket; behind a reverse proxy that is the proxy's, so set
+`CLIENT_IP_HEADER` to the header the proxy writes (`x-real-ip` with the included Nginx and Compose
+files). The header is believed only from a private or loopback peer (10/8, 172.16/12, 192.168/16,
+100.64/10, loopback): set it only where the proxy is the one peer that can reach the service, as with
+Compose's loopback port, or every host on that private network can claim any address. Without it, requests from
+private peers are not counted per address, and production logs a warning. IPv6 clients count per
+/64. With Cloudflare in front of Nginx, `$remote_addr` is Cloudflare's: add `real_ip_header
+CF-Connecting-IP` and `set_real_ip_from` for Cloudflare's ranges so Nginx passes on the visitor's.
+
+**Prompt injection.** The model has no shell, network, credentials or server files: its tools act on
+the creator's own project in their browser. The web service adds rules to the shared system prompt
+(`SERVICE_GUARDRAILS` in `src/ai/pi.ts`): only the creator's messages are requests, and file contents,
+scene data, prefab guides, catalog text, skills and tool output are data whose instructions it does not
+follow; it declines work unrelated to Decentraland scenes, keeps its instructions to itself, and never
+writes secrets into a scene. Prompt size is not capped (big scenes need room); the cost allowance bounds it.
 
 Smart-contract wallets (ERC-1654 links) need a JSON-RPC endpoint in `ETH_RPC_URL`. Without it such
 chains are refused (`contract-wallet-unsupported`). The path with it is written but was not run.
@@ -271,6 +293,8 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `UPLOAD_TIMEOUT_SECONDS` | 30 | base time an upload body may take |
 | `UPLOAD_MIN_BYTES_PER_SECOND` | 65,536 | slowest upload accepted; adds size / rate to the base time |
 | `ASSISTANT_REQUESTS_PER_MINUTE` | 60 | per wallet, assistant HTTP routes only |
+| `IP_REQUESTS_PER_MINUTE` | 3000 | per client address, all routes and wallets together; needs the address (see `CLIENT_IP_HEADER`) |
+| `CLIENT_IP_HEADER` | none | header the reverse proxy writes the client address to, e.g. `x-real-ip`; believed only from a private or loopback peer |
 | `PURGE_WALLETS_PER_RUN` | 20 | wallets one purge run visits |
 | `ANTHROPIC_OAUTH_SETUP_TOKEN` | none | Node-only Claude setup token; seeds `.auth.json` in a sibling `.assistant` directory unless `--ai-auth` supplies its path |
 | `SERVICE_VERSION` | none | the release this build is; `/health` reports it (the image sets it from the `SERVICE_VERSION` build arg) |
@@ -278,7 +302,9 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `AI_MODEL` | `claude-opus-5-5` | assistant model (`--ai-model`); the only model clients may use |
 | `ASSISTANT_WALLETS` | any wallet; **required when `NODE_ENV=production`** and a credential is set | comma-separated wallets that may use the assistant, or `*` for any |
 | `ASSISTANT_TURNS_PER_MINUTE` | 30 | assistant turns across all wallets |
-| `ASSISTANT_TURNS_PER_DAY` | 50 | assistant turns per wallet per UTC day |
+| `ASSISTANT_TURNS_PER_DAY` | 100 | assistant turns per wallet per UTC day |
+| `ASSISTANT_TURNS_PER_IP_PER_DAY` | 300 | assistant turns per client address per UTC day, whichever wallets sign in from it |
+| `ASSISTANT_TURNS_PER_DAY_TOTAL` | 2000 | assistant turns for all wallets together per UTC day |
 | `ASSISTANT_TURNS_AT_ONCE` | 2 | assistant turns one wallet may have running at once, across its tabs |
 | `ASSISTANT_DAILY_LIMIT` | 50000 | internal allowance per wallet per UTC day, priced at the model's API rates; usage is not displayed in the editor |
 | `ASSISTANT_WEEKLY_LIMIT` | 200000 | the same per week, from Monday 00:00 UTC |
@@ -294,22 +320,115 @@ block and directory overhead when sizing the volume; logical byte limits are not
 Fixed in code: signed-fetch window 60 seconds, ticket lifetime 15 minutes, JSON body 2 MB, project
 name 100 characters, path 512 characters, 3 auth-chain links, 500 spent tickets per purge run.
 
+## Shared worlds
+
+For a creator without a NAME (issue #52, approach 5). The service holds a pool wallet that the
+owners of some NAMEs granted world-wide deployment to. It lends a signed-in wallet a zone of one
+of those worlds and signs that wallet's deployments there. The browser builds the entity and
+uploads it to the Worlds server itself; the service only reads the entity file and decides whether
+to sign its id. Code: `src/pool/`; the web side: `packages/web/src/publish/shared.ts`.
+
+| Route (signed, `dcl:editor:projects`) | |
+|---|---|
+| `GET /pool` | `{ available, worldsContent, zoneSize, maxSceneBytes, lease }` |
+| `POST /pool/lease` | `{ lease: { world, zone: { x, y, size }, maxSceneBytes, worldConfiguration, scene } }`, the same one on every call |
+| `POST /pool/sign` | `{ entity, bytes }` (the entity file as text, the scene's size) → `{ world, entityId, authChain }` |
+| `POST /pool/published` | `{ entityId }` after the upload: 200 once the scene is seen on Worlds, 202 while it is not yet |
+| `DELETE /pool/scene` | undeploys the wallet's scene and gives the zone back |
+
+Before signing, the entity must be a v3 scene of the lent world, at most 5 minutes old, with every
+parcel inside the zone, pointers equal to its parcels, the `worldConfiguration` the NAME's own
+scenes carry (world settings are shared by every scene in a world), and nothing standing on its
+parcels that is not this wallet's. Once it lands, the scene is checked against the size the
+browser declared: larger than `POOL_MAX_SCENE_BYTES`, or than declared, and it is undeployed and
+the wallet blocked. A scene moved within the zone replaces the earlier one.
+
+What bounds it, measured against production in issue #52:
+
+- **Storage is the owner's**: every NAME of one owner shares `(NAMEs + LAND + MANA/2000) × 100 MiB`.
+  A lease is refused while the owner has less free than `POOL_MAX_SCENE_BYTES`; a signature, while
+  the declared size does not fit (the scene it replaces is credited, as Worlds does). A NAME the
+  Worlds whitelist exempts (`config.decentraland.org/worlds-whitelist.json`: a fixed per-scene cap,
+  no shared total) goes in `POOL_WHITELISTED` — the pool then does not gate on the owner's free
+  space (it would otherwise self-limit to the on-chain allowance, which the exemption makes moot).
+  Confirmed against production: a whitelisted world took 100+ scenes past the owner's allowance, so
+  there `leasesPerName × POOL_MAX_SCENE_BYTES` is the only total bound.
+- **One deployer**: every guest deploys as the pool wallet, and Worlds holds at most 10 pending
+  uploads per deployer, so at most `POOL_PENDING_DEPLOYS` signatures wait for their upload at once.
+- **100 scenes per world**: bevy-explorer loads only the first page of `/scenes`. Zones go out from
+  the far corner, oldest first, which is the page it reads.
+- **Bots**: wallets are free, so new leases are capped per client address and for the whole pool
+  each hour; a lease that never got a scene goes back after `POOL_IDLE_LEASE_HOURS`; signatures are
+  capped per wallet a minute and a day; `POOL_WALLETS` and `POOL_BLOCKED_WALLETS` admit and refuse.
+  The per-wallet and per-address counters are in memory and restart with the process.
+
+State (leases, scenes, blocked wallets) is a JSON file in `POOL_STATE_DIR`: Worlds names the pool
+wallet as the deployer of every guest scene, so this file is the only record of whose each one is.
+`/admin/` shows the pool: each NAME's leases and owner storage, every lease, and blocked wallets.
+
+| Variable | Default | |
+|---|---|---|
+| `POOL_NAMES` | none: shared worlds are off | comma-separated NAMEs whose owners granted the pool wallet deployment |
+| `POOL_SIGNER_KEY` / `POOL_SIGNER_KEY_FILE` | one required with `POOL_NAMES` | the signer key as inline JSON `{ address, privateKey, publicKey }` (fits an `env_file`/`.env` deploy), or a path to that JSON (mode 0600, outside `STORAGE_DIR`) |
+| `POOL_STATE_DIR` | `STORAGE_DIR/../.pool` | where `pool.json` lives |
+| `POOL_WALLETS` | any wallet in development; required in production | comma-separated addresses, or explicit `*` |
+| `POOL_WHITELISTED` | none | NAMEs (a subset of `POOL_NAMES`) the Worlds whitelist exempts from the owner's allowance; the pool skips the free-space gate for them |
+| `POOL_BLOCKED_WALLETS` | none | comma-separated addresses refused on top of those the pool blocked |
+| `POOL_WORLDS_SERVER` | `https://worlds-content-server.decentraland.org` | must be the one the editor's host deploys to |
+| `CLIENT_IP_HEADER` | none; required in production with the pool | the header the proxy puts the client address in (`x-real-ip` behind the nginx template) |
+| `POOL_ZONE_SIZE` | 10 | parcels per side of a guest's zone, at most 50 |
+| `POOL_KEEP_CLEAR` | 30 | no zone within this many parcels of 0,0, where the NAME's own scenes are |
+| `POOL_LEASES_PER_NAME` | 100 | |
+| `POOL_MAX_SCENE_BYTES` | 52428800 | per guest scene; keep well under ~200 MB — a single request above that is cut by Cloudflare (413) before reaching Worlds |
+| `POOL_SIGNS_PER_MINUTE`, `POOL_SIGNS_PER_DAY` | 4, 60 | per wallet |
+| `POOL_LEASES_PER_ADDRESS_PER_DAY` | 3 | new leases per client address |
+| `POOL_LEASES_PER_HOUR` | 60 | new leases for the whole pool |
+| `POOL_PENDING_DEPLOYS`, `POOL_PENDING_SECONDS` | 8, 120 | signatures waiting for their upload, and how long one waits |
+| `POOL_IDLE_LEASE_HOURS` | 24 | |
+| `POOL_REQUESTS_PER_MINUTE` | 30 | all `/pool` requests per wallet |
+
+To add a NAME: its owner adds the pool wallet to the world's deployment list (world-wide, not
+per parcel), then the NAME goes in `POOL_NAMES`. The log warns at startup for a NAME that has not.
+
 ## Operations dashboard and telemetry
 
-`<BASE_PATH>/admin/` is a read-only page for operators, styled with the editor's design tokens.
+`<BASE_PATH>/admin/` is a page for operators, styled with the editor's design tokens.
 It shows:
 
 - connected assistant sessions and running turns (opaque server ids, model, start, elapsed);
 - prompts, tokens and estimated API cost since the service started;
-- the Claude plan's session (5-hour) and weekly usage, when available;
+- the Claude plan's session (5-hour) and weekly usage of the account in use, when available;
+- the Claude accounts turns go to, each with its state and plan usage, and a form to add or remove them;
 - a per-wallet table (prompts, tokens, cost, the service's own daily and weekly allowance used,
   last activity), most tokens first;
 - outcomes, refusals, and how event delivery is doing.
 
 Wallets appear only on this signed-in page, never in events. It polls
 `<BASE_PATH>/admin/api/status` every 5 seconds while visible. When a poll fails or the sign-in
-expires it says so and keeps the last counters; it never shows zeros it did not read. It has no
-controls.
+expires it says so and keeps the last counters; it never shows zeros it did not read. Its only
+controls add and remove Claude accounts.
+
+**Claude accounts** (`src/ai/accounts.ts`). The configured credential (`ANTHROPIC_OAUTH_SETUP_TOKEN`
+or `AI_AUTH_PATH`) is the first account. To add another, run `claude setup-token` signed in to that
+Claude account and paste the token with a name under *Claude accounts*. Each added account is a 0600
+file in `<assistant dir>/claude-accounts/`, beside the credential and outside `STORAGE_DIR`; the
+dashboard shows only its last four characters and never sends a token back. Up to 20 accounts. Removing one
+takes effect from the next model request; a request already sent with it finishes.
+
+pi reads the Claude credential before every model request from one store that hands out the account
+in use. A turn stays on one account (its prompt cache keeps paying off) until Claude answers 429:
+a plan limit (`anthropic-ratelimit-unified-status: rejected`, or a window at 100%) parks the account
+until its reset time, a burst for `retry-after` or a minute. pi then retries the request (3 times,
+from 2 seconds) and the retry reads the next ready account, so a running turn carries on. Each turn's
+requests run in their own async context, so a response is credited to the account that request was given
+even while other turns switch accounts. A token
+Claude refuses (401/403) is skipped until it answers again or the service restarts. When every
+account is limited the turn stops at once with "Try again after <first reset>". Limits are in memory:
+after a restart the first request to a still-limited account finds out again.
+
+Account writes need the Access sign-in, a same-origin `Origin` (and `Sec-Fetch-Site` when sent),
+a JSON body of at most 2 KB with a `Content-Length`, and at most 20 changes a minute; the log names the admin and the account,
+never the token. A pasted token is checked by the first reply it serves.
 
 **Live state is in memory** (`src/ai/operations.ts`): a restart clears it and changes "Service
 started". History lives only in the events below; the live count is never derived from them, and a
@@ -371,8 +490,8 @@ never sent.
 
 **Claude plan usage** comes from the headers Claude puts on every subscription reply,
 `anthropic-ratelimit-unified-5h-utilization` (the session) and `-7d-utilization` (the week), with
-their reset times; Claude Code's `/usage` reads the same. A pi extension hands each reply's headers
-to the service (`src/ai/quota.ts`): no extra request, and it works with a `claude setup-token`,
+their reset times; Claude Code's `/usage` reads the same. A pi extension hands each reply's status
+and headers to the account that served it (`src/ai/accounts.ts`, `src/ai/quota.ts`): no extra request, and it works with a `claude setup-token`,
 whose token Claude refuses on the `/api/oauth/usage` endpoint (403). The reading covers everything
 signed in to that Claude account, appears with the first reply after a restart, and is marked out of
 date after 30 minutes without one.
@@ -466,10 +585,13 @@ registry and configure the service with:
   and `STORAGE_WALLETS` from the deployment's configuration/secrets.
 - The assistant is off until `ANTHROPIC_OAUTH_SETUP_TOKEN` (or `AI_AUTH_PATH`) is injected.
   The default OAuth file lives at `/data/.assistant/.auth.json`, outside project data;
-  kept conversations, encrypted with keys only the creators' browsers hold, in `/data/.assistant/memory`.
+  kept conversations, encrypted with keys only the creators' browsers hold, in `/data/.assistant/memory`;
+  Claude accounts added from the dashboard in `/data/.assistant/claude-accounts`.
   Back up `/data/projects` separately from credentials. Production rejects an explicit
   `AI_AUTH_PATH` inside `STORAGE_DIR`. With a credential, set `ASSISTANT_WALLETS`: the service
-  refuses to start in production without it, because every turn spends the one configured credential.
+  refuses to start in production without it, because every turn spends the operator's Claude accounts.
+- Set `CLIENT_IP_HEADER` to the header your ingress writes the client address to (Compose sets
+  `x-real-ip`, which the included Nginx files send), or per-address limits stay off.
 - An HTTPS ingress that preserves paths and supports WebSocket upgrades.
   Set `PUBLIC_URL` to the external service URL (including `BASE_PATH`, if any)
   so upload URLs use HTTPS. Allow idle WebSocket connections for 15 minutes and

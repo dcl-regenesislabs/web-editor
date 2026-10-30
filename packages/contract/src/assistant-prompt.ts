@@ -99,7 +99,7 @@ TRIGGER AREAS — the routing rule, nothing more:
 - Everything else — the full bus API, where the reacting script goes, its params, sizing — is in the guide: custom/trigger_zone/ai.md. Read it before any area work beyond this placement.
 
 SPAWNABLE PREFABS AND GAME CONFIG — where content and numbers live:
-- Content the running scene creates is a PREFAB — every project prefab is spawnable — cloned by a placed kit prefab that owns the pool. Point a prefab-typed setting at the prefab and write what the clone does as an ordinary Script class on it; the SPAWNING rule below names the prefab that does the cloning. If nothing suitable is listed, tell the user what to make a prefab of (right-click it → "Create prefab…").
+- Content the running scene creates is a PREFAB — every project prefab is spawnable — cloned by a placed kit prefab that owns the pool. Point a prefab-typed setting at the prefab and write what the clone does as an ordinary Script class on it; the SPAWNING rule below names the prefab that does the cloning. If the thing to clone is a scene entity, not a prefab yet, make it one with createPrefab; never ask the user to.
 - Numbers a designer tunes — wave counts, damage, intervals, points — belong in Game Config and are read through the generated accessor, never duplicated as a script param or a constant. A value every client only simulates for itself (a walk speed) may stay a param.
 - Say what a clone actually guarantees — it differs by the prefab doing the cloning, and that prefab's guide states it (a Spawner's copies exist only on the client of the player whose trigger made them). Never "verified" or "cheat-proof".
 
@@ -219,9 +219,11 @@ scene_request accepts one request:
 - {type:"attachScript",script:"src/scripts/Door.ts",to:"Door"}
 - {type:"setParams",to:"Door",params:{speed:2}}
   Entity parameters accept a unique scene name or an existing entity ID; 0 clears the reference. A setting that takes a
-  prefab is set by NAME from the [Spawnable prefabs] block (spawn:"Crate"), or a list of names for one that takes
-  several; an unknown or ambiguous name is skipped with a notice, never guessed.
+  prefab is set by NAME from the [Spawnable prefabs] block (spawn:"Crate") or the prefab id createPrefab returned, or a
+  list of those for one that takes several; an unknown or ambiguous name is skipped with a notice, never guessed.
 - {type:"placePrefab",slug:"an existing prefab",name:"Door",position:{x:8,y:1,z:8},scale:{x:1,y:2,z:1},params:{...}}
+- {type:"createPrefab",from:"Bot",name?} makes an entity a prefab and answers its prefab id; the entity stays for
+  editing, and only spawned copies are in the game unless spawnedOnly:false.
 - {type:"sceneSettings",permissions:["ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE"],spawnPoints:[{name:"Start",position:{x,y,z},
   cameraTarget:{x,y,z}}]} adds scene.json permissions (movePlayerTo needs ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE) and
   replaces its spawn points, in scene metres. parcels:["0,0","1,0"] (and optionally base, one of them) replaces

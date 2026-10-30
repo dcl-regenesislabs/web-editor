@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs'
 import type { ILoggerComponent } from '@well-known-components/interfaces'
+import { object } from '../../../contract/src/assistant.ts'
+import { AccountError } from '../ai/accounts.ts'
+import type { AccountPool, AccountView } from '../ai/accounts.ts'
 import { DISABLED_DELIVERY } from '../ai/analytics.ts'
 import type { DeliveryHealth } from '../ai/analytics.ts'
 import { createOperations } from '../ai/operations.ts'
 import type { Operations, OperationsSnapshot, UserActivity } from '../ai/operations.ts'
 import { DISABLED_QUOTA } from '../ai/quota.ts'
 import type { QuotaView } from '../ai/quota.ts'
+import { createRateLimiter } from '../config.ts'
 import { createAccessVerifier } from './access.ts'
+import type { PoolStatus } from '../pool/pool.ts'
 import type { AccessVerifier } from './access.ts'
 
 const asset = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
@@ -25,8 +30,12 @@ export interface AdminStatus extends Omit<OperationsSnapshot, 'users'> {
   now: string
   version: string | null
   quota: QuotaView
+  /** The Claude accounts turns go to, in the order they are tried. */
+  accounts: AccountView[]
   telemetry: DeliveryHealth
   historyUrl: string | null
+  /** Shared worlds; null while the pool is off or could not be read. */
+  pool: PoolStatus | null
 }
 
 export interface AdminComponent {
@@ -52,6 +61,29 @@ function respond(status: number, body: string, type: string): Response {
 }
 
 const json = (status: number, value: unknown) => respond(status, JSON.stringify(value), 'application/json')
+
+const ACCOUNT_ERRORS: Record<AccountError['code'], number> = {
+  'invalid-token': 400, 'invalid-label': 400, duplicate: 409, 'too-many': 409, 'not-found': 404, 'not-removable': 403
+}
+const MAX_BODY = 2048
+const WRITES_PER_MINUTE = 20
+
+// Access cookies are SameSite Lax, but a write must also come from this page: refuse other sites' requests
+function sameOrigin(request: Request): boolean {
+  const site = request.headers.get('sec-fetch-site')
+  if (site !== null && site !== 'same-origin') return false
+  const origin = request.headers.get('origin')
+  if (origin === null || !URL.canParse(origin)) return false
+  return new URL(origin).host === (request.headers.get('host') ?? new URL(request.url).host)
+}
+
+// the page always sends a length, so a body without one (or a longer one) is refused before it is read
+async function readSmallBody(request: Request): Promise<string | null> {
+  const declared = Number(request.headers.get('content-length') ?? NaN)
+  if (!Number.isSafeInteger(declared) || declared > MAX_BODY) return null
+  const text = await request.text()
+  return new TextEncoder().encode(text).byteLength > MAX_BODY ? null : text
+}
 
 function cookie(request: Request, name: string): string | undefined {
   for (const part of (request.headers.get('cookie') ?? '').split(';')) {
@@ -90,22 +122,26 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
   quota?: () => QuotaView
   telemetry?: () => DeliveryHealth
   allowance?: (wallet: string) => Promise<Allowance>
+  pool?: () => Promise<PoolStatus>
+  /** Claude accounts admins may add and remove; unset, the dashboard only shows usage. */
+  accounts?: AccountPool
 }): AdminComponent {
   const logger = logs.getLogger('admin')
   const root = `${options.basePath ?? ''}/admin`
   const operations = options.operations ?? createOperations()
+  const writes = createRateLimiter()
 
-  async function allowed(request: Request): Promise<boolean | 'unavailable'> {
+  /** Who is signed in, false when nobody is. */
+  async function allowed(request: Request): Promise<string | false | 'unavailable'> {
     const access = options.access
     if (access === null) return false
-    if (access.kind === 'local') return true
+    if (access.kind === 'local') return 'local admin'
     // Cloudflare adds the header at its edge; the cookie covers a request that reached the origin directly
     const token = request.headers.get('cf-access-jwt-assertion') ?? cookie(request, 'CF_Authorization')
     if (token === undefined || token === '') return false
     try {
-      const email = await access.verifier.verify(token)
       // the Access application's policy is the admin list: a person it let in holds a token for this audience
-      return email !== undefined
+      return await access.verifier.verify(token) ?? false
     } catch {
       logger.error('Cloudflare Access keys could not be fetched')
       return 'unavailable'
@@ -125,8 +161,39 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
       now: new Date().toISOString(),
       version: options.version ?? null,
       quota: options.quota?.() ?? DISABLED_QUOTA,
+      accounts: await options.accounts?.list() ?? [],
       telemetry: options.telemetry?.() ?? DISABLED_DELIVERY,
-      historyUrl: options.historyUrl ?? null
+      historyUrl: options.historyUrl ?? null,
+      pool: options.pool === undefined ? null : await options.pool().catch(() => {
+        logger.error('Pool status could not be read')
+        return null
+      })
+    }
+  }
+
+  async function changeAccounts(request: Request, admin: string, id: string | undefined): Promise<Response> {
+    const accounts = options.accounts
+    if (accounts === undefined) return json(404, { error: 'not-found' })
+    if (!sameOrigin(request)) return json(403, { error: 'cross-site' })
+    if (writes.take('accounts', Date.now(), WRITES_PER_MINUTE) > 0) return json(429, { error: 'rate-limited' })
+    try {
+      if (id !== undefined) {
+        await accounts.remove(id)
+        logger.info(`${admin} removed Claude account ${id}`)
+        return json(200, { ok: true })
+      }
+      if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) return json(415, { error: 'json-required' })
+      const text = await readSmallBody(request)
+      if (text === null) return json(413, { error: 'body-too-large' })
+      let body: unknown
+      try { body = JSON.parse(text) } catch { return json(400, { error: 'invalid-json' }) }
+      if (!object(body) || typeof body.token !== 'string' || typeof body.label !== 'string') return json(400, { error: 'invalid-body' })
+      const account = await accounts.add(body.label, body.token)
+      logger.info(`${admin} added Claude account ${account.id} "${account.label}"`)
+      return json(201, { account })
+    } catch (error) {
+      if (error instanceof AccountError) return json(ACCOUNT_ERRORS[error.code], { error: error.code })
+      throw error
     }
   }
 
@@ -135,7 +202,9 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
       const path = new URL(request.url).pathname
       if (path !== root && !path.startsWith(`${root}/`)) return null
       if (options.access === null) return json(404, { error: 'not-found' })
-      if (request.method !== 'GET' && request.method !== 'HEAD') return json(405, { error: 'method-not-allowed' })
+      const accountPath = /^\/api\/accounts(?:\/([a-z0-9]+))?$/.exec(path.slice(root.length))
+      const write = accountPath !== null && (accountPath[1] === undefined ? request.method === 'POST' : request.method === 'DELETE')
+      if (request.method !== 'GET' && request.method !== 'HEAD' && !write) return json(405, { error: 'method-not-allowed' })
       const verdict = await allowed(request)
       const api = path.startsWith(`${root}/api/`)
       if (verdict === 'unavailable') return api ? json(503, { error: 'access-unavailable' }) : respond(503, 'Sign-in is unavailable. Try again shortly.', 'text/plain; charset=utf-8')
@@ -145,6 +214,7 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
       if (path === `${root}/dashboard.js`) return respond(200, SCRIPT, 'text/javascript; charset=utf-8')
       if (path === `${root}/dashboard.css`) return respond(200, STYLE, 'text/css; charset=utf-8')
       if (path === `${root}/api/status`) return json(200, await status())
+      if (write) return changeAccounts(request, verdict, accountPath[1])
       return json(404, { error: 'not-found' })
     }
   }

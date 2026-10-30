@@ -7,6 +7,7 @@ import { type FakeWorlds, createFakeWorlds } from '../../validate/fake-worlds-se
 import { buildDeployment } from './entity'
 import { PublishError, refusal } from './errors'
 import { createPublisher } from './publish'
+import { type PoolClient, type SharedLease, placeInZone } from './shared'
 import { uploadDeployment } from './upload'
 
 const SERVER = 'http://worlds.test'
@@ -174,5 +175,66 @@ describe('publishing to a world', () => {
     expect(refusal(400, JSON.stringify({ message: cases[0][1] }), WORLD).message).toBe(
       `This scene is 200 MB and ${WORLD} has room for 100 MB. Remove or shrink files (models, textures, sounds), or free space in your other worlds.`
     )
+  })
+})
+
+describe('publishing to a shared world', () => {
+  const POOL_WORLD = 'pool.dcl.eth'
+  const lease: SharedLease = { world: POOL_WORLD, zone: { x: -150, y: -140, size: 10 }, maxSceneBytes: 50 * 1024 * 1024, worldConfiguration: { name: POOL_WORLD, skyboxConfig: { fixedTime: 0 } } }
+
+  it('moves the published copy of the scene into the lent zone, as one block, under the pool\'s world settings', () => {
+    const scene = { ...sceneJson, scene: { parcels: ['3,4', '4,4', '4,5'], base: '4,4' } }
+    const placed = JSON.parse(new TextDecoder().decode(placeInZone(text(JSON.stringify(scene)), lease))) as typeof sceneJson
+    expect(placed.scene).toEqual({ parcels: ['-150,-140', '-149,-140', '-149,-139'], base: '-149,-140' })
+    expect(placed.worldConfiguration).toEqual(lease.worldConfiguration)
+    expect(placed.display).toEqual(sceneJson.display)
+  })
+
+  it('refuses a scene wider than the zone before anything is signed', () => {
+    const scene = { ...sceneJson, scene: { parcels: ['0,0', '10,0'], base: '0,0' } }
+    expect(() => placeInZone(text(JSON.stringify(scene)), lease)).toThrow(/fits in 10×10 parcels, and this one spans 11×1/)
+  })
+
+  it('has the pool sign the entity, uploads it as any publish, and tells the pool it landed', async () => {
+    const pool = await signer()
+    const creator = await signer()
+    serveWith(createFakeWorlds({ worlds: { [POOL_WORLD]: { owner: '0x1111111111111111111111111111111111111111', deployers: [pool.address] } } }))
+    const signed: Array<{ entity: string; bytes: number }> = []
+    const landed: string[] = []
+    const client: PoolClient = {
+      lease: async () => lease,
+      sign: async (entity, bytes) => {
+        signed.push({ entity, bytes })
+        return pool.sign(await hashV1(text(entity)))
+      },
+      published: async (entityId) => void landed.push(entityId)
+    }
+    const host = {
+      services: { worldsContent: SERVER, projects: null },
+      pageDir: 'https://decentraland.zone/bevy-web/',
+      identity: () => ({ address: creator.address, isGuest: false }),
+      signDeployment: async () => { throw new Error('the creator signs nothing') }
+    } as unknown as Parameters<typeof createPublisher>[0]['host']
+    let setWorld = 0
+    const publisher = createPublisher({
+      host,
+      pool: client,
+      setWorld: async () => void setWorld++,
+      files: async () => project(),
+      build: async () => ({ ok: true, outputs: outputs(), diagnostics: [], events: [], sdkVersion: '7.25.1' }) as unknown as Awaited<ReturnType<Parameters<typeof createPublisher>[0]['build']>>,
+      published: async () => {}
+    })
+    const result = await publisher.publishShared!('p1', () => {})
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.published.world).toBe(POOL_WORLD)
+    expect(result.published.url).toContain('&position=-150%2C-140')
+    const entity = JSON.parse(signed[0].entity) as { pointers: string[]; metadata: { worldConfiguration: unknown } }
+    expect(entity.pointers).toEqual(['-150,-140', '-149,-140'])
+    expect(entity.metadata.worldConfiguration).toEqual(lease.worldConfiguration)
+    expect(signed[0].bytes).toBe(result.published.bytes)
+    expect(landed).toEqual([result.published.entityId])
+    // the project keeps its own parcels and world
+    expect(setWorld).toBe(0)
   })
 })

@@ -97,6 +97,8 @@ You need Node 24, git, and both repos side by side:
    (data in `.data/service`), bevy-explorer's react-web dev server with this checkout as the editor,
    and the bridge scene on `:8100`. Open `http://localhost:5173/?editor`. Add `--world name.eth` for
    a stand-in Worlds server on `:8799` to test publishing, `--no-build` to skip the build.
+   `--slot 1` (up to 9) runs another stack beside the first, from another checkout: every port
+   moves by 100 and the printed URL carries `editor-projects`, `editor-mobile` and `bridgePort`.
 
 3. **The assistant locally** uses your own Claude session, never an API key:
 

@@ -78,6 +78,7 @@ export function createBrowserAssistant(options: {
         if (request.type === 'readThumbnail') return { tool: 'Thumbnail', detail: 'Current' }
         if (request.type === 'useThumbnail') return { tool: 'Thumbnail', detail: `Version ${String(request.version)}` }
         if (request.type === 'attachScript') return null
+        if (request.type === 'createPrefab') return { tool: 'Prefab', detail: String(request.from ?? '') }
     }
     return { tool: 'Inspect', detail: 'Project' }
   }

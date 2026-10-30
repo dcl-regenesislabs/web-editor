@@ -259,6 +259,8 @@ export interface CreatePrefabOptions {
   tags?: string[]
   requiredPermissions?: string[]
   thumbnail?: Uint8Array
+  /** Capture these top-level entities instead of the current selection. */
+  roots?: string[]
 }
 
 // The scene's display title (scene.json), so a prefab can say where it was made.
@@ -278,7 +280,7 @@ export async function createPrefabFromSelection(
   name: string,
   options: CreatePrefabOptions = {}
 ): Promise<WritePrefabResult & { entityCount: number }> {
-  const roots = topLevelSelected(state.snapshot)
+  const roots = options.roots ?? topLevelSelected(state.snapshot)
   if (roots.length === 0) throw new Error('select at least one entity to save as a prefab')
   const baseline = provenanceBaseline()
   const authored = authoredOnly(state.snapshot, (id) => isRuntimeEntity(id, baseline))

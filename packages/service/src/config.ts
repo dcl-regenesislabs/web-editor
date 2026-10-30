@@ -1,6 +1,7 @@
 import { createLock } from './store.ts'
 import type { BlobStore, Clock, Lock } from './store.ts'
 import type { AssistantService } from './ai/types.ts'
+import type { PoolService } from './pool/pool.ts'
 import type { IConfigComponent } from '@well-known-components/interfaces'
 
 export interface Limits {
@@ -31,8 +32,12 @@ export interface Limits {
   uploadMinBytesPerSecond: number
   /** Assistant requests per wallet, counted apart from project requests. */
   assistantRequestsPerMinute: number
+  /** Requests per client address, every route and wallet together. */
+  ipRequestsPerMinute: number
   /** Wallets one purge run visits; the next run carries on after the last. */
   purgeWalletsPerRun: number
+  /** Shared-world requests per wallet, counted apart from project requests. */
+  poolRequestsPerMinute: number
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -55,7 +60,9 @@ export const DEFAULT_LIMITS: Limits = {
   uploadTimeoutSeconds: 30,
   uploadMinBytesPerSecond: 64 * 1024,
   assistantRequestsPerMinute: 60,
-  purgeWalletsPerRun: 20
+  ipRequestsPerMinute: 3000,
+  purgeWalletsPerRun: 20,
+  poolRequestsPerMinute: 30
 }
 
 export interface RateLimiter {
@@ -66,6 +73,7 @@ export interface RateLimiter {
 export interface Env {
   logError?: (error: unknown) => void
   assistant?: AssistantService
+  pool?: PoolService
   store: BlobStore
   /** Exact origins (`https://host[:port]`) the editor may be served from. */
   allowedOrigins: readonly string[]
@@ -79,6 +87,8 @@ export interface Env {
   publicUrl?: string
   /** JSON-RPC endpoint for ERC-1654 wallets; unset, they are refused. */
   ethRpcUrl?: string
+  /** Header the reverse proxy puts the client address in, e.g. x-real-ip; unset, only direct peers are told apart. */
+  clientIpHeader?: string
   /** the release this build is, reported by /health */
   version?: string
   limits?: Partial<Limits>
@@ -109,11 +119,13 @@ const LIMIT_VARS: Record<keyof Limits, string> = {
   uploadTimeoutSeconds: 'UPLOAD_TIMEOUT_SECONDS',
   uploadMinBytesPerSecond: 'UPLOAD_MIN_BYTES_PER_SECOND',
   assistantRequestsPerMinute: 'ASSISTANT_REQUESTS_PER_MINUTE',
-  purgeWalletsPerRun: 'PURGE_WALLETS_PER_RUN'
+  ipRequestsPerMinute: 'IP_REQUESTS_PER_MINUTE',
+  purgeWalletsPerRun: 'PURGE_WALLETS_PER_RUN',
+  poolRequestsPerMinute: 'POOL_REQUESTS_PER_MINUTE'
 }
 
 export async function envFromConfig(config: IConfigComponent, store: BlobStore): Promise<Env> {
-  const names = ['ALLOWED_ORIGINS', 'STORAGE_WALLETS', 'TICKET_SECRET', 'BASE_PATH', 'PUBLIC_URL', 'ETH_RPC_URL', 'SERVICE_VERSION', ...Object.values(LIMIT_VARS)]
+  const names = ['ALLOWED_ORIGINS', 'STORAGE_WALLETS', 'TICKET_SECRET', 'BASE_PATH', 'PUBLIC_URL', 'ETH_RPC_URL', 'SERVICE_VERSION', 'CLIENT_IP_HEADER', ...Object.values(LIMIT_VARS)]
   const values = await Promise.all(names.map(async (name) => [name, await config.getString(name)] as const))
   return envFromVars(Object.fromEntries(values), store)
 }
@@ -149,8 +161,15 @@ export function envFromVars(vars: Vars, store: BlobStore): Env {
     publicUrl: vars.PUBLIC_URL?.replace(/\/$/, '') || undefined,
     ethRpcUrl: vars.ETH_RPC_URL || undefined,
     version: vars.SERVICE_VERSION || undefined,
+    clientIpHeader: clientIpHeader(vars.CLIENT_IP_HEADER),
     limits
   }
+}
+
+export function clientIpHeader(value: string | undefined): string | undefined {
+  const header = value?.trim().toLowerCase() || undefined
+  if (header !== undefined && !/^[a-z0-9-]+$/.test(header)) throw new Error('CLIENT_IP_HEADER must be a header name')
+  return header
 }
 
 export function walletAllowlist(value: string | undefined, name: string): ReadonlySet<string> | null {
