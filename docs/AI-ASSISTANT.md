@@ -153,6 +153,13 @@ the creator placed by hand, and a param that lives on a prefab's *child* (the
 Player Rig's gun sits on the Hand Anchor, not the rig root, so the placement's
 own `params` never sees it).
 
+`createPrefab` (`{"type":"createPrefab","from":"Bot"}`) saves a scene entity as a
+project prefab through the same core as the Scene tab's "Create prefab…"
+(`createPrefabFrom`), so a spawner can point at it in the same batch by the
+returned `prefab` id. It defaults to "When spawned" and, unlike the gesture, does not
+copy the prefab into the creator's cross-scene library. An entity that already is
+an instance of a project prefab answers that prefab with `reused: true`.
+
 Entity parameters accept an existing entity ID or a unique scene name, such as
 `{"respawnAt":"Start Spawn"}`. Missing and duplicate names are rejected; use
 an ID to disambiguate, or `0` to clear the reference.

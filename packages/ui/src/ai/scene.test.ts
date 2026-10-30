@@ -8,6 +8,9 @@ import { buildCodeModel } from './code-model'
 import { materialFile } from '../three/materials'
 import { dataLayerListFiles, dataLayerSaveFileBytes } from '../engine/datalayer'
 import { soundBytes } from './library-bytes'
+import { createPrefabFrom } from '../actions/prefabs'
+import { flushPendingSave } from '../core/autosave'
+import { uiSetSpawnedOnly } from '../actions/spawned-only'
 
 const { setValue, deleteValue, status } = vi.hoisted(() => {
   const status = new Map<string, string>()
@@ -33,6 +36,10 @@ vi.mock('./library-bytes', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() 
 vi.mock('../engine/bus', () => ({ sendToScene: vi.fn() }))
 vi.mock('./code-model', () => ({ buildCodeModel: vi.fn(async () => { throw new Error('built') }), overBudget: () => [], MODEL_BUDGET: {} }))
 vi.mock('./requests', () => ({ runRequestText: vi.fn() }))
+vi.mock('../actions/prefabs', () => ({ createPrefabFrom: vi.fn(async (_: string[], name: string) => ({ id: 'p-bot', folder: 'custom/bot', name, warnings: [] })) }))
+vi.mock('../actions/spawned-only', () => ({ uiSetSpawnedOnly: vi.fn() }))
+vi.mock('../core/autosave', () => ({ flushPendingSave: vi.fn(async () => ({ pending: true, ok: true })) }))
+vi.mock('../panels/prefab-store', () => ({ prefabStore: { items: [] }, refreshPrefabs: vi.fn(async () => [{ folder: 'custom/zombie', data: { id: 'p-zombie', name: 'Zombie' } }]) }))
 vi.mock('../model-info', async (real) => ({ ...(await real<object>()), inspectModel: vi.fn() }))
 vi.mock('../scene-budget', async (real) => ({ ...(await real<object>()), sceneTextures: vi.fn() }))
 vi.mock('./request-format', () => ({ resolveEntityRef: (_: unknown, ref: string) => ref }))
@@ -156,5 +163,26 @@ describe('assistant scene requests', () => {
     vi.mocked(sceneTextures).mockResolvedValueOnce({ used: 9, limit: 10, shared: new Set(['models/catalog/materials/T_Rock_D.jpg']) })
     const placed = await browserSceneRequest({ type: 'placeModel', id: 'Stone 03', into: '512' }, new AbortController().signal)
     expect(placed).toMatchObject({ model: 'models/catalog/stone-03.glb', textures: 3, materials: 1, sceneTexturesLeft: -1, warning: expect.stringContaining('11 of its 10 textures') })
+  })
+
+  it('makes a scene entity a prefab a spawner can point at, kept out of the build and of the creator\'s library', async () => {
+    const made = await browserSceneRequest({ type: 'createPrefab', from: '512' }, new AbortController().signal)
+    expect(made).toEqual({ entity: '512', prefab: 'p-bot', folder: 'custom/bot', name: 'Box' })
+    expect(createPrefabFrom).toHaveBeenCalledWith(['512'], 'Box', { spawnedOnly: true, library: false })
+    expect(flushPendingSave).toHaveBeenCalled()
+    await browserSceneRequest({ type: 'createPrefab', from: '512', name: 'Bot', spawnedOnly: false }, new AbortController().signal)
+    expect(createPrefabFrom).toHaveBeenLastCalledWith(['512'], 'Bot', { spawnedOnly: false, library: false })
+    expect(uiSetSpawnedOnly).toHaveBeenLastCalledWith('512', false)
+  })
+
+  it('answers the prefab an entity already is instead of making a second one', async () => {
+    state.snapshot['513'] = { 'inspector::CustomAsset': { assetId: 'p-zombie' } }
+    vi.mocked(createPrefabFrom).mockClear()
+    const made = await browserSceneRequest({ type: 'createPrefab', from: '513' }, new AbortController().signal)
+    expect(made).toEqual({ entity: '513', prefab: 'p-zombie', folder: 'custom/zombie', name: 'Zombie', reused: true })
+    expect(createPrefabFrom).not.toHaveBeenCalled()
+    // an instance placed into the game still moves to "When spawned"
+    expect(uiSetSpawnedOnly).toHaveBeenLastCalledWith('513', true)
+    delete state.snapshot['513']
   })
 })
