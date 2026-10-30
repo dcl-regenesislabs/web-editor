@@ -73,6 +73,7 @@ Rules for modules in this folder:
 | `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices; `.tsx` |
 | `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls, modals that hide them, the touch buttons the scene declares, and an elementId on every item for the mobile check; `.tsx` |
 | `statusHud` | a one-line themed status readout in the shared HUD layout; `.tsx` |
+| `pure/cameraRig` | the Camera Rig's fixed-camera framing: heading and pitch to a pose, and the distance that fits a box on a canvas of a given aspect (phone 1600x720 included) |
 | `authoring` | `ColorHex`, `EntityName(s)` and `ZoneName(s)` parameter types that get pickers in the inspector |
 
 `spawner.ts` reproduces `node_modules/@dcl/sdk-commands/dist/logic/runtime-script.js`
@@ -104,6 +105,7 @@ importing a module that defines one lists it in its `ai.md` `claims-globals:`.
 | `__dclServerLife_v1` | `serverLife.ts` — the one heartbeat driver and its pending-participant set |
 | `__dclServerState_v1` | `serverState.ts` — store-key claims |
 | `__dclPlayerStoreKeys_v1` | `playerStore.ts` — store-key claims |
+| `__dclCameraRig_v1` | the Camera Rig prefab — which rig's camera owns the screen when several want it |
 | `__dclGameConfig_v1` | the generated `src/scripts/game-config.ts` |
 | `__dclRoundLoop_v1`, `__dclRoundTuple_v1` | the Round Loop prefab |
 | `__dclLevelSlots_v1` | the Level Slots prefab |

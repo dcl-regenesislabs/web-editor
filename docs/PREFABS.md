@@ -717,6 +717,32 @@ folder there with a `data.json`). To add one, follow the
   there; server-validated zones are a separate prefab. Serverless: no
   `requiresSdk`, no permissions.
 
+- **camera-rig** ("Camera Rig") — a fixed game camera for games played on a
+  board, arena or kitchen the player should see whole (the default third-person
+  camera trails the avatar and hides most of such an area). One entity: its
+  position is where the camera looks, its rotation is which way is up on screen,
+  and its scale (12×4×12 by default) is the area — both what the camera frames
+  and a mask-8 `core::TriggerArea`, so the editor draws the volume while
+  building and nothing shows while playing. While the local player is inside
+  (or always), `scripts/camera-rig.ts` points `MainCamera` at a `VirtualCamera`
+  on a separate root entity (the rig's scale must not reach the camera), and
+  hands the default camera back on the way out. The distance that fits the
+  whole area is exact — the box's eight corners projected for the player's real
+  canvas aspect (`UiCanvasInformation`, falling back to 1600/720 on `isMobile()`
+  and 16/9 elsewhere), plus a wider margin on phones for the touch buttons; the
+  math is `runtime-modules/pure/cameraRig.ts`, tested in `runtime-pure.test.ts`.
+  Params: `mode` (`top-down` / `isometric` / `follow`), `activeWhen`
+  (`inside this area` / `always`), `angle`, `distance` (0 = fit), `fitSize`
+  (0 = the rig's scale) and `transitionSeconds`. Top-down is 88°, not 90°, so a
+  flattened camera forward still has a heading. Several rigs share
+  `__dclCameraRig_v1`: the one entered last owns the screen, and a rig only
+  clears a `MainCamera` it wrote. Stays on long-stable SDK surface (the `$case`
+  transition literal, not `VirtualCamera.Transition`; `fov` passed as a value an
+  older pin's types accept). Not `requiresSdk`, no permissions; the explorer
+  allows ForceCamera by default. Unverified live: whether movement keys stay
+  camera-relative under a scene camera, and whether the explorer's free camera
+  in Play mode wins over the rig. Ships `ai.md`.
+
 ### The Multiplayer Server kit
 
 Six prefabs. All but the Spawner are

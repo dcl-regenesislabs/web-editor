@@ -11,6 +11,10 @@
     "version": "1.1.0",
     "digest": "085963a209dcedc598dbd874a2648c0a357bda4c8cfde00f1f91695eb2bd6e48"
   },
+  "camera-rig": {
+    "version": "1.0.0",
+    "digest": "866054d60b22a2f8d4fe33ee9a0e1debd74c0629ad7187a876c39518a2f82a78"
+  },
   "classic-bench": {
     "version": "1.1.0",
     "digest": "8a491fe903e6462af09fbc56ac75a6b93f2f9bd01d6aa21811b10d59c88d8276"

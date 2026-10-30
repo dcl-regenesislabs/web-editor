@@ -136,6 +136,7 @@ describe('per-prefab AI guides', () => {
   it('guides the prefabs that expose an API, and no others', () => {
     expect(guidedFolders).toEqual([
       'announcer',
+      'camera-rig',
       'game-flow',
       'health-respawn',
       'leaderboard',
