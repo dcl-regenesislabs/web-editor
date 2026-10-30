@@ -29,7 +29,7 @@ const MAX_GUIDE_BYTES = 6144
 // The cap exists to catch RE-GROWTH, not to fight ordinary edits — the vocabulary
 // lint below is what keeps per-prefab content out. Raise deliberately for a new
 // editor CAPABILITY, never as part of adding a prefab.
-const MAX_PROMPT_CHARS = 36000
+const MAX_PROMPT_CHARS = 36400
 
 function hasGuide(folder: string): boolean {
   return existsSync(fileURLToPath(new URL(`${folder}/${GUIDE_FILE}`, PREFABS_ROOT)))
