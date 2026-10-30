@@ -14,6 +14,7 @@ import { importSpecifiers } from '../../prefabs/vendoring'
 import { baseName } from '../../script/project-files'
 import { GAME_CHECK_IDS, GAME_SCENE_CHECKS } from './scene-check-game'
 import { SIDES_CHECK_IDS, SIDES_SCENE_CHECKS } from './scene-check-sides'
+import { REQUEST_CHECK_IDS, REQUEST_SCENE_CHECKS } from './scene-check-requests'
 import { SPAWNER_CHECK_IDS, SPAWNER_SCENE_CHECKS } from './scene-check-spawner'
 import {
   aliasOf,
@@ -58,7 +59,9 @@ export const CHECK_IDS = {
   endlessRound: GAME_CHECK_IDS.endlessRound,
   // the sides model's two, implemented in scene-check-sides.ts
   moduleScopeServer: SIDES_CHECK_IDS.moduleScopeServer,
-  clientOnlyOnServer: SIDES_CHECK_IDS.clientOnlyOnServer
+  clientOnlyOnServer: SIDES_CHECK_IDS.clientOnlyOnServer,
+  // a refused request dropped without a word, in scene-check-requests.ts
+  swallowedRequest: REQUEST_CHECK_IDS.swallowed
 } as const
 
 // --- 1. config-shadowing ---
@@ -381,5 +384,6 @@ export const BUILTIN_SCENE_CHECKS: ReadonlyArray<readonly [string, SceneCheck]> 
   ...GAME_SCENE_CHECKS,
   ...SIDES_SCENE_CHECKS,
   [BUDGET_CHECK_ID, sceneBudgetCheck],
+  ...REQUEST_SCENE_CHECKS,
   [THUMBNAIL_CHECK_ID, sceneThumbnailCheck]
 ]

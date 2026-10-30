@@ -269,6 +269,25 @@ function why(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+export const REFUSED_ADVICE =
+  "The player's action did nothing — in the request's .catch, show them why (a toast or a sound) and log it."
+
+export type RefusalKind = 'rate' | 'size' | 'waking' | 'no-handler' | 'timeout' | 'json' | 'failed'
+
+// The bucket a refusal is de-duplicated under. A handler's own thrown message
+// is free text, so everything unrecognised shares one bucket and a name can
+// never card more than this many times.
+export function refusalKind(e: unknown): RefusalKind {
+  const text = why(e)
+  if (e instanceof GameNameError || /^(?:no handler: |No handler named )/.test(text)) return 'no-handler'
+  if (text.includes('asked too often')) return 'rate'
+  if (text.includes('carries too much data')) return 'size'
+  if (text.includes('while the server was waking')) return 'waking'
+  if (text.startsWith('rpc timeout')) return 'timeout'
+  if (text.includes('not valid JSON') || e instanceof SyntaxError) return 'json'
+  return 'failed'
+}
+
 // A broadcast's budget and its held payload are per recipient. Sharing one key
 // across recipients would let one player's message overwrite another's.
 function broadcastKey(name: string, to?: Player): string {
@@ -471,12 +490,33 @@ export class GameCore {
   /** game.request — a client asks the server and awaits its answer. */
   async request(name: string, data: unknown): Promise<unknown> {
     if (!this.onRightSide('game.request', false, REQUEST_GUARD)) return undefined
-    const json = JSON.stringify(data ?? {})
-    // the server refuses at MAX_PAYLOAD_BYTES, so name that number here or a
-    // creator trims to the one they were given and is refused a second time
-    if (json.length > MAX_PAYLOAD_BYTES) throw new Error(tooMuchData(name, MAX_PAYLOAD_BYTES))
-    const reply = await this.ports.sendRequest(name, json)
-    return reply === '' ? null : JSON.parse(reply)
+    try {
+      const json = JSON.stringify(data ?? {})
+      // the server refuses at MAX_PAYLOAD_BYTES, so name that number here or a
+      // creator trims to the one they were given and is refused a second time
+      if (json.length > MAX_PAYLOAD_BYTES) throw new Error(tooMuchData(name, MAX_PAYLOAD_BYTES))
+      const reply = await this.ports.sendRequest(name, json)
+      return reply === '' ? null : JSON.parse(reply)
+    } catch (e) {
+      this.reportRefused(name, e)
+      throw e
+    }
+  }
+
+  // A script that swallows the rejection (`.catch(() => { busy = false })`)
+  // leaves a player pressing a key that does nothing, and nothing in any console
+  // says why. So the refusal is carded here, whatever the caller does with it —
+  // once per name and kind of refusal, because the same refusal repeats for as
+  // long as the player keeps pressing.
+  private reportRefused(name: string, e: unknown): void {
+    const kind = refusalKind(e)
+    // both ends that refuse a waking ask already print WAKING_FLOOD, once
+    if (kind === 'waking') return
+    const key = `game.request:${name}:${kind}`
+    if (this.reported.has(key)) return
+    this.reported.add(key)
+    const reason = kind === 'timeout' ? `'${name}' got no answer from the server in time.` : why(e)
+    this.ports.emitError({ side: 'you', name: `game.request:${name}`, message: `${reason} ${REFUSED_ADVICE}` })
   }
 
   /**

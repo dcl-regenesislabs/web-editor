@@ -90,7 +90,7 @@ interface Region {
   end: number
 }
 
-function matchingBracket(source: ScriptSource, open: number, close: string): number {
+export function matchingBracket(source: ScriptSource, open: number, close: string): number {
   const opener = source.code[open]
   let depth = 0
   for (let i = open; i < source.code.length; i++) {
@@ -454,4 +454,16 @@ export function gameUse(text: string): GameUse {
     if (!into.includes(name)) into.push(name)
   }
   return use
+}
+
+/** Every `game.request(` in a script: the masked source, the local name `game`
+ * was imported under, and each call's open paren with its message name. */
+export function gameRequestSites(text: string): {
+  source: ScriptSource
+  game: string | null
+  sites: Array<{ open: number; name: string | null }>
+} {
+  const scan = scanGame(text)
+  const sites = callSites(scan, ['request']).map(({ open }) => ({ open, name: firstLiteral(scan.source, open, scan.consts) }))
+  return { source: scan.source, game: scan.bindings.game, sites }
 }
