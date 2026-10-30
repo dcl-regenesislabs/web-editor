@@ -1,6 +1,7 @@
 import { createLock } from './store.ts'
 import type { BlobStore, Clock, Lock } from './store.ts'
 import type { AssistantService } from './ai/types.ts'
+import type { PoolService } from './pool/pool.ts'
 import type { IConfigComponent } from '@well-known-components/interfaces'
 
 export interface Limits {
@@ -33,6 +34,8 @@ export interface Limits {
   assistantRequestsPerMinute: number
   /** Wallets one purge run visits; the next run carries on after the last. */
   purgeWalletsPerRun: number
+  /** Shared-world requests per wallet, counted apart from project requests. */
+  poolRequestsPerMinute: number
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -55,7 +58,8 @@ export const DEFAULT_LIMITS: Limits = {
   uploadTimeoutSeconds: 30,
   uploadMinBytesPerSecond: 64 * 1024,
   assistantRequestsPerMinute: 60,
-  purgeWalletsPerRun: 20
+  purgeWalletsPerRun: 20,
+  poolRequestsPerMinute: 30
 }
 
 export interface RateLimiter {
@@ -66,6 +70,9 @@ export interface RateLimiter {
 export interface Env {
   logError?: (error: unknown) => void
   assistant?: AssistantService
+  pool?: PoolService
+  /** The header a trusted proxy puts the client address in (nginx: X-Real-IP). */
+  clientIpHeader?: string
   store: BlobStore
   /** Exact origins (`https://host[:port]`) the editor may be served from. */
   allowedOrigins: readonly string[]
@@ -109,7 +116,8 @@ const LIMIT_VARS: Record<keyof Limits, string> = {
   uploadTimeoutSeconds: 'UPLOAD_TIMEOUT_SECONDS',
   uploadMinBytesPerSecond: 'UPLOAD_MIN_BYTES_PER_SECOND',
   assistantRequestsPerMinute: 'ASSISTANT_REQUESTS_PER_MINUTE',
-  purgeWalletsPerRun: 'PURGE_WALLETS_PER_RUN'
+  purgeWalletsPerRun: 'PURGE_WALLETS_PER_RUN',
+  poolRequestsPerMinute: 'POOL_REQUESTS_PER_MINUTE'
 }
 
 export async function envFromConfig(config: IConfigComponent, store: BlobStore): Promise<Env> {

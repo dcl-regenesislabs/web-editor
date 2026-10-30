@@ -18,7 +18,7 @@
 // after the spawn is a question that never gets asked at all.
 import { useSyncExternalStore } from 'react'
 import { Authenticator } from '@dcl/crypto'
-import type { EditorShell } from '@dcl-editor/contract'
+import type { EditorShell, PublishProgress, ScenePublishResult } from '@dcl-editor/contract'
 import { canSign, getAccount, getIdentity } from '../account/auth'
 import { chainId, jumpInUrl, worldsServer } from '../worlds/endpoints'
 import { fetchWorldScenes } from '../worlds/inventory'
@@ -87,6 +87,7 @@ export interface PublishState {
   blocked: PublishBlock | null
   signing: boolean // the hosting page is asking the creator to confirm the publish
   retry: boolean // publishing the same scene again could work
+  shared: boolean // to a shared world: `world` stays null until the service names it
 }
 
 const IDLE: PublishState = {
@@ -101,7 +102,8 @@ const IDLE: PublishState = {
   review: null,
   blocked: null,
   signing: false,
-  retry: true
+  retry: true,
+  shared: false
 }
 let publishStore: PublishState = IDLE
 const publishListeners = new Set<() => void>()
@@ -275,6 +277,24 @@ export function startPublish(dir: string, world: string): void {
   void preflight(a, dir, name).catch((err: unknown) => failAttempt(a, err))
 }
 
+// Publish `dir` to a shared world. There is no pre-flight: the shell's service lends
+// the zone, moves the scene into it and refuses to sign over anything that is not
+// this wallet's, so nobody else's scene can be replaced.
+export function startSharedPublish(dir: string): void {
+  const publishShared = window.editorShell?.publishShared
+  if (publishShared === undefined) {
+    setPublishStore({ ...IDLE, phase: 'error', error: NEEDS_DESKTOP, dir })
+    return
+  }
+  if (publishStore.phase === 'checking' || publishStore.phase === 'building' || publishStore.phase === 'uploading') return
+  if (!canSign()) {
+    setPublishStore({ ...IDLE, phase: 'error', error: SIGN_IN_TO_PUBLISH, dir })
+    return
+  }
+  abandon()
+  publishInPage({ dir, world: null, base: null, total: null }, (onProgress) => publishShared(dir, onProgress))
+}
+
 // ---- the decisions ----
 
 // Replace and publish / Publish anyway. The world is read once more first: a
@@ -399,11 +419,11 @@ async function driveLinker(port: number): Promise<string> {
 
 // The shell does the whole job and answers once. A publish declined in the
 // hosting page's own dialog is not a failure: it goes back to the picker.
-function publishInPage(p: Preflight, publishScene: NonNullable<EditorShell['publishScene']>): void {
+function publishInPage(p: { dir: string; world: string | null; base: string | null; total: number | null }, publish: (onProgress: (progress: PublishProgress) => void) => Promise<ScenePublishResult>): void {
   const token: JobToken = { id: null, alive: true }
   jobToken = token
-  setPublishStore({ ...IDLE, phase: 'building', dir: p.dir, world: p.world, at: p.base })
-  publishScene(p.dir, p.world, (progress) => {
+  setPublishStore({ ...IDLE, phase: 'building', dir: p.dir, world: p.world, at: p.base, shared: p.world === null })
+  publish((progress) => {
     if (!token.alive) return
     const logs = progress.line === undefined ? publishStore.logs : [...publishStore.logs, progress.line].slice(-LOG_CAP)
     setPublishStore({ phase: progress.step === 'building' ? 'building' : 'uploading', signing: progress.step === 'signing', logs })
@@ -411,8 +431,8 @@ function publishInPage(p: Preflight, publishScene: NonNullable<EditorShell['publ
     .then((result) => {
       if (!token.alive) return
       if (result.ok) {
-        rememberPublishedEntity(p.dir, p.world, result.published.entityId)
-        finishPublish({ phase: 'success', jumpIn: result.published.url, total: p.total, signing: false })
+        rememberPublishedEntity(p.dir, result.published.world, result.published.entityId)
+        finishPublish({ phase: 'success', world: result.published.world, jumpIn: result.published.url, total: p.total, signing: false })
         refreshWorlds()
       } else if (result.reason === 'cancelled') {
         finishPublish({ ...IDLE })
@@ -431,8 +451,9 @@ function spawn(a: number): void {
   if (!live(a)) return
   const p = pending
   const shell = window.editorShell
-  if (p !== null && shell?.publishStart === undefined && shell?.publishScene !== undefined) {
-    publishInPage(p, shell.publishScene)
+  const publishScene = shell?.publishScene
+  if (p !== null && shell?.publishStart === undefined && publishScene !== undefined) {
+    publishInPage(p, (onProgress) => publishScene(p.dir, p.world, onProgress))
     return
   }
   const publishStartShell = shell?.publishStart

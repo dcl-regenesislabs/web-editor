@@ -449,6 +449,9 @@ export interface EditorShell {
   publishScene?: (dir: string, world: string, onProgress: (progress: PublishProgress) => void) => Promise<ScenePublishResult>
   // the worlds the signed-in wallet can publish to, where the shell is the one that knows
   publishWorlds?: () => Promise<PublishWorld[]>
+  // publish to a shared world, for a wallet without a NAME: the shell's service lends a
+  // zone of one of its pool NAMEs and signs there (ScenePublishResult.published.world names it)
+  publishShared?: (dir: string, onProgress: (progress: PublishProgress) => void) => Promise<ScenePublishResult>
   // can this scene's sdk-commands publish next to a world's existing scenes?
   // resolves `unknown` while the scene has no node_modules — publishStart
   // installs them first, so the answer can change after a publish is started.

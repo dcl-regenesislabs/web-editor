@@ -115,6 +115,32 @@ function allowanceCell(percent) {
   return cell
 }
 
+const mb = (bytes) => typeof bytes === 'number' ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '—'
+
+function renderPool(pool) {
+  $('pool-card').hidden = pool === null
+  if (pool === null) return
+  const wallet = (address) => {
+    const cell = el('td', 'mono', shortWallet(address))
+    cell.title = address
+    return cell
+  }
+  rows('pool-names', 5, pool.names.map((name) => [
+    el('td', 'mono', name.name), el('td', 'num', `${count(name.leases)} / ${count(pool.limits.leasesPerName)}`),
+    el('td', 'num', name.whitelisted ? `${mb(name.usedSpace)} · exempt` : `${mb(name.usedSpace)} / ${mb(name.allowedSpace)}`),
+    el('td', '', name.canDeploy === null ? '—' : name.canDeploy ? 'Yes' : 'Not granted'), name.owner === null ? el('td', '', '—') : wallet(name.owner)
+  ]), 'No pool NAMEs.')
+  rows('pool-leases', 5, pool.leases.map((lease) => [
+    wallet(lease.wallet), el('td', 'mono', `${lease.name} ${lease.zone.x},${lease.zone.y}`),
+    el('td', '', lease.scene?.title || (lease.scene === null ? 'No scene yet' : '—')), el('td', 'num', mb(lease.scene?.bytes)),
+    el('td', '', time(lease.scene?.publishedAt ?? lease.leasedAt))
+  ]), 'Nobody holds a shared world.')
+  list('pool-service', [
+    ['Pool wallet', pool.signer], ['Worlds server', pool.worldsContent], ['Uploads pending', `${count(pool.pending)} / ${count(pool.limits.pendingDeploys)}`],
+    ['Largest scene', mb(pool.limits.maxSceneBytes)], ['Blocked wallets', pool.blocked.length === 0 ? 'None' : pool.blocked.map((b) => `${shortWallet(b.wallet)}: ${b.reason}`).join('; ')]
+  ])
+}
+
 function render(status) {
   const usage = status.sinceStart.usage
   $('sessions').textContent = count(status.sessions)
@@ -168,6 +194,8 @@ function render(status) {
     ['Failed attempts', count(tel.failedAttempts)], ['Dropped events', count(tel.dropped)],
     ['Last delivery', time(tel.lastDeliveryAt)], ['Last failure', tel.lastFailure === null ? '—' : `${tel.lastFailure} · ${time(tel.lastFailureAt)}`]
   ])
+
+  renderPool(status.pool)
 
   const history = $('history')
   history.hidden = status.historyUrl === null

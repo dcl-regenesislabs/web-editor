@@ -7,6 +7,7 @@ import type { BlobStore } from './store.ts'
 import type { SkillsComponent } from './adapters/skills.ts'
 import type { TelemetryComponent } from './adapters/telemetry.ts'
 import type { AdminComponent } from './admin/admin.ts'
+import type { PoolComponent } from './pool/component.ts'
 
 export interface ProjectStorageComponent {
   handle(request: Request): Promise<Response>
@@ -33,4 +34,5 @@ export type AppComponents = BaseComponents & {
   telemetry: TelemetryComponent
   statusChecks: IBaseComponent
   purgeJob: IBaseComponent
+  pool: PoolComponent
 }

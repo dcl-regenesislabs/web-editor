@@ -681,11 +681,9 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       ? {}
       : {
           publishScene: (id, world, onProgress) => publisher.publish(id, world, onProgress),
+          ...(publisher.publishShared === undefined ? {} : { publishShared: publisher.publishShared }),
           publishStop: async () => publisher.stop(),
-          publishWorlds: async () => {
-            const signedIn = wallet()
-            return signedIn === null ? [] : publishWorlds(signedIn, services.services.worldsContent.replace(/\/+$/, ''))
-          }
+          publishWorlds: async () => publishWorlds(wallet(), services.services.worldsContent)
         }),
     canImportFolder: canPickFolder(),
     renameProject: (id, title) =>

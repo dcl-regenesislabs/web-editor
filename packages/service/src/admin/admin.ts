@@ -7,6 +7,7 @@ import type { Operations, OperationsSnapshot, UserActivity } from '../ai/operati
 import { DISABLED_QUOTA } from '../ai/quota.ts'
 import type { QuotaView } from '../ai/quota.ts'
 import { createAccessVerifier } from './access.ts'
+import type { PoolStatus } from '../pool/pool.ts'
 import type { AccessVerifier } from './access.ts'
 
 const asset = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
@@ -27,6 +28,8 @@ export interface AdminStatus extends Omit<OperationsSnapshot, 'users'> {
   quota: QuotaView
   telemetry: DeliveryHealth
   historyUrl: string | null
+  /** Shared worlds; null while the pool is off or could not be read. */
+  pool: PoolStatus | null
 }
 
 export interface AdminComponent {
@@ -90,6 +93,7 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
   quota?: () => QuotaView
   telemetry?: () => DeliveryHealth
   allowance?: (wallet: string) => Promise<Allowance>
+  pool?: () => Promise<PoolStatus>
 }): AdminComponent {
   const logger = logs.getLogger('admin')
   const root = `${options.basePath ?? ''}/admin`
@@ -126,7 +130,11 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
       version: options.version ?? null,
       quota: options.quota?.() ?? DISABLED_QUOTA,
       telemetry: options.telemetry?.() ?? DISABLED_DELIVERY,
-      historyUrl: options.historyUrl ?? null
+      historyUrl: options.historyUrl ?? null,
+      pool: options.pool === undefined ? null : await options.pool().catch(() => {
+        logger.error('Pool status could not be read')
+        return null
+      })
     }
   }
 

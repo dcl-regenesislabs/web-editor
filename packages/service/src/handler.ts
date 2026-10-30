@@ -10,6 +10,7 @@ import type { BlobStore } from './store.ts'
 import { issueTicket, readTicket } from './tickets.ts'
 import { StorageFull } from './quota-store.ts'
 import { purgeTickets } from './purge.ts'
+import { MAX_ENTITY_BYTES } from './pool/entity.ts'
 
 const MAX_JSON_BYTES = 2 * 1024 * 1024
 const MAX_NAME_LENGTH = 100
@@ -511,6 +512,18 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (wait !== null) return wait
     if ((await readBody(request, 0)) == null) return fail(413, 'body-too-large')
     return env.assistant?.handle(request, path, auth.wallet) ?? fail(503, 'assistant-unavailable')
+  }
+  if (path === '/pool' || path.startsWith('/pool/')) {
+    const auth = await signedBy(request, env, run)
+    if ('error' in auth) return fail(auth.status, auth.error)
+    const wait = limited(run, `pool:${auth.wallet}`, run.limits.poolRequestsPerMinute)
+    if (wait !== null) return wait
+    if (env.pool === undefined) return fail(503, 'pool-unavailable')
+    // the entity file travels as a JSON string, escapes and all
+    const body = await readBody(request, 2 * MAX_ENTITY_BYTES)
+    if (body == null) return fail(413, 'body-too-large')
+    const ip = env.clientIpHeader === undefined ? null : request.headers.get(env.clientIpHeader)?.split(',')[0].trim() || null
+    return env.pool.handle({ method, path, wallet: auth.wallet, ip, body })
   }
   const match = /^\/projects(?:\/([^/]+)(?:\/(manifest|uploads|restore)|\/files\/([^/]+))?)?$/.exec(path)
   const prefab = /^\/prefabs(?:\/([^/]+)(?:\/(manifest|uploads)|\/files\/([^/]+))?)?$/.exec(path)
