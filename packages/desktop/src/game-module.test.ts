@@ -80,6 +80,7 @@ const host = vi.hoisted(() => {
   }
 
   const engine = {
+    RootEntity: 0,
     PlayerEntity: 1,
     defineComponent: (name: string) => define(name),
     getComponentOrNull: (name: string) => components.get(name) ?? null,
@@ -1483,6 +1484,42 @@ describe('the pieces a script composes with', () => {
 
 // The Game strip draws nothing without these lines, so the gate that lets them
 // out has to cover both ways a creator plays their own scene — and only those.
+describe('the state probe the assistant playtest reads', () => {
+  it('answers each new probe once with what this client sees, its last requests included', async () => {
+    const lines: string[] = []
+    const log = console.log
+    const error = console.error
+    console.log = (message: string) => void lines.push(message)
+    console.error = () => {}
+    try {
+      const { game } = await loadGame()
+      host.tick() // fork as client
+      host.components.get('runtime::SharedFact')!.create(770, { key: 'boards', json: '{"left":{"chopped":1}}', rev: 1 })
+      host.components.get('runtime::SharedFact')!.create(771, { key: 'huge', json: JSON.stringify('z'.repeat(7000)), rev: 1 })
+      await game.request('chop', { pad: 'x'.repeat(5000) }).catch(() => {})
+      host.tick()
+      expect(lines.filter((line) => line.startsWith('[studio] game-probe'))).toEqual([]) // nobody asked
+
+      host.components.get('editor::GameProbe')!.create(0, { seq: 41 })
+      host.tick()
+      host.tick() // the same seq is answered once
+      const answers = lines.filter((line) => line.startsWith('[studio] game-probe'))
+      expect(answers).toHaveLength(1)
+      expect(answers[0].length).toBeLessThan(8 * 1024)
+      const answer = JSON.parse(answers[0].slice('[studio] game-probe 41 '.length)) as Record<string, unknown>
+      expect(answer).toMatchObject({
+        state: { boards: { left: { chopped: 1 } } },
+        omitted: { huge: 7002 },
+        life: 'waking',
+        requests: [{ name: 'chop', refused: "'chop' carries too much data — send less than 4096 bytes." }]
+      })
+    } finally {
+      console.log = log
+      console.error = error
+    }
+  })
+})
+
 describe('the evidence lines the editor reads', () => {
   async function published(realmInfo: Record<string, unknown>): Promise<string[]> {
     host.setRealm(realmInfo)
