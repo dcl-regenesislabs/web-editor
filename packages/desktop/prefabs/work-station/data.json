@@ -1,0 +1,26 @@
+{
+  "id": "500b804b-8d35-420a-b323-243df2e0eaa9",
+  "name": "Work Station",
+  "description": "A spot where a carried item is put down and taken back, and optionally worked on: hold F (or the phone's second button) to chop or wash it, or let it cook by itself, with a progress bar over it. Works with: Pickup Item.",
+  "category": "custom",
+  "tags": [
+    "station",
+    "counter",
+    "craft",
+    "cook",
+    "chop",
+    "progress",
+    "multiplayer"
+  ],
+  "requiresSdk": "auth-server",
+  "version": "1.0.0",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "notes": "Initial release: put down and take back one carried item, hold-to-work and timed modes that turn one kind into another with a progress bar, combining two kinds, and station events a script reacts to by the station's Name."
+    }
+  ],
+  "origin": {
+    "source": "builtin"
+  }
+}

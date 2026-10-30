@@ -164,11 +164,13 @@ describe('the built-in prefabs', () => {
       'game-flow',
       'health-respawn',
       'leaderboard',
+      'pickup-item',
       'run-progress',
       'server-clock',
       'spawner',
       'trigger-zone',
-      'ui-theme'
+      'ui-theme',
+      'work-station'
     ])
   })
 })

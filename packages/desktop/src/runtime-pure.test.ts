@@ -24,6 +24,30 @@ import { LivenessTracker } from '../runtime-modules/pure/liveness'
 import { PendingMap } from '../runtime-modules/pure/pending'
 import { Membership } from '../runtime-modules/pure/membership'
 import { ZoneRegistry, zoneKey } from '../runtime-modules/pure/zoneRegistry'
+import {
+  THROW_MS,
+  applyCarry,
+  clampThrow,
+  flightPosition,
+  freshCarry,
+  giveCarry,
+  heldItem,
+  leaveCarry,
+  parseCombines,
+  parseKinds,
+  parseTurns,
+  readAction,
+  readCarry,
+  setStationKind,
+  stationProgress,
+  tickCarry,
+  useHeld,
+  type CarryAction,
+  type CarryRules,
+  type CarryState
+} from '../runtime-modules/pure/carryRules'
+import { CarryPrediction } from '../runtime-modules/pure/carryPrediction'
+import { nearestCandidate, promptText, verbWith } from '../runtime-modules/pure/interactPick'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -382,5 +406,195 @@ describe('_runtime rpc pending', () => {
     expect(p.tick(12_000, 4000)).toEqual([]) // budget spent → failed
     expect(error).not.toBeNull()
     expect(p.size).toBe(0)
+  })
+})
+
+describe('_runtime carry rules', () => {
+  const rules: CarryRules = {
+    sources: {
+      ball: { kind: 'Ball', endless: false, returnMs: 5000 },
+      'tomato crate': { kind: 'Tomato', endless: true, returnMs: 0 }
+    },
+    stations: {
+      board: { mode: 'hold', accepts: [], recipes: parseTurns('Tomato > Chopped Tomato', 2000), combines: {} },
+      stove: { mode: 'timed', accepts: parseKinds('Chopped Tomato, Soup'), recipes: parseTurns('Chopped Tomato > Soup, Soup > Burnt Soup', 4000), combines: {} },
+      plate: { mode: 'counter', accepts: [], recipes: {}, combines: parseCombines('Bread + Chopped Tomato > Sandwich') }
+    }
+  }
+  const apply = (state: CarryState, action: CarryAction, player = 'a', now = 0) => applyCarry(state, action, player, rules, now)
+  const at = { x: 1, y: 0, z: 1 }
+
+  it('gives a placed item one holder at a time', () => {
+    const picked = apply(freshCarry(), { type: 'pick', item: 'ball' })
+    expect(picked.accepted).toBe(true)
+    expect(heldItem(picked.state, 'a')).toEqual({ item: 'ball', kind: 'Ball' })
+    expect(apply(picked.state, { type: 'pick', item: 'ball' }, 'b')).toMatchObject({ accepted: false, message: 'Someone else has it' })
+    expect(apply(picked.state, { type: 'pick', item: 'tomato crate' })).toMatchObject({ accepted: false, message: 'Your hands are full' })
+  })
+
+  it('mints a new item per pick from an endless source', () => {
+    const first = apply(freshCarry(), { type: 'pick', item: 'tomato crate' }, 'a').state
+    const second = apply(first, { type: 'pick', item: 'tomato crate' }, 'b').state
+    expect(heldItem(second, 'a')).toEqual({ item: 'tomato crate#1', kind: 'Tomato' })
+    expect(heldItem(second, 'b')).toEqual({ item: 'tomato crate#2', kind: 'Tomato' })
+  })
+
+  it('drops and throws what is held, and anyone can pick it up from the floor', () => {
+    const held = apply(freshCarry(), { type: 'pick', item: 'ball' }).state
+    expect(apply(freshCarry(), { type: 'drop', pos: at }).accepted).toBe(false)
+    const dropped = apply(held, { type: 'drop', pos: at }).state
+    expect(dropped.items.ball).toEqual({ kind: 'Ball', at: 'floor', pos: at })
+    expect(heldItem(apply(dropped, { type: 'pick', item: 'ball' }, 'b').state, 'b')?.item).toBe('ball')
+    const thrown = apply(held, { type: 'throw', from: { x: 0, y: 1, z: 0 }, to: { x: 4, y: 0, z: 0 } }, 'a', 1000).state.items.ball
+    expect(flightPosition(thrown, 1000)).toEqual({ x: 0, y: 1, z: 0 })
+    expect(flightPosition(thrown, 1000 + THROW_MS / 2)!.y).toBeGreaterThan(1)
+    expect(flightPosition(thrown, 1000 + THROW_MS)).toEqual({ x: 4, y: 0, z: 0 })
+    expect(clampThrow({ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }).x).toBe(8)
+  })
+
+  it('holds one item per station, takes only what it accepts and gives it back', () => {
+    const tomato = apply(freshCarry(), { type: 'pick', item: 'tomato crate' }).state
+    expect(apply(tomato, { type: 'put', station: 'stove' })).toMatchObject({ accepted: false, message: 'Tomato does not go here' })
+    const onBoard = apply(tomato, { type: 'put', station: 'board' }).state
+    expect(heldItem(onBoard, 'a')).toBeNull()
+    expect(onBoard.stations.board.item).toBe('tomato crate#1')
+    const other = apply(onBoard, { type: 'pick', item: 'tomato crate' }, 'b').state
+    expect(apply(other, { type: 'put', station: 'board' }, 'b')).toMatchObject({ accepted: false, message: 'Something is already here' })
+    expect(heldItem(apply(onBoard, { type: 'take', station: 'board' }, 'b').state, 'b')?.kind).toBe('Tomato')
+  })
+
+  it('turns an item only while someone holds work, and keeps the progress when they stop', () => {
+    let state = apply(apply(freshCarry(), { type: 'pick', item: 'tomato crate' }).state, { type: 'put', station: 'board' }).state
+    expect(apply(state, { type: 'work', station: 'stove', on: true }).accepted).toBe(false)
+    state = apply(state, { type: 'work', station: 'board', on: true }, 'a', 1000).state
+    expect(apply(state, { type: 'work', station: 'board', on: true }, 'b', 1100).message).toBe('Someone is already working here')
+    expect(stationProgress(state.stations.board, 2000, 2000)).toBe(0.5)
+    state = apply(state, { type: 'work', station: 'board', on: false }, 'a', 2000).state
+    expect(stationProgress(state.stations.board, 2000, 9000)).toBe(0.5)
+    state = apply(state, { type: 'work', station: 'board', on: true }, 'b', 3000).state
+    const ticked = tickCarry(state, rules, 4000, () => true)
+    expect(ticked.events).toEqual([{ type: 'done', item: 'tomato crate#1', kind: 'Chopped Tomato', was: 'Tomato', station: 'board', player: 'b' }])
+    expect(ticked.state.stations.board).toEqual({ item: 'tomato crate#1', work: 0, since: undefined })
+  })
+
+  it('stops a worker who walks away', () => {
+    let state = apply(apply(freshCarry(), { type: 'pick', item: 'tomato crate' }).state, { type: 'put', station: 'board' }).state
+    state = apply(state, { type: 'work', station: 'board', on: true }, 'a', 0).state
+    const away = tickCarry(state, rules, 500, () => false)
+    expect(away.state.stations.board).toEqual({ item: 'tomato crate#1', work: 500 })
+    expect(away.events).toEqual([])
+  })
+
+  it('cooks by itself on a timed station and keeps going into the next recipe', () => {
+    let state = giveCarry(freshCarry(), 'a', 'Chopped Tomato').state
+    state = apply(state, { type: 'put', station: 'stove' }, 'a', 0).state
+    expect(tickCarry(state, rules, 3999, () => true).changed).toBe(false)
+    const soup = tickCarry(state, rules, 4000, () => true).state
+    expect(Object.values(soup.items)[0].kind).toBe('Soup')
+    expect(soup.stations.stove.since).toBe(4000)
+    expect(Object.values(tickCarry(soup, rules, 8000, () => true).state.items)[0].kind).toBe('Burnt Soup')
+  })
+
+  it('combines two kinds on a station, in either order', () => {
+    let state = giveCarry(freshCarry(), 'a', 'Chopped Tomato').state
+    state = apply(state, { type: 'put', station: 'plate' }).state
+    state = giveCarry(state, 'a', 'bread').state
+    const combined = apply(state, { type: 'put', station: 'plate' })
+    expect(combined.events[0]).toMatchObject({ type: 'combine', kind: 'Sandwich', was: 'Chopped Tomato' })
+    expect(Object.keys(combined.state.items)).toHaveLength(1)
+  })
+
+  it('uses up a placed item until it comes back home, and ends a minted one', () => {
+    const used = useHeld(apply(freshCarry(), { type: 'pick', item: 'ball' }).state, 'a', rules, 1000).state
+    expect(used.items.ball).toEqual({ kind: 'Ball', at: 'gone', t: 1000 })
+    expect(apply(used, { type: 'pick', item: 'ball' }, 'b').message).toBe('That is gone')
+    expect(tickCarry(used, rules, 6000, () => true).state.items.ball).toBeUndefined()
+    const minted = useHeld(giveCarry(freshCarry(), 'a', 'Key').state, 'a', rules, 0).state
+    expect(minted.items).toEqual({})
+  })
+
+  it("lets the server set or clear a station, and drops a leaver's item where they were", () => {
+    const set = setStationKind(freshCarry(), 'plate', 'Bread', rules, 0)
+    expect(set.accepted).toBe(true)
+    expect(setStationKind(set.state, 'plate', null, rules, 0).state.stations.plate).toEqual({ work: 0 })
+    expect(setStationKind(freshCarry(), 'nowhere', 'Bread', rules, 0).accepted).toBe(false)
+    const held = apply(freshCarry(), { type: 'pick', item: 'ball' }).state
+    expect(leaveCarry(held, 'a', at, 0).items.ball).toEqual({ kind: 'Ball', at: 'floor', pos: at })
+    expect(leaveCarry(held, 'a', null, 0).items.ball).toBeUndefined()
+  })
+
+  it('reads synced state and requests defensively', () => {
+    const state = apply(freshCarry(), { type: 'pick', item: 'ball' }).state
+    expect(readCarry(JSON.parse(JSON.stringify(state)))).toEqual(state)
+    expect(readCarry({ items: { x: { kind: 'Ball', at: 'hand' }, y: { kind: 1, at: 'floor' } }, stations: { s: { item: 'x', work: -5 } } }))
+      .toEqual({ items: {}, stations: { s: { work: 0 } }, n: 0 })
+    expect(readCarry('nonsense')).toEqual(freshCarry())
+    expect(readAction({ type: 'pick', item: 'ball' })).toEqual({ type: 'pick', item: 'ball' })
+    expect(readAction({ type: 'drop', pos: { x: 1, y: 'up', z: 0 } })).toBeNull()
+    expect(readAction({ type: 'work', station: 'board' })).toBeNull()
+    expect(readAction({ type: 'take', station: 'board', extra: true })).toEqual({ type: 'take', station: 'board' })
+  })
+})
+
+describe('_runtime carry prediction', () => {
+  const rules: CarryRules = { sources: { ball: { kind: 'Ball', endless: false, returnMs: 0 } }, stations: {} }
+  const make = () => new CarryPrediction(() => rules, () => 'a')
+
+  it('shows a pick at once and drops it once the server agrees', () => {
+    const prediction = make()
+    prediction.reconcile(freshCarry(), 0)
+    expect(prediction.predict({ type: 'pick', item: 'ball' }, 100).id).not.toBeNull()
+    expect(heldItem(prediction.view(100)!, 'a')?.item).toBe('ball')
+    prediction.reconcile(applyCarry(freshCarry(), { type: 'pick', item: 'ball' }, 'a', rules, 200).state, 300)
+    expect(prediction.pendingCount).toBe(0)
+    expect(heldItem(prediction.view(300)!, 'a')?.item).toBe('ball')
+  })
+
+  it('rolls a refused pick back, and lets a pending one expire', () => {
+    const prediction = make()
+    prediction.reconcile(freshCarry(), 0)
+    const id = prediction.predict({ type: 'pick', item: 'ball' }, 0).id!
+    expect(prediction.reject(id)).toBe(true)
+    expect(heldItem(prediction.view(10)!, 'a')).toBeNull()
+    prediction.predict({ type: 'pick', item: 'ball' }, 100)
+    expect(heldItem(prediction.view(3200)!, 'a')).toBeNull()
+  })
+
+  it('keeps a chain of pending actions in order, and drops one someone else overtook', () => {
+    const prediction = make()
+    prediction.reconcile(freshCarry(), 0)
+    prediction.predict({ type: 'pick', item: 'ball' }, 0)
+    prediction.predict({ type: 'drop', pos: { x: 1, y: 0, z: 1 } }, 50)
+    expect(prediction.view(60)!.items.ball.at).toBe('floor')
+    expect(prediction.predict({ type: 'drop', pos: { x: 0, y: 0, z: 0 } }, 70).id).toBeNull()
+    prediction.reconcile(applyCarry(freshCarry(), { type: 'pick', item: 'ball' }, 'b', rules, 80).state, 90)
+    expect(prediction.pendingCount).toBe(0)
+    expect(prediction.view(90)!.items.ball.who).toBe('b')
+  })
+})
+
+describe('_runtime interact prompt', () => {
+  const near = { position: { x: 1, y: 0, z: 0 }, range: 2, name: 'near' }
+  const far = { position: { x: 5, y: 0, z: 0 }, range: 2, name: 'far' }
+  const above = { position: { x: 0.5, y: 4, z: 0 }, range: 2, name: 'above' }
+
+  it('points at the nearest candidate in range, across the floor only', () => {
+    expect(nearestCandidate([far, near, above], { x: 0, y: 0, z: 0 })?.name).toBe('near')
+    expect(nearestCandidate([far], { x: 0, y: 0, z: 0 })).toBeNull()
+    expect(nearestCandidate([{ position: null, name: 'held' }], { x: 0, y: 0, z: 0 })).toBeNull()
+    expect(nearestCandidate([near], null)).toBeNull()
+  })
+
+  it('names the key on desktop and only the verb on a phone', () => {
+    const verbs = [{ verb: 'Take Tomato', button: 'primary' as const }, { verb: 'Chop Tomato', button: 'secondary' as const }]
+    expect(promptText(verbs, false)).toBe('[E] Take Tomato   [F] Chop Tomato')
+    expect(promptText(verbs, true)).toBe('Take Tomato · Chop Tomato')
+  })
+
+  it('puts the kind where the language wants it', () => {
+    expect(verbWith('Pick up', 'Tomato')).toBe('Pick up Tomato')
+    expect(verbWith('Coger {item}', 'Tomate')).toBe('Coger Tomate')
+    expect(verbWith('{item} aufheben', 'Ball')).toBe('Ball aufheben')
+    expect(verbWith('Drop {item}', '')).toBe('Drop')
   })
 })

@@ -1,0 +1,26 @@
+{
+  "id": "3dd512ef-86ba-4ca2-8974-dc7629ded037",
+  "name": "Pickup Item",
+  "description": "Something players pick up with E (or the phone's action button), carry in the right hand, drop and throw. The Multiplayer Server decides who holds it, and the player sees it in hand at once. Works with: Work Station.",
+  "category": "custom",
+  "tags": [
+    "pickup",
+    "carry",
+    "hold",
+    "item",
+    "ingredient",
+    "throw",
+    "multiplayer"
+  ],
+  "requiresSdk": "auth-server",
+  "version": "1.0.0",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "notes": "Initial release: one holder at a time decided by the Multiplayer Server, held in the right hand and shown at once, a floating prompt with the device's own control, drop, optional throw, endless supply crates, and a script API to read, give and take what players carry."
+    }
+  ],
+  "origin": {
+    "source": "builtin"
+  }
+}
