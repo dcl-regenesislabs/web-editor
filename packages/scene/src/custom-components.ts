@@ -35,9 +35,11 @@ const CUSTOM_DEFS = [
 ] as unknown as CustomDef[]
 
 // The editor's own signals to the running scene, written with /set_component_raw and never saved:
-// runtime-modules/hudLayout.tsx reads editor::HudPreview (the modal the mobile check opens, -1 for none).
+// runtime-modules/hudLayout.tsx reads editor::HudPreview (the modal the mobile check opens, -1 for none);
+// runtime-modules/game.ts answers each new editor::GameProbe seq with one console line (the playtest).
 const RUNTIME_DEFS = [
-  engine.defineComponent('editor::HudPreview', { modal: Schemas.Int })
+  engine.defineComponent('editor::HudPreview', { modal: Schemas.Int }),
+  engine.defineComponent('editor::GameProbe', { seq: Schemas.Int })
 ] as unknown as CustomDef[]
 
 const BY_ID = new Map<number, CustomDef>()

@@ -11,6 +11,8 @@
 // Pure: log text in, strip out. The polling half is PlayGame.tsx.
 
 export const GAME_LIFE_MARKER = '[studio] game-life'
+// The answer to the assistant playtest's state probe (game.ts `PROBE_LINE`), machinery too.
+export const GAME_PROBE_MARKER = '[studio] game-probe'
 
 export type GameLife = 'running' | 'waking' | 'asleep' | 'unreachable' | 'no-server'
 
@@ -46,7 +48,7 @@ export function parseGameLife(logs: string): GameLife | null {
 
 /** True for a line the Game console tab must not show — machinery, not output. */
 export function isGameLifeLine(line: string): boolean {
-  return line.includes(GAME_LIFE_MARKER)
+  return line.includes(GAME_LIFE_MARKER) || line.includes(GAME_PROBE_MARKER)
 }
 
 /** How long a game scene may stay silent before the strip calls it unreachable. */
