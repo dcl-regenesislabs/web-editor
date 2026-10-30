@@ -26,6 +26,16 @@ export interface TurnUsage {
   responseModel?: string
 }
 
+/** Every Claude account the service holds is at its plan's limit. */
+export class ProviderLimited extends Error {
+  /** When the first one frees up; null when none will on its own. */
+  readonly until: string | null
+  constructor(until: string | null) {
+    super('Provider limited')
+    this.until = until
+  }
+}
+
 export type BrowserCall = (tool: BrowserToolName, args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>
 
 export interface AgentFactory {
@@ -40,5 +50,5 @@ export interface AgentFactory {
 }
 
 export interface AssistantService {
-  handle(request: Request, path: string, wallet: string): Promise<Response>
+  handle(request: Request, path: string, wallet: string, client?: string): Promise<Response>
 }

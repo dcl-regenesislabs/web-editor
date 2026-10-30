@@ -105,6 +105,3 @@ export async function createPoolComponent({ config, logs }: { config: IConfigCom
     }
   }
 }
-
-export const poolIpHeader = async (config: IConfigComponent): Promise<string | undefined> =>
-  (await config.getString('CLIENT_IP_HEADER'))?.trim().toLowerCase() || undefined

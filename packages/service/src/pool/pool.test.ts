@@ -254,12 +254,13 @@ describe('the pool routes', () => {
     const seen: PoolRequest[] = []
     const pool = { handle: async (request: PoolRequest) => { seen.push(request); return Response.json({ ok: true }) }, status: async () => { throw new Error('unused') }, sweep: async () => {} }
     const wallet = await createTestWallet({ origin: ORIGIN })
-    const request = (target: Env) => new Request('http://storage.test/pool/lease', {
-      method: 'POST', headers: { ...wallet.headers('POST', 'http://storage.test/pool/lease'), 'x-real-ip': '203.0.113.9, 10.0.0.1' }
+    const request = () => new Request('http://storage.test/pool/lease', {
+      method: 'POST', headers: { ...wallet.headers('POST', 'http://storage.test/pool/lease') }
     })
-    expect((await handle(request(env(pool)), env(pool))).status).toBe(200)
+    // the client address is parsed upstream (src/client-ip.ts) and reaches handle() as `client`
+    expect((await handle(request(), env(pool), '203.0.113.9')).status).toBe(200)
     expect(seen[0]).toMatchObject({ method: 'POST', path: '/pool/lease', wallet: wallet.address, ip: '203.0.113.9' })
-    expect((await handle(request(env()), env())).status).toBe(503)
+    expect((await handle(request(), env(), '203.0.113.9')).status).toBe(503)
     expect((await handle(new Request('http://storage.test/pool', { headers: { origin: ORIGIN } }), env(pool))).status).toBe(401)
   })
 })

@@ -10,7 +10,7 @@ import type { AdminComponent } from './admin/admin.ts'
 import type { PoolComponent } from './pool/component.ts'
 
 export interface ProjectStorageComponent {
-  handle(request: Request): Promise<Response>
+  handle(request: Request, client?: string): Promise<Response>
   purge(): Promise<PurgeResult>
 }
 

@@ -7,6 +7,7 @@ import type { MemoryRef, WalletMemory } from './memory.ts'
 import type { WalletUsage } from './usage.ts'
 import type { AssistantTurnOutcome } from '../../../contract/src/analytics.ts'
 import type { SessionOperations } from './operations.ts'
+import { ProviderLimited } from './types.ts'
 import type { AgentFactory, AssistantAgent } from './types.ts'
 import type { WalletImages } from './thumbnail.ts'
 
@@ -195,9 +196,14 @@ export function createConnection(options: {
       turn.controller.signal.throwIfAborted()
       await agent.prompt(params)
       ok = !turn.controller.signal.aborted
-    } catch {
+    } catch (error) {
       if (!turn.controller.signal.aborted) {
-        if (started) send({ kind: 'event', event: { kind: 'error', turnId, message: 'The assistant could not finish. Check the service connection and provider sign-in, then retry.' } })
+        if (error instanceof ProviderLimited) {
+          // keep the agent: the next prompt carries on from what this turn already did
+          turn.resumable = true
+          const after = error.until === null ? 'an operator adds a Claude account' : new Date(error.until).toUTCString()
+          send({ kind: 'event', event: { kind: 'error', turnId, message: `The assistant's Claude accounts have all reached their usage limit. Try again after ${after}.`, resumable: true } })
+        } else if (started) send({ kind: 'event', event: { kind: 'error', turnId, message: 'The assistant could not finish. Check the service connection and provider sign-in, then retry.' } })
         else {
           options.operations?.rejected('unavailable')
           send({ kind: 'failure', message: 'The assistant allowance could not be checked. Try again shortly.' })

@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { AssistantServerMessage } from '../../../contract/src/assistant.ts'
 import type { UsageBalance } from './usage.ts'
 import { createConnection, parsePrompt } from './connection.ts'
+import { ProviderLimited } from './types.ts'
 import { createUsageMeter } from './usage.ts'
 
 const params = { provider: 'claude' as const, text: 'Build a game' }
@@ -161,4 +162,26 @@ it('searches the catalog alongside a scene edit while keeping imports ordered', 
   client.connection.receive({ kind: 'result', turnId: 'one', callId: imported.callId, ok: true, text: '{}' })
   client.connection.receive({ kind: 'result', turnId: 'one', callId: search.callId, ok: true, text: '{}' })
   await client.done('one')
+})
+
+it('tells the creator when every Claude account is at its limit, and keeps the conversation for later', async () => {
+  const events: AssistantServerMessage[] = []
+  const prompt = vi.fn(async () => {})
+  const dispose = vi.fn()
+  const create = vi.fn(async () => ({ prompt, abort: async () => {}, dispose, snapshot: () => [], takeUsage: () => ({ cost: 0 }) }))
+  const connection = createConnection({
+    factory: { providers: async () => [], create }, logger: { error: vi.fn(), info: vi.fn() },
+    allowTurn: () => true, send: (event) => events.push(event)
+  })
+  cleanup.push(() => connection.close())
+  prompt.mockRejectedValueOnce(new ProviderLimited('2026-10-29T03:00:00.000Z'))
+  connection.receive({ kind: 'prompt', turnId: 'limited', projectId: 'scene', params })
+  await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: {
+    kind: 'error', turnId: 'limited', resumable: true,
+    message: "The assistant's Claude accounts have all reached their usage limit. Try again after Thu, 29 Oct 2026 03:00:00 GMT."
+  } }))
+  await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'limited', ok: false } }))
+  connection.receive({ kind: 'prompt', turnId: 'later', projectId: 'scene', params })
+  await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'later', ok: true } }))
+  expect([create.mock.calls.length, dispose.mock.calls.length]).toEqual([1, 0])
 })
