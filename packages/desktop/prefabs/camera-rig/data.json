@@ -1,0 +1,22 @@
+{
+  "id": "7ea892f3-168f-40fb-8338-d9c91c23708e",
+  "name": "Camera Rig",
+  "description": "A fixed game camera — top-down, isometric or following the player — that takes over while a player is inside its area and frames the whole area on any screen, phones included.",
+  "category": "custom",
+  "tags": [
+    "camera",
+    "top-down",
+    "isometric",
+    "view"
+  ],
+  "version": "1.0.0",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "notes": "Initial release: a top-down, isometric or follow camera that takes over while a player is inside its area (or all the time), fits the whole area on desktop and phone screens, and hands the default camera back on the way out."
+    }
+  ],
+  "origin": {
+    "source": "builtin"
+  }
+}

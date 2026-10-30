@@ -24,6 +24,27 @@ import { LivenessTracker } from '../runtime-modules/pure/liveness'
 import { PendingMap } from '../runtime-modules/pure/pending'
 import { Membership } from '../runtime-modules/pure/membership'
 import { ZoneRegistry, zoneKey } from '../runtime-modules/pure/zoneRegistry'
+import {
+  CAMERA_FOV_DEG,
+  DESKTOP_ASPECT,
+  FOLLOW_FRAME_M,
+  PHONE_ASPECT,
+  TOP_DOWN_PITCH_DEG,
+  aspectFor,
+  cameraOnTop,
+  cameraPose,
+  cameraRotation,
+  claimCamera,
+  fitDistance,
+  framingDistance,
+  marginFor,
+  pitchFor,
+  releaseCamera,
+  yawOf,
+  type Box,
+  type RigClaims
+} from '../runtime-modules/pure/cameraRig'
+import { rotateVec, type Quat, type Vec3 } from '../runtime-modules/pure/worldTransform'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -382,5 +403,147 @@ describe('_runtime rpc pending', () => {
     expect(p.tick(12_000, 4000)).toEqual([]) // budget spent → failed
     expect(error).not.toBeNull()
     expect(p.size).toBe(0)
+  })
+})
+
+describe('_runtime camera rig framing', () => {
+  const DEG = Math.PI / 180
+
+  // Project a world point into the camera's normalized screen: |x|, |y| <= 1 is on screen.
+  function project(pose: { position: Vec3; rotation: Quat }, point: Vec3, aspect: number): { x: number; y: number; depth: number } {
+    const inverse = { x: -pose.rotation.x, y: -pose.rotation.y, z: -pose.rotation.z, w: pose.rotation.w }
+    const local = rotateVec(inverse, {
+      x: point.x - pose.position.x,
+      y: point.y - pose.position.y,
+      z: point.z - pose.position.z
+    })
+    const tanV = Math.tan((CAMERA_FOV_DEG * DEG) / 2)
+    return { x: local.x / (local.z * tanV * aspect), y: local.y / (local.z * tanV), depth: local.z }
+  }
+
+  function corners(center: Vec3, yaw: number, box: Box): Vec3[] {
+    const out: Vec3[] = []
+    for (const a of [-1, 1]) {
+      for (const b of [-1, 1]) {
+        for (const c of [-1, 1]) {
+          const x = (a * box.width) / 2
+          const z = (b * box.depth) / 2
+          out.push({
+            x: center.x + x * Math.cos(yaw) + z * Math.sin(yaw),
+            y: center.y + (c * box.height) / 2,
+            z: center.z - x * Math.sin(yaw) + z * Math.cos(yaw)
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  function worstEdge(center: Vec3, yaw: number, box: Box, pitch: number, aspect: number): number {
+    const pose = cameraPose(center, yaw, pitch, fitDistance(box, pitch, aspect))
+    let worst = 0
+    for (const corner of corners(center, yaw, box)) {
+      const screen = project(pose, corner, aspect)
+      expect(screen.depth).toBeGreaterThan(0)
+      worst = Math.max(worst, Math.abs(screen.x), Math.abs(screen.y))
+    }
+    return worst
+  }
+
+  it('looks straight-ish down for top-down and clamps the creator angle otherwise', () => {
+    expect(pitchFor('top-down', 30)).toBe(TOP_DOWN_PITCH_DEG)
+    expect(pitchFor('isometric', 55)).toBe(55)
+    expect(pitchFor('follow', 2)).toBe(10)
+    expect(pitchFor('isometric', 120)).toBe(TOP_DOWN_PITCH_DEG)
+    expect(pitchFor('isometric', Number.NaN)).toBe(55)
+  })
+
+  it('reads the heading off a rotation, tilted or not', () => {
+    expect(yawOf({ x: 0, y: 0, z: 0, w: 1 })).toBeCloseTo(0)
+    expect(yawOf(cameraRotation(Math.PI / 2, 0))).toBeCloseTo(Math.PI / 2)
+    expect(yawOf(cameraRotation(-2, 40))).toBeCloseTo(-2)
+    // straight down: the heading survives through the up vector
+    expect(yawOf(cameraRotation(1, 90))).toBeCloseTo(1)
+  })
+
+  it('points the camera at its target from the requested distance', () => {
+    const target = { x: 8, y: 0, z: 8 }
+    const pose = cameraPose(target, 0, 55, 20)
+    const offset = { x: target.x - pose.position.x, y: target.y - pose.position.y, z: target.z - pose.position.z }
+    expect(Math.hypot(offset.x, offset.y, offset.z)).toBeCloseTo(20)
+    // above and behind (south of) the target, looking north and down
+    expect(pose.position.y).toBeCloseTo(20 * Math.sin(55 * DEG))
+    expect(pose.position.z).toBeCloseTo(8 - 20 * Math.cos(55 * DEG))
+    const center = project(pose, target, DESKTOP_ASPECT)
+    expect(center.x).toBeCloseTo(0)
+    expect(center.y).toBeCloseTo(0)
+  })
+
+  // The fit is exact: every corner on screen, and at least one on the edge.
+  for (const [label, aspect] of [
+    ['desktop 16:9', DESKTOP_ASPECT],
+    ['phone 1600x720', PHONE_ASPECT]
+  ] as const) {
+    it(`fits every corner of the area on a ${label} canvas, tightly`, () => {
+      for (const pitch of [TOP_DOWN_PITCH_DEG, 55, 30]) {
+        for (const box of [
+          { width: 12, depth: 12, height: 4 },
+          { width: 30, depth: 8, height: 3 },
+          { width: 6, depth: 24, height: 2 }
+        ]) {
+          const worst = worstEdge({ x: 16, y: 1, z: 16 }, 0.7, box, pitch, aspect)
+          expect(worst).toBeLessThanOrEqual(1 + 1e-9)
+          expect(worst).toBeGreaterThan(0.999)
+        }
+      }
+    })
+  }
+
+  it('needs less distance for a wide area on the wide phone canvas, and the same for a deep one', () => {
+    const wide = { width: 30, depth: 6, height: 2 }
+    expect(fitDistance(wide, 55, PHONE_ASPECT)).toBeLessThan(fitDistance(wide, 55, DESKTOP_ASPECT))
+    const deep = { width: 4, depth: 30, height: 2 }
+    expect(fitDistance(deep, 55, PHONE_ASPECT)).toBeCloseTo(fitDistance(deep, 55, DESKTOP_ASPECT))
+  })
+
+  it('never puts the camera inside or right on top of a tiny area', () => {
+    expect(fitDistance({ width: 0, depth: 0, height: 0 }, 55, DESKTOP_ASPECT)).toBeGreaterThanOrEqual(2)
+    const tall = { width: 1, depth: 1, height: 20 }
+    const pose = cameraPose({ x: 0, y: 0, z: 0 }, 0, TOP_DOWN_PITCH_DEG, fitDistance(tall, TOP_DOWN_PITCH_DEG, DESKTOP_ASPECT))
+    expect(pose.position.y).toBeGreaterThan(10)
+  })
+
+  it('uses the real canvas aspect, and the platform default without one', () => {
+    expect(aspectFor({ width: 1600, height: 720 }, false)).toBeCloseTo(PHONE_ASPECT)
+    expect(aspectFor({ width: 1000, height: 1000 }, true)).toBe(1)
+    expect(aspectFor(null, true)).toBe(PHONE_ASPECT)
+    expect(aspectFor({ width: 0, height: 0 }, false)).toBe(DESKTOP_ASPECT)
+    expect(marginFor(true)).toBeGreaterThan(marginFor(false))
+  })
+
+  it('frames the area from its scale unless a distance or fitSize says otherwise', () => {
+    const base = { mode: 'isometric' as const, distance: 0, fitSize: 0, area: { x: 12, y: 4, z: 12 }, pitchDeg: 55, aspect: DESKTOP_ASPECT, mobile: false }
+    const fromScale = framingDistance(base)
+    expect(fromScale).toBeCloseTo(fitDistance({ width: 12, depth: 12, height: 4 }, 55, DESKTOP_ASPECT, CAMERA_FOV_DEG, marginFor(false)))
+    expect(framingDistance({ ...base, distance: 7 })).toBe(7)
+    expect(framingDistance({ ...base, fitSize: 24 })).toBeGreaterThan(fromScale)
+    // follow frames the player, not the rig's area
+    const follow = framingDistance({ ...base, mode: 'follow', area: { x: 100, y: 4, z: 100 } })
+    expect(follow).toBeCloseTo(fitDistance({ width: FOLLOW_FRAME_M, depth: FOLLOW_FRAME_M, height: 2 }, 55, DESKTOP_ASPECT, CAMERA_FOV_DEG, marginFor(false)))
+    // a phone adds room for the touch buttons
+    expect(framingDistance({ ...base, mobile: true, aspect: PHONE_ASPECT })).toBeGreaterThan(fitDistance({ width: 12, depth: 12, height: 4 }, 55, PHONE_ASPECT))
+  })
+
+  it('gives the screen to the rig entered last and falls back as rigs let go', () => {
+    const claims: RigClaims<number> = { order: [], applied: null }
+    expect(cameraOnTop(claims)).toBeNull()
+    claimCamera(claims, 1)
+    claimCamera(claims, 2)
+    claimCamera(claims, 1)
+    expect(cameraOnTop(claims)).toBe(2)
+    releaseCamera(claims, 2)
+    expect(cameraOnTop(claims)).toBe(1)
+    releaseCamera(claims, 1)
+    expect(cameraOnTop(claims)).toBeNull()
   })
 })

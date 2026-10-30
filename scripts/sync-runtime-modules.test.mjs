@@ -161,6 +161,7 @@ describe('the built-in prefabs', () => {
       .map(([folder]) => folder)
     expect(users).toEqual([
       'announcer',
+      'camera-rig',
       'game-flow',
       'health-respawn',
       'leaderboard',
