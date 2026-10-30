@@ -35,6 +35,7 @@ import {
 import type { SceneCheck, SceneCheckContext, SceneCheckPrefab, SceneFinding } from './scene-checks'
 import { sceneBoundsCheck } from './scene-check-bounds'
 import { sceneThumbnailCheck, THUMBNAIL_CHECK_ID } from './scene-check-thumbnail'
+import { BUDGET_CHECK_ID, sceneBudgetCheck } from './scene-check-budget'
 
 export const CHECK_IDS = {
   shadowing: 'config-shadowing',
@@ -379,5 +380,6 @@ export const BUILTIN_SCENE_CHECKS: ReadonlyArray<readonly [string, SceneCheck]> 
   ...SPAWNER_SCENE_CHECKS,
   ...GAME_SCENE_CHECKS,
   ...SIDES_SCENE_CHECKS,
+  [BUDGET_CHECK_ID, sceneBudgetCheck],
   [THUMBNAIL_CHECK_ID, sceneThumbnailCheck]
 ]
