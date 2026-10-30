@@ -313,6 +313,8 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `ASSISTANT_IMAGES_PER_DAY` | 10 | thumbnail images per wallet per UTC day, counted in `image-usage/` beside that file |
 | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | none: `/admin/` answers 404 | set both to serve the [operations dashboard](#operations-dashboard-and-telemetry): the Access team slug and the dashboard application's audience tag |
 | `ADMIN_LOCAL` | none | `1` serves `/admin/` without sign-in; only on a loopback `HTTP_SERVER_HOST` outside production |
+| `ASSISTANT_SESSION_LOG` | `0` | `1` keeps every assistant session **in plaintext** in `sessions/` beside the credential, readable on [`/admin/`](#recorded-sessions); for development deployments whose users know their sessions are studied |
+| `ASSISTANT_SESSION_LOG_DAYS` | 30 | how long a recorded session is kept after its last turn |
 | `SEGMENT_WRITE_KEY` | none: no events leave the service | write key of a Segment HTTP API source for the assistant's events; needs the assistant configured |
 | `ANALYTICS_USER_SALT` | required with `SEGMENT_WRITE_KEY`, 32+ characters | hashes wallets into the installation's pseudonymous user ids; changing it starts new ids |
 | `SEGMENT_ENDPOINT` | `https://api.segment.io/v1/batch` | the batch endpoint, e.g. Segment's EU region |
@@ -505,6 +507,35 @@ percentage without a real plan reading.
 
 Local check without Cloudflare: start the dev server with `ADMIN_LOCAL=1` on `127.0.0.1` and open
 `http://127.0.0.1:8787/admin/`.
+
+### Recorded sessions
+
+With `ASSISTANT_SESSION_LOG=1` the service records each conversation, so a run can be studied after the
+fact: what the model was sent, what it thought, every tool call, and what each step cost and took. The
+encrypted memory (`memory/`) cannot do that: only the creator's browser holds its key. The record is plaintext,
+so it is for development deployments; the service warns at startup while it is on.
+
+```
+sessions/<wallet>/<conversation>/turns.jsonl    one line per turn: prompt, outcome, tokens and cost, and per
+                                                tool step the model's think time, the tool's time, ok, size
+sessions/<wallet>/<conversation>/session.jsonl  the pi session entries after the latest turn: system prompt,
+                                                messages with reasoning, tool calls and results, usage per call
+```
+
+`<conversation>` is the browser's memory id, so it matches the creator's chat; a chat without one gets a
+random id per agent. Writes stop at 4 GB in total; a transcript over 64 MB is not rewritten.
+
+The dashboard lists the 200 most recent under "Recorded sessions", refreshed every 30 seconds:
+
+- `GET /admin/api/sessions`: `{ enabled, sessions: [{ wallet, conversation, projectId, updatedAt, turns,
+  firstPrompt, outcomes, steps, tokens, cost, transcriptBytes }] }`
+- `GET /admin/api/sessions/<wallet>/<conversation>`: `{ turns }`, the lines of `turns.jsonl`
+- `GET /admin/api/sessions/<wallet>/<conversation>/session.jsonl`: the transcript, as a download; each
+  download is logged with the admin's name
+
+While recording, the turn's `done` event also carries `usage` (`input`, `output`, `cacheRead`, `cacheWrite`,
+`cost`, `calls`), so a capture of the assistant socket has the cost of each turn. Without the log, the
+browser is never told what a turn cost.
 
 ## For tests
 

@@ -149,6 +149,16 @@ export interface AiImageAttachment {
   dataUrl: string
 }
 
+export interface AiTurnUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  /** USD at the model's API rates, not the plan's bill. */
+  cost: number
+  calls: number
+}
+
 // Streamed over the `ai-event` channel while a turn runs. `turnId` correlates
 // events to the send() that started them. Text arrives incrementally (`text`);
 // `tool` marks a file the assistant read/edited; `done` ends the turn.
@@ -158,7 +168,8 @@ export type AiEvent =
   | { kind: 'tool'; turnId: string; tool: string; detail: string; label?: string }
   // resumable: a limit paused the turn and the same conversation can continue (hosted only)
   | { kind: 'error'; turnId: string; message: string; resumable?: boolean }
-  | { kind: 'done'; turnId: string; ok: boolean }
+  // usage: what the turn's model calls cost, when the provider reported it
+  | { kind: 'done'; turnId: string; ok: boolean; usage?: AiTurnUsage }
 
 // One wallet's assistant chat on one project, kept for display only; `owner` names that pair.
 export interface AiTranscript {

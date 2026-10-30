@@ -7,6 +7,7 @@ import type { MemoryRef, WalletMemory } from './memory.ts'
 import type { WalletUsage } from './usage.ts'
 import type { AssistantTurnOutcome } from '../../../contract/src/analytics.ts'
 import type { SessionOperations } from './operations.ts'
+import type { StepRecord, WalletSessionLog } from './session-log.ts'
 import { ProviderLimited } from './types.ts'
 import type { AgentFactory, AssistantAgent } from './types.ts'
 import type { WalletImages } from './thumbnail.ts'
@@ -38,7 +39,10 @@ interface ActiveTurn {
   lastStepAt: number
   cause?: StopCause
   tools: { toolCalls: number; failedToolCalls: number; builds: number; failedBuilds: number }
+  stepLog: StepRecord[]
 }
+
+const MAX_STEPS_LOGGED = 2000
 
 export function parsePrompt(value: unknown): AiSendParams | null {
   if (!object(value) || !['claude', 'codex'].includes(String(value.provider))) return null
@@ -73,9 +77,12 @@ export function createConnection(options: {
   toolTimeoutMs?: number
   turnTimeoutMs?: number
   operations?: SessionOperations
+  sessions?: WalletSessionLog
 }) {
   let agent: AssistantAgent | null = null
   let identity = ''
+  // the memory id when the browser keeps one, so a session log matches the creator's chat
+  let conversation = ''
   let active: ActiveTurn | null = null
   let closed = false
   let running: Promise<void> | undefined
@@ -122,7 +129,9 @@ export function createConnection(options: {
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return
           clearTimeout(timer)
-          options.logger.info(`assistant step turn=${live.id} n=${step} tool=${tool} think=${thinking}ms tool_ms=${Date.now() - asked} ok=${ok} chars=${text.length}`)
+          const toolMs = Date.now() - asked
+          options.logger.info(`assistant step turn=${live.id} n=${step} tool=${tool} think=${thinking}ms tool_ms=${toolMs} ok=${ok} chars=${text.length}`)
+          if (live.stepLog.length < MAX_STEPS_LOGGED) live.stepLog.push({ n: step, tool, thinkMs: thinking, toolMs, ok, chars: text.length })
           live.lastStepAt = Date.now()
           signal?.removeEventListener('abort', cancel)
           controller.signal.removeEventListener('abort', cancel)
@@ -152,7 +161,7 @@ export function createConnection(options: {
     const startedAt = Date.now()
     const turn: ActiveTurn = {
       id: turnId, controller: new AbortController(), chars: 0, resumable: false, steps: 0, lastStepAt: startedAt,
-      tools: { toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0 }
+      tools: { toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0 }, stepLog: []
     }
     active = turn
     let started = false
@@ -177,6 +186,7 @@ export function createConnection(options: {
         agent?.dispose()
         agent = null
         identity = key
+        conversation = ref?.id ?? crypto.randomUUID().replaceAll('-', '')
       }
       if (agent === null) {
         await saving
@@ -213,17 +223,28 @@ export function createConnection(options: {
       clearTimeout(timer)
       const cause = turn.cause ?? (closed ? 'disconnected' : undefined)
       turn.controller.abort()
-      if (ok && turnAgent !== null && ref !== null && options.memory !== undefined) {
+      const keep = ok && ref !== null && options.memory !== undefined
+      const snapshot = turnAgent !== null && (keep || (started && options.sessions !== undefined)) ? turnAgent.snapshot() : undefined
+      if (keep && snapshot !== undefined) {
         const memory = options.memory
-        const snapshot = turnAgent.snapshot()
-        saving = saving.then(() => memory.save(ref, snapshot)).catch(() => { options.logger.error('Assistant memory save failed') })
+        saving = saving.then(() => memory?.save(ref, snapshot)).catch(() => { options.logger.error('Assistant memory save failed') })
       }
       // a stopped or failed turn still paid for the calls it made
       const spent = turnAgent?.takeUsage()
+      const outcome: AssistantTurnOutcome = ok ? 'completed' : cause ?? 'failed'
+      if (started && options.sessions !== undefined) {
+        const sessions = options.sessions
+        const record = {
+          turnId, projectId, conversation, startedAt: new Date(startedAt).toISOString(), endedAt: new Date().toISOString(),
+          ms: Date.now() - startedAt, outcome, model: turnAgent?.model ?? params.model, prompt: params.text,
+          steps: turn.stepLog, ...turn.tools, usage: spent
+        }
+        void sessions.record(record, snapshot).catch(() => { options.logger.error('Assistant session log write failed') })
+      }
       // a slow turn shows where it went: no prompt or scene content, only shape and timing
       options.logger.info(`assistant turn=${turnId} ms=${Date.now() - startedAt} ok=${ok} steps=${turn.steps}`)
       if (tracked !== undefined) {
-        options.operations?.turnFinished(tracked, { outcome: ok ? 'completed' : cause ?? 'failed', ...turn.tools, usage: spent })
+        options.operations?.turnFinished(tracked, { outcome, ...turn.tools, usage: spent })
       }
       if (spent !== undefined && options.usage !== undefined) {
         await options.usage.record(spent.cost).catch(() => { options.logger.error('Assistant usage could not be recorded') })
@@ -233,7 +254,10 @@ export function createConnection(options: {
         agent = null
       }
       active = null
-      if (started) send({ kind: 'event', event: { kind: 'done', turnId, ok } })
+      // the browser sees what a turn cost only where sessions are recorded for study, never in production use
+      const usage = options.sessions === undefined || spent?.tokens === undefined ? undefined
+        : { ...spent.tokens, cost: spent.cost, calls: spent.calls ?? 0 }
+      if (started) send({ kind: 'event', event: { kind: 'done', turnId, ok, ...(usage === undefined ? {} : { usage }) } })
     }
   }
 

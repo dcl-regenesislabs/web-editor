@@ -9,6 +9,7 @@ import type { AssistantServerMessage } from '../../../contract/src/assistant.ts'
 import type { AiSendParams } from '../../../contract/src/shell.ts'
 import { createConnection, parsePrompt } from './connection.ts'
 import { createAssistantMemory } from './memory.ts'
+import { createSessionLog } from './session-log.ts'
 import { createUsageMeter } from './usage.ts'
 import type { AgentFactory } from './types.ts'
 
@@ -277,5 +278,47 @@ describe('assistant tool bridge', () => {
       const third = await turn('three')
       expect(third).toEqual([{ kind: 'failure', message: expect.stringContaining('allowance') }])
     } finally { await rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('records each turn with its steps, usage and transcript, and tells the browser the cost only while recording', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'assistant-session-log-'))
+    const wallet = '0x' + 'b'.repeat(40)
+    const memoryId = 'd'.repeat(32)
+    const factory: AgentFactory = {
+      providers: async () => [],
+      create: async (_params, call) => ({
+        // a model reads a failed tool's text and carries on, as pi does
+        prompt: async () => { await call('build', { label: 'Building' }).catch((error: unknown) => String(error)) }, abort: async () => {}, dispose: () => {},
+        snapshot: () => [{ type: 'session' }, { type: 'message', text: 'built' }],
+        takeUsage: () => ({ cost: 0.25, tokens: { input: 1, output: 200, cacheRead: 3000, cacheWrite: 40 }, calls: 2 })
+      })
+    }
+    const log = createSessionLog(dir)
+    const events: AssistantServerMessage[] = []
+    const connection = createConnection({
+      factory, logger: { error: vi.fn(), info: vi.fn() }, send: (e) => events.push(e), allowTurn: () => true, sessions: log.forWallet(wallet)
+    })
+    try {
+      connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'kitchen', params, memory: { id: memoryId, key: Buffer.alloc(32, 2).toString('base64url') } })
+      await vi.waitFor(() => expect(events.some((e) => e.kind === 'call')).toBe(true))
+      const call = events.find((e) => e.kind === 'call')
+      if (call?.kind !== 'call') throw new Error('No call')
+      connection.receive({ kind: 'result', turnId: 'one', callId: call.callId, ok: false, text: 'Build failed' })
+      await vi.waitFor(() => expect(events.some((e) => e.kind === 'event' && e.event.kind === 'done')).toBe(true))
+      expect(events.at(-1)).toEqual({
+        kind: 'event', event: { kind: 'done', turnId: 'one', ok: true, usage: { input: 1, output: 200, cacheRead: 3000, cacheWrite: 40, cost: 0.25, calls: 2 } }
+      })
+      await vi.waitFor(async () => expect(await log.turns(wallet, memoryId)).toHaveLength(1))
+      const [turn] = await log.turns(wallet, memoryId) ?? []
+      expect(turn).toMatchObject({
+        turnId: 'one', projectId: 'kitchen', conversation: memoryId, outcome: 'completed', prompt: 'Edit the door', model: 'test',
+        toolCalls: 1, failedToolCalls: 1, builds: 1, failedBuilds: 1, usage: { cost: 0.25, calls: 2 },
+        steps: [{ n: 1, tool: 'build', ok: false, chars: 'Build failed'.length }]
+      })
+      expect(await log.transcript(wallet, memoryId)).toContain('"text":"built"')
+    } finally {
+      await connection.close()
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })
