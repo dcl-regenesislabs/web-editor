@@ -1,6 +1,6 @@
 # Checking the layout
 
-Rules: **L1–L8**. The point: a layout bug found by measuring costs a minute; found on a phone it costs a
+Rules: **L1–L8, H1–H3**. The point: a layout bug found by measuring costs a minute; found on a phone it costs a
 build, a QR scan and a play-through. Measure first, then send the creator to the phone for what only a
 hand can judge.
 
@@ -63,6 +63,22 @@ Let `A` be the interactable area on mobile and the screen inset area on desktop,
 | **L7** | a dialog (a node holding ≥ 1 button and a backdrop) is off the centre of `A` by more than 5% of the canvas; a toast without buttons is not in the top third |
 | **L8** | a visible node's rect leaves the canvas, or a column's content height exceeds the area's height |
 
+The H rules measure the HUD panels (in Decentraland Studio projects, the `hud:left|right|top|bottom:<n>` boxes
+`addHudItem` draws) on the mobile canvas, in the HUD state only: a dialog is meant to cover the game.
+
+| Rule | Fails when |
+|---|---|
+| **H1** | two HUD panels intersect |
+| **H2** | the HUD panels together (overlaps counted once) cover more than **25%** of the canvas |
+| **H3** | one HUD panel covers more than **15%** of the screen centre, the middle third both ways (`[533, 240, 533, 240]` on 1600 × 720) |
+
+Why these numbers: a compact game HUD — a score, a timer, a hint — takes 15–20% of a phone screen, and one compact
+panel in each of the four slots comes to about 15%; 25% leaves room for that and still fails a HUD that hides the
+game. The centre is where the avatar, the crosshair and what the player acts on are. On a phone the left column
+starts at x = 456, right of the chat column, so a left panel taller than about 108 (ending below y = 240) reaches
+into the centre: keep left panels short, or use the right column, which never does. Fix H2 by showing less
+(D5): one line of score instead of a table, detail in a modal the player opens.
+
 Report each failure with the rule, the node and the numbers: `L3 node 512 (Use button): 96×64, short side 64 < 80`.
 Fix, take a new dump, repeat until clean. Then do the same on the other canvas. A dump covers only what
 is on screen: open each dialog and panel and measure it open, on both canvases. Say which screens you
@@ -75,14 +91,16 @@ The mobile client numbers for a 1600 × 720 phone, landscape (for checks without
 - screen inset: 108 / 32 / 108 / 45
 - interactable: 436 / 32 / 108 / 45
 - native controls with everything visible: large button `[1336, 519, 156, 156]`, arc buttons 80 wide
-  around `(1414, 597)` at radius 167 (cluster ≈ `[1211, 394, 281, 281]`), joystick zone `[0, 240, 640, 480]`,
-  emote `[108, 595, 80, 80]`, chat column `[108, 32, 328, 643]`.
+  around `(1414, 597)` at radius 167 (cluster ≈ `[1211, 394, 281, 281]`), joystick `[177, 444, 170, 170]` and
+  its touch zone `[0, 240, 640, 480]`, emote `[108, 595, 80, 80]`, the explorer's buttons row
+  `[108, 32, 360, 85]` and the chat column below it `[108, 117, 328, 558]`.
 
-Hidden buttons leave the cluster smaller (see `touch-controls.md`); with all hidden, only the joystick
-zone and the left column remain.
+Hidden buttons leave the cluster smaller and a hidden joystick takes its zone with it: the slots each
+visible button takes are in `touch-controls.md`. `mobile_check` computes them from the scene's
+`TouchScreenControls`, so a panel over a button the scene hid is not an L2 failure.
 
 ## What a clean check does not prove
 
 Thumb comfort (D1–D2), whether a dialog reads well (D3), feedback timing (D4), text legibility at arm's
-length and the real phone's notch all need a hand and an eye. That is H1: a clean check is when you ask
+length and the real phone's notch all need a hand and an eye. That is P1: a clean check is when you ask
 the creator to try it on a phone, not instead of it.
