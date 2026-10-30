@@ -7,7 +7,7 @@
 // `about` names no host: the page stages the entity's files itself and serves them from its own
 // realm, so one export works from any origin, port or CDN directory.
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -70,6 +70,10 @@ writeFileSync(path.join(out, 'about'), JSON.stringify(about, null, 2))
 const entity = readEntity(entityId)
 const missing = entity.content.filter((c) => !existsSync(path.join(out, c.hash)))
 if (missing.length > 0) fail(`content missing from the export: ${missing.map((c) => c.file).join(', ')}`)
+// unpkg, which the explorer loads the package from, answers 500 for an empty file, and one
+// failed file keeps the editor scene from spawning
+const empty = entity.content.filter((c) => statSync(path.join(out, c.hash)).size === 0)
+if (empty.length > 0) fail(`empty files in the export (add them to .dclignore): ${empty.map((c) => c.file).join(', ')}`)
 if (!entity.content.some((c) => c.file === entity.metadata.main)) fail(`the entity has no ${entity.metadata.main}`)
 
 console.log(`\neditor scene ${entityId}`)
