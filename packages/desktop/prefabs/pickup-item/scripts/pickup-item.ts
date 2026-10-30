@@ -1,7 +1,7 @@
-import { InputAction, type Entity } from '@dcl/sdk/ecs'
+import type { Entity } from '@dcl/sdk/ecs'
 import { isServer } from '@dcl/sdk/network'
 import { registerPickup } from '~runtime/carry'
-import { declareTouchButtons } from '~runtime/hudLayout'
+import { declareInteractButtons } from '~runtime/interactPrompt'
 
 export class PickupItem {
   constructor(
@@ -38,8 +38,6 @@ export class PickupItem {
       returnSeconds: this.returnSeconds
     })
     if (isServer() || this.supply === 'look only') return
-    const buttons = [InputAction.IA_PRIMARY, InputAction.IA_JUMP]
-    if (this.throwable) buttons.push(InputAction.IA_SECONDARY)
-    declareTouchButtons(buttons, { main: InputAction.IA_PRIMARY })
+    declareInteractButtons(this.throwable ? 'throw' : undefined)
   }
 }

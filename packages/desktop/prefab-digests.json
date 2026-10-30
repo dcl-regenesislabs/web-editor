@@ -69,7 +69,7 @@
   },
   "pickup-item": {
     "version": "1.0.0",
-    "digest": "5c2c04c0802e4a46367b1c97adf6516a36590533ed539724407dd2e72a4d56ca"
+    "digest": "cab732dbde946b39e8d35b1323997e032f615c056decdab09c72fd140af23585"
   },
   "run-progress": {
     "version": "1.4.0",
@@ -145,6 +145,6 @@
   },
   "work-station": {
     "version": "1.0.0",
-    "digest": "a8806b5aa510022389a0e83a3e39192464fa0fcbf0fdc85ef46d04501d33996a"
+    "digest": "600b964d6d66df2bfd02a432a3297dd336c9b50f2a818230f3c7bb9bd2c65921"
   }
 }

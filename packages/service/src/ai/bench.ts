@@ -48,8 +48,8 @@ export function summarizeRun(run: BenchRun): RunSummary {
     failedBuilds: sum((turn) => turn.failedBuilds),
     playtests: steps.filter((step) => step.tool === 'playtest').length,
     mobileChecks: steps.filter((step) => step.tool === 'mobile_check').length,
-    cacheReadTokens: sum((turn) => turn.usage?.tokens.cacheRead ?? 0),
-    outputTokens: sum((turn) => turn.usage?.tokens.output ?? 0)
+    cacheReadTokens: sum((turn) => turn.usage?.tokens?.cacheRead ?? 0),
+    outputTokens: sum((turn) => turn.usage?.tokens?.output ?? 0)
   }
 }
 

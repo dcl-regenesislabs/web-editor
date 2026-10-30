@@ -44,14 +44,19 @@ write in the turn; read its ai.md before wiring it.
 - The prompt over a thing names what pressing does **now**: "Pick up tomato", "Put on board", "Chop", "Serve".
   A thing you cannot use right now shows no prompt.
 - Holding is a verb too: chopping, washing and repairing are hold-to-progress with a progress bar on the
-  thing, not a single press.
+  thing, not a single press. Anywhere a carried item is put down or worked on (a counter, a board, a sink, a
+  stove, a serving window) is the built-in "work-station" prefab: its recipes go in its turns param and a
+  delivery is scored from its station events; read custom/work_station/ai.md. Never write your own progress
+  timer for it.
 - Tap targets on the world (IA_POINTER on an object) work on both platforms; prefer them for anything rare.
 
 ## 4. Held things (F3)
 
 - What the player holds is **in the hand**: AvatarAttach to the right hand (AAPT_RIGHT_HAND) with an offset
   that reads as held, not floating at the avatar's position. Every other player sees it too, so who holds
-  what is shared state. The Pickup Item prefab does this; read its guide.
+  what is shared state. That is the built-in "pickup-item" prefab, one per item (supply "endless" for a crate
+  that hands out copies); read custom/pickup_item/ai.md. Never write AvatarAttach, a who-holds-what map, an
+  E-key handler or your own "[E] Pick up" label for it.
 - One held thing at a time unless the genre says otherwise. Putting it down on a station shows it there, on
   the station, at the station's size.
 - An item that changes (raw to chopped, clean to dirty) changes its model or its look at once, so the player

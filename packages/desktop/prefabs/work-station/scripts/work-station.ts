@@ -1,7 +1,7 @@
-import { InputAction, type Entity } from '@dcl/sdk/ecs'
+import type { Entity } from '@dcl/sdk/ecs'
 import { isServer } from '@dcl/sdk/network'
 import { registerStation } from '~runtime/carry'
-import { declareTouchButtons } from '~runtime/hudLayout'
+import { declareInteractButtons } from '~runtime/interactPrompt'
 
 export class WorkStation {
   constructor(
@@ -41,8 +41,6 @@ export class WorkStation {
       workVerb: this.workVerb
     })
     if (isServer()) return
-    const buttons = [InputAction.IA_PRIMARY, InputAction.IA_JUMP]
-    if (this.mode === 'hold to work') buttons.push(InputAction.IA_SECONDARY)
-    declareTouchButtons(buttons, { main: InputAction.IA_PRIMARY })
+    declareInteractButtons(this.mode === 'hold to work' ? 'chop' : undefined)
   }
 }

@@ -14,7 +14,9 @@
 //   away; any other action gets run(true) on press only.
 // sayNotice(text, seconds?) shows a short line in the bottom HUD slot (why an action did nothing).
 // Verbs are plain strings, so a script can pass them in the player's language. The prompt reads InputAction
-//   itself; the script using it declares its buttons with declareTouchButtons from './hudLayout'.
+//   itself; the script using it declares its phone buttons with declareInteractButtons(secondaryIcon?): E with
+//   the pick-up icon and jump, plus F with that icon when the script has a secondary action. It is declared
+//   here, not in the script, so a prefab that leaves F off never names it and the phone check does not ask for it.
 import {
   Billboard,
   BillboardMode,
@@ -28,6 +30,8 @@ import {
   type Entity
 } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
+import { actionIcon, type ActionIconName } from './actionIcons'
+import { declareTouchButtons, type TouchButton } from './hudLayout'
 import { localPlayerPosition } from './playerPositions'
 import { mountInteractHint } from './interactHint'
 import { nearestCandidate, promptText, type PromptButton, type Vec3 } from './pure/interactPick'
@@ -169,4 +173,14 @@ function promptSystem(): void {
     (inputSystem.isTriggered(InputAction.IA_SECONDARY, PointerEventType.PET_UP) || !inputSystem.isPressed(InputAction.IA_SECONDARY))) {
     release(state)
   }
+}
+
+/** The phone buttons an interaction uses, each with its action's icon; returns the removal. */
+export function declareInteractButtons(secondary?: ActionIconName): () => void {
+  const buttons: TouchButton[] = [
+    { action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') },
+    { action: InputAction.IA_JUMP, icon: actionIcon('jump') }
+  ]
+  if (secondary !== undefined) buttons.push({ action: InputAction.IA_SECONDARY, icon: actionIcon(secondary) })
+  return declareTouchButtons(buttons, { main: InputAction.IA_PRIMARY })
 }

@@ -176,10 +176,14 @@ describe('the pickup item and the work station', () => {
       expect(value.group, folder).toBeUndefined()
       const source = read(`${folder}/scripts/${folder}.ts`)
       expect(source, folder).toContain("from '~runtime/carry'")
-      // E is the phone's main button for both; jump stays, since declaring hides every undeclared button
-      expect(source, folder).toContain('declareTouchButtons(buttons, { main: InputAction.IA_PRIMARY })')
-      expect(source, folder).toContain('InputAction.IA_JUMP')
+      // the buttons are declared in the runtime module, so a prefab that leaves F off never names it to the phone check
+      expect(source, folder).toContain("declareInteractButtons(")
+      expect(source, folder).not.toContain('IA_SECONDARY')
     }
+    // E is the phone's main button for both; jump stays, since declaring hides every undeclared button
+    const prompt = read('../runtime-modules/interactPrompt.ts')
+    expect(prompt).toContain('declareTouchButtons(buttons, { main: InputAction.IA_PRIMARY })')
+    expect(prompt).toContain("{ action: InputAction.IA_JUMP, icon: actionIcon('jump') }")
   })
 
   it('is one entity whose own model is the look a hand, a station and the floor copy', () => {
