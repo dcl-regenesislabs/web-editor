@@ -67,6 +67,10 @@
     "version": "1.1.0",
     "digest": "90fc9953c2c3c085854c9ba2d547208155b3ecfd5c8fdde80558dd644511ffad"
   },
+  "pickup-item": {
+    "version": "1.0.0",
+    "digest": "5c2c04c0802e4a46367b1c97adf6516a36590533ed539724407dd2e72a4d56ca"
+  },
   "run-progress": {
     "version": "1.4.0",
     "digest": "97efc8aa3b98d384ac1e2772359d82cac24ed211031c95b6b07709b3d4811376"
@@ -138,5 +142,9 @@
   "wooden-chair-armrests": {
     "version": "1.1.0",
     "digest": "8351b2400ca57c0120f614bc8bec703f5b680e86e2370836d56f25243663750d"
+  },
+  "work-station": {
+    "version": "1.0.0",
+    "digest": "a8806b5aa510022389a0e83a3e39192464fa0fcbf0fdc85ef46d04501d33996a"
   }
 }

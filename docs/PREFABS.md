@@ -878,6 +878,37 @@ project copy filed to the library cannot vanish with it.
   Spawner** — there is no runtime-computed spawn position. Ships `ai.md`; the
   right-click gesture below is the primary way it gets placed.
 
+- **pickup-item** ("Pickup Item") and **work-station** ("Work Station") — things
+  a player carries, built on `runtime/carry.ts` over the `game` module, so both
+  are `requiresSdk: "auth-server"`, ungrouped (a creator looking for "pick up"
+  does not look in Multiplayer Server) and self-driving. The server owns
+  `game.state.carry`: which items are away from home and where (a hand, a
+  station, the floor, used up), which item sits on each station and its banked
+  work. One request name (`carry.act`) carries every player action, refused
+  unless the server's view of the player is within the thing's range; one
+  broadcast (`carry.event`) tells clients what changed. A player's own action
+  is applied at once through `pure/carryPrediction.ts` and rolled back on
+  refusal or after 3 s unconfirmed, the Run Progress pattern. The rules both
+  sides run are `pure/carryRules.ts`. An item's id is its entity Name, a station's
+  is its Name, a kind is a plain word; all three match like zone names. The look
+  in a hand, on a station or on the floor is a collider-free copy of the kind's
+  Pickup Item model (its GltfContainer or MeshRenderer and Material, children
+  included), held with `AvatarAttach` `AAPT_RIGHT_HAND`; a placed "one item" is
+  hidden while away. A kind only a station makes gets its look from a Pickup Item
+  with `supply: 'look only'`. Supply "endless" mints `<name>#<n>` per pick.
+  Stations hold one item: "hold to work" progresses while a player holds F and
+  stays near, "timed" progresses alone and chains into the next recipe (so a
+  burn is a recipe), `combines` merges a second kind put on top. Every round
+  start empties hands and stations. No carry pose: no carry clip ships, and the
+  SDK pin has no call to stop a looping emote (the engine has `stopEmote` and
+  upper-body masks; a pose needs both reaching the SDK plus a clip).
+  The prompt is `runtime/interactPrompt.ts`: one billboard `TextShape` over the
+  nearest candidate any script offers, "[E] Verb" on desktop and the bare verb
+  on phones, with what a held item can do in the bottom HUD slot. Both prefabs
+  declare E as the phone's main button (plus F where used, and jump, which
+  declaring would otherwise hide). Spawner copies cannot be pickups: they are
+  client-local and nameless.
+
 **Right-click → Add a spawner.** The one gesture that configures a prefab for
 you (`actions/prefabs.ts` `uiAddSpawnerFor`, the menu item directly under
 *Create prefab…*): it resolves the `spawner` slug through the same
