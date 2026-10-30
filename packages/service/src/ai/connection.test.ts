@@ -286,9 +286,13 @@ describe('assistant tool bridge', () => {
     const memoryId = 'd'.repeat(32)
     const factory: AgentFactory = {
       providers: async () => [],
-      create: async (_params, call) => ({
+      create: async (_params, call, _emit, _restore, _images, onCompaction) => ({
         // a model reads a failed tool's text and carries on, as pi does
-        prompt: async () => { await call('build', { label: 'Building' }).catch((error: unknown) => String(error)) }, abort: async () => {}, dispose: () => {},
+        prompt: async () => {
+          await call('build', { label: 'Building' }).catch((error: unknown) => String(error))
+          onCompaction?.({ ms: 40, ok: true, tokensBefore: 121_000, tokensAfter: 64_000, summaryChars: 900 })
+        },
+        abort: async () => {}, dispose: () => {},
         snapshot: () => [{ type: 'session' }, { type: 'message', text: 'built' }],
         takeUsage: () => ({ cost: 0.25, tokens: { input: 1, output: 200, cacheRead: 3000, cacheWrite: 40 }, calls: 2 })
       })
@@ -313,7 +317,10 @@ describe('assistant tool bridge', () => {
       expect(turn).toMatchObject({
         turnId: 'one', projectId: 'kitchen', conversation: memoryId, outcome: 'completed', prompt: 'Edit the door', model: 'test',
         toolCalls: 1, failedToolCalls: 1, builds: 1, failedBuilds: 1, usage: { cost: 0.25, calls: 2 },
-        steps: [{ n: 1, tool: 'build', ok: false, chars: 'Build failed'.length }]
+        steps: [
+          { n: 1, tool: 'build', ok: false, chars: 'Build failed'.length },
+          { n: 2, tool: 'compaction', toolMs: 40, ok: true, chars: 900, tokensBefore: 121_000, tokensAfter: 64_000 }
+        ]
       })
       expect(await log.transcript(wallet, memoryId)).toContain('"text":"built"')
     } finally {

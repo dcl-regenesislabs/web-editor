@@ -20,12 +20,17 @@ export const DEFAULT_SESSION_LOG_LIMITS = {
 
 export interface StepRecord {
   n: number
+  /** A browser or service tool, or `compaction` when the agent summarized older messages. */
   tool: string
   /** The model's time before asking for this tool. */
   thinkMs: number
   toolMs: number
   ok: boolean
+  /** The result's size; for a compaction, the summary's. */
   chars: number
+  /** Compaction only: estimated context tokens before and after. */
+  tokensBefore?: number
+  tokensAfter?: number
 }
 
 export interface TurnRecord {

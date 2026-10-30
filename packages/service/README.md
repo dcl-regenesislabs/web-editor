@@ -306,6 +306,7 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `ASSISTANT_TURNS_PER_IP_PER_DAY` | 300 | assistant turns per client address per UTC day, whichever wallets sign in from it |
 | `ASSISTANT_TURNS_PER_DAY_TOTAL` | 2000 | assistant turns for all wallets together per UTC day |
 | `ASSISTANT_TURNS_AT_ONCE` | 2 | assistant turns one wallet may have running at once, across its tabs |
+| `ASSISTANT_COMPACT_AT_TOKENS` | 120000 | context size at which the assistant summarizes older messages, also between the tool calls of one turn, keeping the latest 50k tokens verbatim; at least 50000, or `0` to leave it to pi, which waits until the model's window is nearly full (1M tokens for `claude-opus-5-5`) |
 | `ASSISTANT_DRAIN_SECONDS` | 600 | on stop, how long running assistant turns may finish (new turns are refused); keep compose's `stop_grace_period` longer |
 | `ASSISTANT_DAILY_LIMIT` | 50000 | internal allowance per wallet per UTC day, priced at the model's API rates; usage is not displayed in the editor |
 | `ASSISTANT_WEEKLY_LIMIT` | 200000 | the same per week, from Monday 00:00 UTC |
@@ -474,7 +475,7 @@ Every event is `Assistant Operation` with an `action` and flat properties, typed
 - `outcome: completed` means the assistant finished; whether its tools and builds worked is in the
   tool counts.
 - Tokens are the provider's own counts, including compaction calls, and are never recounted when a
-  conversation is restored. `model_calls` counts the agent's replies, not compaction.
+  conversation is restored. `model_calls` counts the agent's replies and its compaction summaries.
   `usage_complete: false` means a call ended without usage, so the counts are a floor.
 - `estimated_api_cost_usd` is priced at public API rates. It is not the subscription's bill.
 - `userId` is an HMAC of the wallet with `ANALYTICS_USER_SALT`: pseudonymous and only comparable
@@ -517,7 +518,9 @@ so it is for development deployments; the service warns at startup while it is o
 
 ```
 sessions/<wallet>/<conversation>/turns.jsonl    one line per turn: prompt, outcome, tokens and cost, and per
-                                                tool step the model's think time, the tool's time, ok, size
+                                                tool step the model's think time, the tool's time, ok, size; a
+                                                compaction is a step with tool "compaction", its time, the
+                                                summary's size and the context tokens before and after
 sessions/<wallet>/<conversation>/session.jsonl  the pi session entries after the latest turn: system prompt,
                                                 messages with reasoning, tool calls and results, usage per call
 ```
