@@ -17,7 +17,8 @@ services:
     volumes:
       - editor-data:/data
     restart: unless-stopped
-    stop_grace_period: 30s
+    # ASSISTANT_DRAIN_SECONDS (600) lets running assistant turns finish, plus the HTTP shutdown
+    stop_grace_period: 11m
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

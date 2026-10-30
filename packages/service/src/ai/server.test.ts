@@ -35,7 +35,7 @@ async function setup(vars?: Record<string, string>) {
     await once(ws, 'open')
     return { ws, ready }
   }
-  return { base, wallet, ticket, socket }
+  return { base, wallet, ticket, socket, stop: program.stop }
 }
 
 describe('assistant connection authorization', () => {
@@ -104,6 +104,32 @@ describe('assistant connection authorization', () => {
     const started = next(tabs[2])
     prompt(tabs[2], 'turn-3')
     expect((await started).kind).toBe('call')
+  })
+
+  it('lets a running turn finish when the service stops, and refuses new ones meanwhile', async () => {
+    const { ticket, socket, stop } = await setup({ ASSISTANT_DRAIN_SECONDS: '30' })
+    const a = await socket(await ticket()); await a.ready
+    const b = await socket(await ticket()); await b.ready
+    const next = (ws: WebSocket, kinds: string[]) => new Promise<AssistantServerMessage>((resolve) => {
+      const on = (raw: unknown) => { const m = JSON.parse(String(raw)) as AssistantServerMessage; if (kinds.includes(m.kind)) { ws.off('message', on); resolve(m) } }
+      ws.on('message', on)
+    })
+    const prompt = (ws: WebSocket, turnId: string) => ws.send(JSON.stringify({ kind: 'prompt', turnId, projectId: 'project', params: { provider: 'claude', text: 'Read my file' } }))
+    const call = next(a.ws, ['call'])
+    prompt(a.ws, 'turn-a')
+    const first = await call as BrowserToolCall
+
+    let stopped = false
+    const stopping = stop().then(() => { stopped = true })
+    const refused = next(b.ws, ['failure'])
+    prompt(b.ws, 'turn-b')
+    expect(await refused).toMatchObject({ message: expect.stringContaining('restarting') })
+    expect(stopped).toBe(false)
+
+    const done = new Promise<boolean>((resolve) => a.ws.on('message', (raw: unknown) => { const m = JSON.parse(String(raw)); if (m.event?.kind === 'done') resolve(m.event.ok) }))
+    a.ws.send(JSON.stringify({ kind: 'result', callId: first.callId, turnId: first.turnId, ok: true, text: 'file' }))
+    expect(await done).toBe(true)
+    await stopping
   })
 
   it('serves only the listed wallets when ASSISTANT_WALLETS is set', async () => {

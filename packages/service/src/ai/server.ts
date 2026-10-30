@@ -87,6 +87,8 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
   /** The image model and its per-wallet day count; without it thumbnails report themselves unavailable. */
   images?: { provider: ImageProvider; usage: UsageMeter }
   operations?: Operations
+  /** How long a stop waits for running turns; compose's stop_grace_period must be longer. */
+  drainMs?: number
 }): AssistantComponent {
   const limits = options.limits ?? DEFAULT_ASSISTANT_LIMITS
   const counts = loadCounts(options.countsPath)
@@ -133,6 +135,7 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
     saveTimer.unref()
   }
   function allowTurn(wallet: string, client: string | undefined): true | string {
+    if (stopped) return 'The assistant is restarting for an update. Send your message again in a minute.'
     const running = [...connections].filter(([socket, connection]) => sockets.get(socket)?.wallet === wallet && connection.isRunning()).length
     if (running >= limits.turnsAtOnce) return `${limits.turnsAtOnce} turns are already running in your other tabs. Wait for one to finish.`
     const now = Date.now()
@@ -279,6 +282,11 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
       tickets.clear()
       for (const reservation of pending.values()) clearTimeout(reservation.timer)
       pending.clear()
+      // a deploy recreates the container: let the turns already running finish instead of cutting them
+      const deadline = Date.now() + (options.drainMs ?? 0)
+      while ([...connections.values()].some((connection) => connection.isRunning()) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+      }
       for (const socket of ws.clients) socket.terminate()
       await new Promise<void>((resolve) => ws.close(() => resolve()))
       await Promise.all(closing)

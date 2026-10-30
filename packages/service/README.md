@@ -306,6 +306,7 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `ASSISTANT_TURNS_PER_IP_PER_DAY` | 300 | assistant turns per client address per UTC day, whichever wallets sign in from it |
 | `ASSISTANT_TURNS_PER_DAY_TOTAL` | 2000 | assistant turns for all wallets together per UTC day |
 | `ASSISTANT_TURNS_AT_ONCE` | 2 | assistant turns one wallet may have running at once, across its tabs |
+| `ASSISTANT_DRAIN_SECONDS` | 600 | on stop, how long running assistant turns may finish (new turns are refused); keep compose's `stop_grace_period` longer |
 | `ASSISTANT_DAILY_LIMIT` | 50000 | internal allowance per wallet per UTC day, priced at the model's API rates; usage is not displayed in the editor |
 | `ASSISTANT_WEEKLY_LIMIT` | 200000 | the same per week, from Monday 00:00 UTC |
 | `AI_IMAGE_AUTH_PATH` | none | ChatGPT (Codex) OAuth session file for the image model behind `make_thumbnail` (`--ai-image-auth`); must be outside `STORAGE_DIR` in production. Unset, the assistant says thumbnails are unavailable |
