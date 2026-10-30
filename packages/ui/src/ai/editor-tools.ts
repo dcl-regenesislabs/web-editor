@@ -37,6 +37,12 @@ const disk: ProjectFiles = {
 }
 let fileTools = createFileTools(disk)
 
+async function diskSources(): Promise<ReadonlyMap<string, Uint8Array>> {
+  const paths = (await dataLayerListFiles()).filter((path) => /\.tsx?$/.test(path))
+  const read = await Promise.all(paths.map(async (path) => [path, await readDisk(path)] as const))
+  return new Map(read.filter((entry): entry is readonly [string, Uint8Array] => entry[1] !== undefined))
+}
+
 // the dev server notices a saved file within this and starts rebuilding
 const BUILD_NOTICE_MS = 1500
 
@@ -75,6 +81,7 @@ export async function runEditorTool(name: EditorToolName, args: Record<string, u
   if (name === 'view') return JSON.stringify(await captureView(viewRequest(args), signal))
   if (name === 'playtest') return JSON.stringify(await playtest(args, signal))
   if (name === 'ui_layout') return JSON.stringify(await uiLayout(args, signal))
+  if (name === 'mobile_check') return JSON.stringify(await uiLayout({ check: true }, signal, diskSources))
   if (isFileTool(name)) return fileTools(name, args, signal)
   if (name === 'build') return JSON.stringify(await desktopBuild(signal))
   // scene.json (parcels, permissions, the thumbnail) is the web host's to edit; here it answers so

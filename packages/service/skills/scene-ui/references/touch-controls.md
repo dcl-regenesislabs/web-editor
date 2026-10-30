@@ -103,5 +103,7 @@ function.
 **C8 — Touch has no hover.** No information only in a hover state, no `PointerLock`-dependent aiming, no
 action that needs a keyboard key with no button. Desktop keeps its shortcuts as a second path.
 
-Decentraland Studio prefabs and UI-Designer scenes may manage `TouchScreenControls` themselves (a
-generated `src/mobile-hud.ts`, a prefab guide that says so): read that first and don't fight it.
+Decentraland Studio projects declare their buttons with `declareTouchButtons` from `./runtime/hudLayout`,
+which writes `TouchScreenControls` itself and restores the declared set after a modal: call that, never the
+component. Prefabs and UI-Designer scenes may manage `TouchScreenControls` themselves (a generated
+`src/mobile-hud.ts`, a prefab guide that says so): read that first and don't fight it.

@@ -14,7 +14,7 @@ import type { WalletImages } from './thumbnail.ts'
 const MAX_TURN_RESULT_CHARS = 2_000_000
 const MAX_LABEL_CHARS = 80
 const TOOL_LABELS: Record<BrowserToolName, string> = {
-  playtest: 'Testing the game', ui_layout: 'Measuring the UI',
+  playtest: 'Testing the game', ui_layout: 'Measuring the UI', mobile_check: 'Checking it on a phone',
   build: 'Building the scene', scene_request: 'Editing the scene', write_file: 'Saving a file', asset_request: 'Working with assets',
   read_file: 'Reading a file', list_files: 'Listing files', view: 'Looking at the scene',
   search_files: 'Searching the code', edit_file: 'Editing a file'

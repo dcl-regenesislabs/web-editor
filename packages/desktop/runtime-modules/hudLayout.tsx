@@ -2,17 +2,24 @@
 // The one screen layout every HUD in the scene shares, so prefabs and custom HUDs stack instead of overlapping
 // on any screen, down to a phone's 1600x720 canvas minus the explorer's controls (about 1056x643).
 //
-// addHudItem(slot, render, { order }) adds a panel and returns a function that removes it:
+// addHudItem(slot, render, { order, open }) adds a panel and returns a function that removes it:
 // - 'left' / 'right': columns stacked from the top, at most HUD_COLUMN_WIDTH wide;
 // - 'top': status and notifications at the top centre, at most HUD_COLUMN_WIDTH wide;
 // - 'bottom': short hints and notices above the bottom centre, at most HUD_NOTICE_WIDTH wide, never interactive;
-// - 'modal': a centred dialog over a dimmed screen. While its `open()` answers true the phone's
-//   touch controls are hidden, because they are drawn over the dialog.
+// - 'modal': a centred dialog over a dimmed screen, drawn only while its `open()` answers true. Its render
+//   draws the dialog whenever it is called (open() alone decides when it shows), so the editor's mobile check
+//   can open it to measure it; give the dialog's panel a uiTransform elementId so it is measured, not only
+//   the screen it dims. While it is open the phone's touch controls are hidden, because they are drawn over it.
 // Lower `order` sits closer to the screen edge. Nothing is placed in the bottom corners: on phones the
 // joystick and the jump/E/F buttons are there. Every item needs an explicit width and height.
 // render() returns an element and calls no hooks (it runs inside the layout); state lives in the component it returns.
+//
+// declareTouchButtons(actions, { main }) says which native touch buttons the scene uses; on phones every other
+// one is hidden (an unused button tells the player there is an action that does nothing). Prefabs and
+// scripts each declare their own and the layout shows the union. Set the touch controls only through here:
+// the layout writes TouchScreenControls itself, and restores this setup when a modal closes.
 import ReactEcs, { ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
-import { engine, TouchScreenControls } from '@dcl/sdk/ecs'
+import { engine, InputAction, Schemas, TouchScreenControls, type LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
 import { UI_CANVAS } from './uiTheme'
 
@@ -23,6 +30,18 @@ export const HUD_GAP = 12
 export const HUD_NOTICE_WIDTH = 440
 // clear of the explorer's own edge controls inside the interactable area
 const HUD_MARGIN = 20
+// on phones the explorer's profile, chat, camera and reload buttons run along the top left, partly inside
+// the interactable area: the left column starts below them
+const HUD_PHONE_LEFT_TOP = 100
+
+// the native buttons TouchScreenControls can show or hide (movement is the joystick)
+const TOUCH_BUTTONS = [InputAction.IA_POINTER, InputAction.IA_PRIMARY, InputAction.IA_SECONDARY, InputAction.IA_JUMP,
+  InputAction.IA_ACTION_3, InputAction.IA_ACTION_4, InputAction.IA_ACTION_5, InputAction.IA_ACTION_6]
+
+// The editor's mobile check writes this on the root entity to open one modal (by its index) and measure it.
+const HudPreview = (engine.getComponentOrNull('editor::HudPreview') ?? engine.defineComponent('editor::HudPreview', {
+  modal: Schemas.Int
+})) as LastWriteWinElementSetComponentDefinition<{ modal: number }>
 
 interface HudItem {
   id: number
@@ -32,14 +51,30 @@ interface HudItem {
   open?(): boolean
 }
 
-interface HudLayoutState { items: HudItem[]; nextId: number; mounted: boolean; touchHidden: boolean }
+interface TouchDeclaration { id: number; actions: InputAction[]; main?: InputAction }
 
-const KEY = '__dclHudLayout_v1'
+interface HudLayoutState {
+  items: HudItem[]
+  touch: TouchDeclaration[]
+  nextId: number
+  mounted: boolean
+  // what was last written to TouchScreenControls, so it is written only when it changes
+  applied: string
+}
+
+const KEY = '__dclHudLayout_v2'
 const store = globalThis as unknown as Record<string, HudLayoutState | undefined>
 
 function layout(): HudLayoutState {
-  store[KEY] ??= { items: [], nextId: 1, mounted: false, touchHidden: false }
+  store[KEY] ??= { items: [], touch: [], nextId: 1, mounted: false, applied: '' }
   return store[KEY]
+}
+
+function mount(state: HudLayoutState): void {
+  if (state.mounted) return
+  state.mounted = true
+  ReactEcsRenderer.addUiRenderer(engine.addEntity(), HudLayout, UI_CANVAS)
+  engine.addSystem(syncTouchControls)
 }
 
 /** Movement controls as the player's device calls them. */
@@ -52,49 +87,71 @@ export function addHudItem(slot: HudSlot, render: () => ReactEcs.JSX.Element | n
   const state = layout()
   const item: HudItem = { id: state.nextId++, slot, order: options.order ?? 0, render, open: options.open }
   state.items.push(item)
-  if (!state.mounted) {
-    state.mounted = true
-    ReactEcsRenderer.addUiRenderer(engine.addEntity(), HudLayout, UI_CANVAS)
-    engine.addSystem(syncTouchControls)
-  }
+  mount(state)
   return () => { state.items = state.items.filter((other) => other !== item) }
+}
+
+/** The native touch buttons this script uses; on phones the ones no script declares are hidden. */
+export function declareTouchButtons(actions: InputAction[], options: { main?: InputAction } = {}): () => void {
+  const state = layout()
+  const declaration: TouchDeclaration = { id: state.nextId++, actions, main: options.main }
+  state.touch.push(declaration)
+  mount(state)
+  return () => { state.touch = state.touch.filter((other) => other !== declaration) }
+}
+
+function previewedModal(): number {
+  return HudPreview.getOrNull(engine.RootEntity)?.modal ?? -1
+}
+
+function modalOpen(item: HudItem, index: number): boolean {
+  return index === previewedModal() || item.open?.() !== false
 }
 
 function syncTouchControls(): void {
   const state = layout()
-  const hide = state.items.some((item) => item.slot === 'modal' && item.open?.() === true)
-  if (hide === state.touchHidden) return
-  state.touchHidden = hide
-  if (hide) {
-    TouchScreenControls.hideAll()
-    TouchScreenControls.hideJoystick()
-  } else {
-    TouchScreenControls.showAll()
-    TouchScreenControls.showJoystick()
-  }
+  const hideAll = itemsIn('modal').some((item, index) => item.open !== undefined && modalOpen(item, index))
+  const used = new Set(state.touch.flatMap((declaration) => declaration.actions))
+  const main = state.touch.find((declaration) => declaration.main !== undefined)?.main
+  // nothing declared and no dialog: the explorer's defaults stand
+  const next = hideAll || used.size > 0 ? JSON.stringify({ hideAll, used: [...used].sort(), main }) : ''
+  if (next === state.applied) return
+  state.applied = next
+  TouchScreenControls.createOrReplace(engine.RootEntity, {
+    touchInputs: TOUCH_BUTTONS.map((inputAction) => ({ inputAction, hide: hideAll || (used.size > 0 && !used.has(inputAction)) })),
+    mainAction: main,
+    hideJoystick: hideAll,
+    hideCrosshair: false
+  })
 }
 
 function itemsIn(slot: HudSlot): HudItem[] {
   return layout().items.filter((item) => item.slot === slot).sort((a, b) => a.order - b.order || a.id - b.id)
 }
 
-// an item that draws nothing takes no space; the SDK has no flex gap, so a fixed spacer keeps the rest apart
-function drawn(items: HudItem[]): ReactEcs.JSX.Element[] {
+// An item that draws nothing takes no space; the SDK has no flex gap, so a fixed spacer keeps the rest apart.
+// Each item is wrapped in a box with an elementId (hud:<slot>:<index>), so the editor can measure it.
+function drawn(slot: HudSlot): ReactEcs.JSX.Element[] {
   const out: ReactEcs.JSX.Element[] = []
-  for (const item of items) {
+  itemsIn(slot).forEach((item, index) => {
+    if (slot === 'modal' && item.open !== undefined && !modalOpen(item, index)) return
     const element = item.render()
-    if (element === null) continue
+    if (element === null) return
     if (out.length > 0) out.push(<UiEntity key={`gap-${item.id}`} uiTransform={{ width: 1, height: HUD_GAP, flexShrink: 0, pointerFilter: 'none' }} />)
-    out.push(ReactEcs.createElement(element.type, { ...element.props, key: item.id }))
-  }
+    // a dialog may dim the whole screen, so its box is the screen; a column item hugs its explicit size
+    const box = slot === 'modal' ? { positionType: 'absolute' as const, width: '100%' as const, height: '100%' as const, alignItems: 'center' as const, justifyContent: 'center' as const } : {}
+    out.push(<UiEntity key={item.id} uiTransform={{ elementId: `hud:${slot}:${index}`, flexShrink: 0, pointerFilter: 'none', ...box }}>
+      {element}
+    </UiEntity>)
+  })
   return out
 }
 
-function Stack(props: { slot: HudSlot; align: 'flex-start' | 'center' | 'flex-end'; side: { left?: number; right?: number } }) {
-  const items = drawn(itemsIn(props.slot))
+function Stack(props: { slot: HudSlot; align: 'flex-start' | 'center' | 'flex-end'; side: { left?: number; right?: number }; top?: number }) {
+  const items = drawn(props.slot)
   if (items.length === 0) return null
   const bottom = props.slot === 'bottom'
-  return <UiEntity uiTransform={{ positionType: 'absolute', position: { ...props.side, ...(bottom ? { bottom: HUD_MARGIN } : { top: HUD_MARGIN }) },
+  return <UiEntity uiTransform={{ positionType: 'absolute', position: { ...props.side, ...(bottom ? { bottom: HUD_MARGIN } : { top: props.top ?? HUD_MARGIN }) },
     width: props.align === 'center' ? '100%' : HUD_COLUMN_WIDTH, height: '100%', flexDirection: bottom ? 'column-reverse' : 'column',
     alignItems: props.align, justifyContent: 'flex-start', pointerFilter: 'none' }}>
     {items}
@@ -102,13 +159,15 @@ function Stack(props: { slot: HudSlot; align: 'flex-start' | 'center' | 'flex-en
 }
 
 function HudLayout() {
-  const modal = drawn(itemsIn('modal'))
+  const modal = drawn('modal')
   return <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
     <Stack slot="top" align="center" side={{ left: 0 }} />
     <Stack slot="bottom" align="center" side={{ left: 0 }} />
-    <Stack slot="left" align="flex-start" side={{ left: HUD_MARGIN }} />
+    <Stack slot="left" align="flex-start" side={{ left: HUD_MARGIN }} top={isMobile() ? HUD_PHONE_LEFT_TOP : HUD_MARGIN} />
     <Stack slot="right" align="flex-end" side={{ right: HUD_MARGIN }} />
     {modal.length > 0 && <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', alignItems: 'center',
       justifyContent: 'center', pointerFilter: 'none' }}>{modal}</UiEntity>}
+    {/* how many modals the mobile check can open, one by one */}
+    <UiEntity uiTransform={{ elementId: `hud:modals:${itemsIn('modal').length}`, positionType: 'absolute', width: 1, height: 1, pointerFilter: 'none' }} />
   </UiEntity>
 }

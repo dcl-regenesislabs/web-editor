@@ -277,26 +277,32 @@ export async function writeComponent(entityId: string, name: string, json: strin
   markEdited(entityId, name, JSON.parse(json))
   onComponentWritten?.(entityId, name, json, prev)
   if (isCustomComponent(name)) {
-    const id = customComponentId(name)
-    const b64 = encodeCustomComponent(name, JSON.parse(json))
-    if (id === undefined || b64 === undefined) {
-      throw new Error(`cannot encode custom component ${name}`)
-    }
-    const ts = customTimestamp(entityId, name) + 1
-    try {
-      await cmd.setComponentRaw(entityId, id, ts, b64)
-      bumpCustomTimestamp(entityId, name, ts)
-    } catch (e) {
-      // LWW counter drift (e.g. a tombstone from a delete in a previous session
-      // that the snapshot can't show us) — jump well past it and retry once
-      if (!/not newer/i.test(String(e))) throw e
-      const retryTs = ts + 64
-      await cmd.setComponentRaw(entityId, id, retryTs, b64)
-      bumpCustomTimestamp(entityId, name, retryTs)
-    }
+    await writeCustomComponent(entityId, name, JSON.parse(json))
     return
   }
   await cmd.setComponent(entityId, name, json)
+}
+
+// Send a custom component to the running scene only: no snapshot, changelog or save. The editor's
+// own runtime signals (the mobile check's editor::HudPreview) go this way.
+export async function writeCustomComponent(entityId: string, name: string, value: unknown): Promise<void> {
+  const id = customComponentId(name)
+  const b64 = encodeCustomComponent(name, value)
+  if (id === undefined || b64 === undefined) {
+    throw new Error(`cannot encode custom component ${name}`)
+  }
+  const ts = customTimestamp(entityId, name) + 1
+  try {
+    await cmd.setComponentRaw(entityId, id, ts, b64)
+    bumpCustomTimestamp(entityId, name, ts)
+  } catch (e) {
+    // LWW counter drift (e.g. a tombstone from a delete in a previous session
+    // that the snapshot can't show us) — jump well past it and retry once
+    if (!/not newer/i.test(String(e))) throw e
+    const retryTs = ts + 64
+    await cmd.setComponentRaw(entityId, id, retryTs, b64)
+    bumpCustomTimestamp(entityId, name, retryTs)
+  }
 }
 
 // Remove an entity (and, recursively, its descendants) from the local snapshot.

@@ -71,7 +71,7 @@ Rules for modules in this folder:
 | `pure/runBoard` | best time per player for a course leaderboard, recovered and bounded from storage |
 | `uiTheme`, `pure/uiTheme` | the scene's UI Theme palette and `UI_CANVAS`, which keeps HUDs clear of the Explorer's reserved screen space |
 | `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices; `.tsx` |
-| `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls, and modals that hide them; `.tsx` |
+| `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls, modals that hide them, the touch buttons the scene declares, and an elementId on every item for the mobile check; `.tsx` |
 | `statusHud` | a one-line themed status readout in the shared HUD layout; `.tsx` |
 | `authoring` | `ColorHex`, `EntityName(s)` and `ZoneName(s)` parameter types that get pickers in the inspector |
 
@@ -96,7 +96,7 @@ importing a module that defines one lists it in its `ai.md` `claims-globals:`.
 | Key | Defined by |
 |---|---|
 | `__dclZoneBus_v1` | `zoneBus.ts` |
-| `__dclHudLayout_v1` | `hudLayout.tsx` — the HUD items every renderer shares |
+| `__dclHudLayout_v2` | `hudLayout.tsx` — the HUD items and touch-button declarations every renderer shares |
 | `__dclSpawner_v1` | `spawner.ts` — snapshots and live pools |
 | `__dclOutcomes_v1` | `outcomes.ts` — ledgers and the one wired rpc instance |
 | `__dclSpawnPoints_v1` | `spawnPoints.ts` — the spawn-point registry |
