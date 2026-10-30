@@ -133,9 +133,11 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance(),
     pool: poolService === undefined ? undefined : () => poolService.status()
   })
+  const drainSeconds = (await config.getNumber('ASSISTANT_DRAIN_SECONDS')) ?? 600
+  if (!Number.isSafeInteger(drainSeconds) || drainSeconds < 0) throw new Error('ASSISTANT_DRAIN_SECONDS must be a whole number of seconds')
   const assistant = createAssistantComponent({ logs }, {
     factory, allowedOrigins: env.allowedOrigins, basePath: env.basePath,
-    limits, operations: telemetry.operations,
+    limits, operations: telemetry.operations, drainMs: drainSeconds * 1000,
     // beside the credential, outside STORAGE_DIR and its project backups
     memory: authPath === undefined ? undefined : createAssistantMemory(join(dirname(authPath), 'memory')),
     countsPath: authPath === undefined ? undefined : join(dirname(authPath), 'prompt-counts.json'),

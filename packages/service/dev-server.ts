@@ -24,7 +24,8 @@ const config = await createServiceConfig({
   BASE_PATH: values['base-path'],
   AI_AUTH_PATH: values['ai-auth'],
   AI_IMAGE_AUTH_PATH: values['ai-image-auth'],
-  AI_MODEL: values['ai-model']
+  AI_MODEL: values['ai-model'],
+  ASSISTANT_DRAIN_SECONDS: '0'
 })
 
 void Lifecycle.run({ main, initComponents: () => initComponents({ config }) })
