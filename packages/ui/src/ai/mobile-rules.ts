@@ -1,6 +1,6 @@
 // The phone layout rules the mobile check applies in code, so a result does not depend on the model
-// reading a picture: the scene-ui skill's L rules (references/layout-check.md) and its C2 and C3 touch rules,
-// on the layout the engine measured. Rects are canvas units, [x, y, width, height] from the top left.
+// reading a picture: the scene-ui skill's L and H rules (references/layout-check.md) and its C2 and C3 touch
+// rules, on the layout the engine measured. Rects are canvas units, [x, y, width, height] from the top left.
 
 export type Rect = [number, number, number, number]
 
@@ -24,16 +24,72 @@ export interface Canvas {
 
 export interface Issue { rule: string; state: string; node?: string; detail: string }
 
-// the explorer's own controls on a 1600x720 phone (layout-check.md), scaled to other canvases; the top-left
-// buttons row is measured from the mobile preview
+// The explorer's own controls on a 1600x720 phone, scaled to other canvases. Nothing reports their real rects:
+// bevy-explorer draws none (its /mobile_ui only reshapes the canvas) and the mobile client that does, godot-explorer,
+// exposes no layout. So they are computed the way that client lays them out: the top-left buttons row is measured
+// from the mobile preview, the rest is layout-check.md's table, and the action buttons follow joypad.gd/joypad_arc.gd.
 const PHONE = { width: 1600, height: 720 }
-const NATIVE: Array<{ id: string; rect: Rect; touch?: boolean }> = [
+const EXPLORER: Array<{ id: string; rect: Rect; touch?: boolean }> = [
   { id: 'explorer buttons (profile, chat, camera, reload)', rect: [108, 32, 360, 85] },
-  { id: 'chat column', rect: [108, 117, 328, 558] },
-  { id: 'joystick', rect: [177, 444, 170, 170] },
-  { id: 'joystick touch zone', rect: [0, 240, 640, 480], touch: true },
-  { id: 'action buttons', rect: [1211, 394, 281, 281] }
+  { id: 'chat column', rect: [108, 117, 328, 558] }
 ]
+const JOYSTICK: Array<{ id: string; rect: Rect; touch?: boolean }> = [
+  { id: 'joystick', rect: [177, 444, 170, 170] },
+  { id: 'joystick touch zone', rect: [0, 240, 640, 480], touch: true }
+]
+// the right and bottom screen insets the action buttons sit against, the large button, the arc discs and their orbit
+const CLUSTER = { right: 108, bottom: 45, large: 156, small: 80, orbit: 167 }
+// the order the buttons fill the cluster in; hidden ones drop out and the rest move up
+const PRIORITY = ['IA_JUMP', 'IA_POINTER', 'IA_PRIMARY', 'IA_SECONDARY', 'IA_ACTION_3', 'IA_ACTION_4', 'IA_ACTION_5', 'IA_ACTION_6']
+const GLYPH: Record<string, string> = { IA_JUMP: 'jump', IA_POINTER: 'pointer', IA_PRIMARY: 'E', IA_SECONDARY: 'F', IA_ACTION_3: '1', IA_ACTION_4: '2', IA_ACTION_5: '3', IA_ACTION_6: '4' }
+
+/** What the phone shows of its own controls in the HUD state: the visible buttons, the main one, the joystick. */
+export interface TouchLayout { visible: string[]; main?: string; joystick: boolean }
+
+export const ALL_CONTROLS: TouchLayout = { visible: PRIORITY, joystick: true }
+
+/** The action buttons as the mobile client places them, in 1600x720 units: the first visible action in the large
+ * corner button, the next ones on an arc around it, and a "+" holding the rest when more than five show. */
+export function actionButtons(touch: TouchLayout): Array<{ id: string; rect: Rect }> {
+  const order = PRIORITY.filter((name) => touch.visible.includes(name))
+  if (touch.main !== undefined && touch.main !== 'IA_JUMP' && order.includes(touch.main)) {
+    order.splice(order.indexOf(touch.main), 1)
+    order.unshift(touch.main)
+  }
+  if (order.length === 0) return []
+  const c = CLUSTER
+  const cx = PHONE.width - c.right - c.large / 2
+  const cy = PHONE.height - c.bottom - c.large / 2
+  const buttons: Array<{ id: string; rect: Rect }> = [{ id: `large ${GLYPH[order[0]]} button`, rect: [cx - c.large / 2, cy - c.large / 2, c.large, c.large] }]
+  const plus = order.length > 5
+  const arc = order.slice(1, plus ? 4 : 5).map((name) => `${GLYPH[name]} button`)
+  if (plus) arc.push('"+" button')
+  const edge = (c.large - c.small) / 2
+  const span = Math.sqrt(c.orbit * c.orbit - edge * edge)
+  const first = Math.atan2(edge, -span)
+  let last = Math.atan2(-span, edge)
+  if (last < first) last += 2 * Math.PI
+  const step = (last - first) / (Math.max(arc.length, 3) - 1)
+  arc.forEach((id, i) => {
+    const theta = arc.length === 1 ? (first + last) / 2 : first + step * i
+    const x = cx + Math.cos(theta) * c.orbit
+    const y = cy + Math.sin(theta) * c.orbit
+    buttons.push({ id, rect: [x - c.small / 2, y - c.small / 2, c.small, c.small] })
+  })
+  return buttons
+}
+
+function nativeControls(touch: TouchLayout): Array<{ id: string; rect: Rect; touch?: boolean }> {
+  return [...EXPLORER, ...(touch.joystick ? JOYSTICK : []), ...actionButtons(touch)]
+}
+
+// A compact game HUD (score, timer, a hint) takes 15–20% of a phone screen; the shared layout's four slots
+// filled with one compact panel each come to about 15%. 25% leaves that room and still fails a HUD that hides
+// the game, as the Overcooked score box did.
+export const HUD_COVERAGE_BUDGET = 0.25
+// the share of the screen centre (its middle third both ways: the avatar, the crosshair, what the player acts on)
+// one HUD item may cover: a status panel may clip its edge, a score box may not sit in it
+export const CENTRE_SHARE_LIMIT = 0.15
 
 // the floor the assistant prompt states, not the skill's L4 (24, still proposed): the editor's own HUD
 // modules and the UI skill's examples draw 16–20, so 24 would fail almost every scene
@@ -82,8 +138,74 @@ function ancestor(nodes: Map<number, MeasuredNode>, of: MeasuredNode, candidate:
   return false
 }
 
-/** The layout rules for one screen state: `hud` (touch controls showing) or a modal (controls hidden). */
-export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[], controlsShown: boolean): Issue[] {
+function area(rect: Rect): number {
+  return Math.max(0, rect[2]) * Math.max(0, rect[3])
+}
+
+function clip(a: Rect, b: Rect): Rect {
+  const x = Math.max(a[0], b[0])
+  const y = Math.max(a[1], b[1])
+  return [x, y, Math.max(0, Math.min(a[0] + a[2], b[0] + b[2]) - x), Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - y)]
+}
+
+/** The area the rects cover together, overlaps counted once. */
+export function unionArea(rects: Rect[]): number {
+  const xs = [...new Set(rects.flatMap((r) => [r[0], r[0] + r[2]]))].sort((a, b) => a - b)
+  let total = 0
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const spans = rects.filter((r) => r[0] <= xs[i] && r[0] + r[2] >= xs[i + 1] && r[2] > 0)
+      .map((r) => [r[1], r[1] + r[3]]).sort((a, b) => a[0] - b[0])
+    let covered = 0
+    let end = -Infinity
+    for (const [top, bottom] of spans) {
+      if (bottom <= end) continue
+      covered += bottom - Math.max(top, end)
+      end = bottom
+    }
+    total += covered * (xs[i + 1] - xs[i])
+  }
+  return total
+}
+
+function percent(share: number): string {
+  return `${Math.round(share * 100)}%`
+}
+
+/** H2 and H3: the HUD leaves the game visible. Only the HUD state counts; a dialog is meant to cover it. */
+export function coverageIssues(state: string, canvas: Canvas, nodes: MeasuredNode[]): Issue[] {
+  const issues: Issue[] = []
+  const screen: Rect = [0, 0, canvas.width, canvas.height]
+  const items = nodes.filter(hudItem).map((node) => ({ node, rect: clip(node.rect, screen) }))
+  const covered = unionArea(items.map((item) => item.rect))
+  const budget = HUD_COVERAGE_BUDGET * area(screen)
+  if (covered > budget) {
+    const largest = [...items].sort((a, b) => area(b.rect) - area(a.rect))
+    const big = largest[0]
+    const [, , w, h] = big.rect
+    const target = Math.max(48, Math.floor(h - (covered - budget) / Math.max(1, w)))
+    const list = largest.slice(0, 4).map((item) => `${label(item.node)} ${Math.round(item.rect[2])}x${Math.round(item.rect[3])} (${percent(area(item.rect) / area(screen))})`).join(', ')
+    issues.push({
+      rule: 'H2-coverage', state, node: label(big.node),
+      detail: `the HUD covers ${percent(covered / area(screen))} of the phone screen, over the ${percent(HUD_COVERAGE_BUDGET)} budget (a compact game HUD is 15–20%): ${list}. Shrink ${label(big.node)} to ${Math.round(w)}x${target} or less, merge panels, or move detail into a modal the player opens (D5)`
+    })
+  }
+  const centre: Rect = [canvas.width / 3, canvas.height / 3, canvas.width / 3, canvas.height / 3]
+  for (const { node, rect } of items) {
+    const share = area(clip(rect, centre)) / area(centre)
+    if (share <= CENTRE_SHARE_LIMIT) continue
+    const above = Math.floor(centre[1] - rect[1])
+    const fit = above >= 48 ? `keep it at most ${Math.round(rect[2])}x${above} so it ends above y=${Math.round(centre[1])}` : 'make it smaller'
+    const move = node.elementId?.startsWith('hud:left:') === true ? ", or move it to the 'right' column, which stays clear of the centre" : ''
+    issues.push({
+      rule: 'H3-centre', state, node: label(node),
+      detail: `${numbers(rect)} covers ${percent(share)} of the screen centre ${numbers(centre)}, where the player and the game are: ${fit}${move}`
+    })
+  }
+  return issues
+}
+
+/** The layout rules for one screen state: `hud` with the phone's controls as the scene set them, or a modal (null: hidden). */
+export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[], controls: TouchLayout | null): Issue[] {
   const issues: Issue[] = []
   const area: Rect = [canvas.interactable.left, canvas.interactable.top,
     canvas.width - canvas.interactable.left - canvas.interactable.right,
@@ -99,13 +221,11 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
     if (!inside(node.rect, screen)) {
       issues.push({ rule: 'L8', state, node: label(node), detail: `${numbers(node.rect)} falls off the ${canvas.width}x${canvas.height} canvas` })
     }
-    if (controlsShown && (pressable || hudItem(node) || node.text !== undefined)) {
-      for (const native of NATIVE) {
-        if (native.touch === true && !pressable) continue
-        const rect = scaled(native.rect, canvas)
-        if (intersects(node.rect, rect)) {
-          issues.push({ rule: 'L2', state, node: label(node), detail: `${numbers(node.rect)} overlaps the ${native.id} ${numbers(rect)}` })
-        }
+    if (controls !== null && (pressable || hudItem(node) || node.text !== undefined)) {
+      const hits = nativeControls(controls).filter((native) => native.touch !== true || pressable)
+        .map((native) => ({ id: native.id, rect: scaled(native.rect, canvas) })).filter((native) => intersects(node.rect, native.rect))
+      if (hits.length > 0) {
+        issues.push({ rule: 'L2', state, node: label(node), detail: `${numbers(node.rect)} overlaps the ${hits.map((hit) => `${hit.id} ${numbers(hit.rect)}`).join(', the ')}` })
       }
     }
     if (pressable && Math.min(node.rect[2], node.rect[3]) < MIN_TARGET) {
@@ -134,6 +254,7 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
       if (intersects(a.rect, b.rect)) issues.push({ rule: 'H1', state, node: label(a), detail: `overlaps ${label(b)}` })
     }
   })
+  if (controls !== null) issues.push(...coverageIssues(state, canvas, measured))
   return issues
 }
 
@@ -197,6 +318,13 @@ export function visibleButtons(touch: unknown): string[] {
     }
   }
   return TOUCH_BUTTONS.filter((name) => !hidden.has(name))
+}
+
+/** The phone's own controls in the HUD state, from the root's TouchScreenControls. */
+export function touchLayout(touch: unknown): TouchLayout {
+  const value = typeof touch === 'object' && touch !== null ? touch as { mainAction?: unknown; hideJoystick?: unknown } : {}
+  const main = actionName(value.mainAction)
+  return { visible: visibleButtons(touch), joystick: value.hideJoystick !== true, ...(main === undefined ? {} : { main }) }
 }
 
 /** C1/C2: every visible button does something, and every action the code reads has a way in on a phone. */
