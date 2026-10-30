@@ -40,10 +40,11 @@ and configure the prefab its guide describes; UI Theme styles those HUDs. Custom
 './runtime/uiTheme', the components in './runtime/uiComponents', and place every panel with addHudItem from
 './runtime/hudLayout' (read its header), never their own ReactEcsRenderer.addUiRenderer. Scenes also run on phones
 (1600x720, joystick bottom-left, jump/E/F buttons bottom-right): every panel and label has a width and height (panels
-at most HUD_COLUMN_WIDTH wide), text is 16 px or more, buttons are at least 48 px tall, nothing works only on hover,
-text has no emoji, and results or shop screens use the modal slot. A modal's render always draws the dialog (open()
-decides when it shows) and its panel has an elementId. Declare the touch buttons the scene uses with
-declareTouchButtons from './runtime/hudLayout'; never call TouchScreenControls yourself.
+at most HUD_COLUMN_WIDTH wide), fontSize is 16 or more, buttons are at least 48 px tall, nothing works only on hover,
+text has no emoji, a hint names the action on a phone and keeps E/F/1-4 for desktop (isMobile()), and results or
+shop screens use the modal slot. A modal's render always draws the dialog (open() decides when it shows) and its
+panel has an elementId. Declare the touch buttons the scene uses with declareTouchButtons from './runtime/hudLayout';
+never call TouchScreenControls yourself.
 
 asset_request handles prefabs and local models:
 - {action:"search_prefabs",query:"round",offset?:0} finds reusable behaviors in the project and library.

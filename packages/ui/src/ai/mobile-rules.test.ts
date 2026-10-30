@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { layoutIssues, touchIssues, usedActions, visibleButtons, type Canvas, type MeasuredNode } from './mobile-rules'
+import { keyHintIssues, layoutIssues, touchIssues, usedActions, visibleButtons, type Canvas, type MeasuredNode } from './mobile-rules'
 
 const PHONE: Canvas = { width: 1600, height: 720, interactable: { left: 436, top: 32, right: 108, bottom: 45 } }
 const rules = (nodes: MeasuredNode[], controls = true) => layoutIssues('hud', PHONE, nodes, controls).map((issue) => issue.rule)
@@ -43,6 +43,31 @@ describe('layoutIssues', () => {
       { entity: 2, elementId: 'hud:right:0', rect: [1050, 52, 300, 100] },
       { entity: 3, elementId: 'hud:modals:2', rect: [0, 0, 1, 1] }
     ])).toEqual(['H1'])
+  })
+})
+
+describe('keyHintIssues', () => {
+  const keyed = (text: string) => keyHintIssues('hud', [{ entity: 1, elementId: 'hud-help', rect: [700, 300, 300, 40], text, fontSize: 18 }])
+  const flagged = (text: string) => keyed(text).map((issue) => issue.rule)
+
+  it('flags the Overcooked hints, which name E and F on a phone', () => {
+    expect(flagged('E / tocar: usar estación')).toEqual(['C3-key-letter'])
+    expect(flagged('E: Coger tomate / F: Cortar')).toEqual(['C3-key-letter'])
+    expect(keyed('E / tocar: usar estación')[0].detail).toContain('isMobile()')
+  })
+
+  it.each([
+    '[E] Usar', '(F) cortar', 'Press E to open', 'Pulsa E para cocinar', 'presioná F', 'Hold F to charge', 'tecla 2: arma',
+    'Press 3', 'Press 1 to heal', '[1] Espada', 'E to talk', 'E/F: tomar o soltar', 'Mesa — E: dejar', 'PRESS E TO START', 'pulsa e intenta, luego pulsa E'
+  ])('flags "%s"', (text) => {
+    expect(flagged(text)).toEqual(['C3-key-letter'])
+  })
+
+  it.each([
+    'Tocá la estación', 'Equipo', 'E-mail', 'Escape', 'F1 race', 'Vitamina E', 'Round 1: go', 'Score 1 / 4', 'Lives (3)',
+    'Press 3 buttons', 'presiona e intenta', 'padres E hijos', 'CAFE: abierto', 'Tomate x2', 'Level 4'
+  ])('passes "%s"', (text) => {
+    expect(flagged(text)).toEqual([])
   })
 })
 
