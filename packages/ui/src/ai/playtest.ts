@@ -1,14 +1,20 @@
 import { object } from '@dcl-editor/contract'
 import { state } from '@scene/state'
-import { syncFrozenState } from '@scene/inspector'
+import { syncFrozenState, writeCustomComponent } from '@scene/inspector'
 import { uiPlay } from '../actions/playback'
 import { restartScene } from '../boot/boot'
 import { consoleCommand, getEngineWindow } from '../engine/console'
 import { cmd } from '../engine/cmd'
 import { hostV1 } from '../engine/hosted'
 import { errorLines, isServerError } from '../features/editor/log-roles'
+import { gameView, parseProbe, type ProbeAnswer } from './game-probe'
 
 const WAIT_FOR_TEXT_MS = 15_000
+const PROBE = 'editor::GameProbe'
+// a game scene answers on its next frame; one that never answers (no game module, or a runtime copy
+// from before the probe) costs this once per run, then only a short look
+const PROBE_WAIT_MS = 1500
+const SILENT_PROBE_WAIT_MS = 150
 const KEYS: Record<string, { key: string; code: string; keyCode: number }> = {
   E: { key: 'e', code: 'KeyE', keyCode: 69 }, F: { key: 'f', code: 'KeyF', keyCode: 70 }
 }
@@ -33,6 +39,30 @@ async function usePlatform(next: 'desktop' | 'mobile'): Promise<void> {
   await consoleCommand('mobile_ui', [next === 'mobile' ? 'on' : 'off'])
   phoneCanvas(next === 'mobile')
   platform = next
+}
+
+// the seq starts away from 0 so a line an earlier editor session left in the log ring never matches
+let probeSeq = 1 + Math.floor(Math.random() * 1_000_000)
+let lastGame: ProbeAnswer | null = null
+let gameSilent = false
+
+async function probeGame(signal: AbortSignal): Promise<ProbeAnswer | null> {
+  if (state.frozen) return null
+  const seq = ++probeSeq
+  await writeCustomComponent('0', PROBE, { seq })
+  const until = Date.now() + (gameSilent ? SILENT_PROBE_WAIT_MS : PROBE_WAIT_MS)
+  for (;;) {
+    const answer = parseProbe(await cmd.sceneLogs(100), seq)
+    if (answer !== null) {
+      gameSilent = false
+      return answer
+    }
+    if (Date.now() > until) {
+      gameSilent = true
+      return null
+    }
+    await wait(50, signal)
+  }
 }
 
 export function playtestPlatform(): 'desktop' | 'mobile' {
@@ -91,30 +121,90 @@ async function untilText(text: string, signal: AbortSignal): Promise<void> {
   }
 }
 
-async function input(keys: unknown, ms: number, waitFor: unknown, signal: AbortSignal): Promise<void> {
+// A player action, checked before the game state is read so a bad request costs no probe. A press
+// with waitFor is read before its wait: reading after it would land the press late in a short window.
+interface PlayerAction { run: () => Promise<void> }
+
+function inputAction(keys: unknown, ms: number, waitFor: unknown, signal: AbortSignal): PlayerAction {
   if (!Array.isArray(keys) || keys.length > 2 || keys.some((key) => typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(KEYS, key))) {
     throw new Error('input presses the interaction keys E or F. Move the player with walk.')
   }
   if (waitFor !== undefined && (typeof waitFor !== 'string' || waitFor.trim() === '')) throw new Error('waitFor must be HUD text to wait for.')
-  if (typeof waitFor === 'string') await untilText(waitFor, signal)
-  const target = canvas()
   const held = [...new Set(keys as string[])]
-  try {
-    for (const key of held) target.dispatchEvent(new KeyboardEvent('keydown', { ...KEYS[key], bubbles: true }))
-    await wait(ms, signal)
-  } finally {
-    for (const key of held) target.dispatchEvent(new KeyboardEvent('keyup', { ...KEYS[key], bubbles: true }))
+  return {
+    run: async () => {
+      if (typeof waitFor === 'string') await untilText(waitFor, signal)
+      const target = canvas()
+      try {
+        for (const key of held) target.dispatchEvent(new KeyboardEvent('keydown', { ...KEYS[key], bubbles: true }))
+        await wait(ms, signal)
+      } finally {
+        for (const key of held) target.dispatchEvent(new KeyboardEvent('keyup', { ...KEYS[key], bubbles: true }))
+      }
+    }
   }
 }
 
-async function status(): Promise<unknown> {
+function walkAction(to: unknown): PlayerAction {
+  if (!object(to) || ![to.x, to.y, to.z].every((v) => typeof v === 'number' && Number.isFinite(v))) throw new Error('walk requires a finite to: {x, y, z} in world metres.')
+  return {
+    run: async () => {
+      await consoleCommand('walk_player_to', [String(to.x), String(to.y), String(to.z), '5']).catch(async () => {
+        const at = await consoleCommand('player_position').catch(() => 'unknown')
+        throw new Error(`The walk stopped before ${to.x} ${to.y} ${to.z}: something blocks the way or the target is higher than a step. The player is at ${at}. Walk around it in shorter legs; a route that needs a jump is for the creator to try.`)
+      })
+    }
+  }
+}
+
+function clickAction(x: unknown, y: unknown, signal: AbortSignal): PlayerAction {
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) throw new Error('click x and y must be fractions of the viewport from 0 to 1.')
+  return {
+    run: async () => {
+      const target = canvas()
+      const rect = target.getBoundingClientRect()
+      // Bevy reads synthetic pointer events in device pixels, whatever the canvas renders at: the
+      // editor's lower 3D resolution shrinks target.width, and a click scaled by it misses.
+      const scale = getEngineWindow().devicePixelRatio
+      const point = { clientX: (rect.left + x * rect.width) * scale, clientY: (rect.top + y * rect.height) * scale, bubbles: true, pointerId: 1, pointerType: 'mouse', isPrimary: true }
+      target.dispatchEvent(new PointerEvent('pointermove', point))
+      try {
+        target.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0, buttons: 1 }))
+        await wait(100, signal)
+      } finally {
+        target.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 0, buttons: 0 }))
+      }
+    }
+  }
+}
+
+function playerAction(request: Record<string, unknown>, signal: AbortSignal): PlayerAction {
+  switch (request.action) {
+    case 'input': return inputAction(request.keys, duration(request.durationMs, 300), request.waitFor, signal)
+    case 'wait': {
+      const ms = duration(request.durationMs, 1000)
+      return { run: () => wait(ms, signal) }
+    }
+    case 'walk': return walkAction(request.to)
+    case 'click': return clickAction(request.x, request.y, signal)
+    default: throw new Error('Unknown playtest action.')
+  }
+}
+
+const NO_GAME = 'No game state: the scene did not answer the probe. It does not use the game module, or its runtime copy predates the probe (reopen the project to refresh it).'
+
+async function status(signal: AbortSignal, before: ProbeAnswer | null, since: string): Promise<unknown> {
+  const answer = await probeGame(signal)
   const [position, snapshot, logs] = await Promise.all([consoleCommand('player_position'), cmd.crdtSnapshot(), cmd.sceneLogs(100)])
   const hud = hudTexts(snapshot).slice(0, 80)
+  if (answer !== null) lastGame = answer
   return {
     playing: !state.frozen,
     platform,
     position: playerPosition(position),
-    hud, errors: errorLines(logs).slice(-20),
+    hud,
+    ...(state.frozen ? {} : { game: answer === null ? NO_GAME : gameView(answer, before, since) }),
+    errors: errorLines(logs).slice(-20),
     serverErrors: hostV1()?.previewServerLogs?.(0).filter(isServerError).slice(-20).map((line) => line.msg) ?? []
   }
 }
@@ -122,6 +212,12 @@ async function status(): Promise<unknown> {
 export async function playtest(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
   signal.throwIfAborted()
   const action = request.action
+  let before = action === 'status' ? lastGame : null
+  let since = 'the previous playtest result'
+  if (action === 'start' || action === 'stop') {
+    lastGame = null
+    gameSilent = false
+  }
   if (action === 'start') {
     if (request.platform !== undefined && request.platform !== 'desktop' && request.platform !== 'mobile') throw new Error('platform is desktop or mobile.')
     await usePlatform(request.platform === 'mobile' ? 'mobile' : 'desktop')
@@ -136,33 +232,11 @@ export async function playtest(request: Record<string, unknown>, signal: AbortSi
     await restartScene()
   } else if (action !== 'status') {
     if (state.frozen) throw new Error('Start playtesting before sending player input.')
-    if (action === 'input') await input(request.keys, duration(request.durationMs, 300), request.waitFor, signal)
-    else if (action === 'wait') await wait(duration(request.durationMs, 1000), signal)
-    else if (action === 'walk') {
-      const to = request.to
-      if (!object(to) || ![to.x, to.y, to.z].every((v) => typeof v === 'number' && Number.isFinite(v))) throw new Error('walk requires a finite to: {x, y, z} in world metres.')
-      await consoleCommand('walk_player_to', [String(to.x), String(to.y), String(to.z), '5']).catch(async () => {
-        const at = await consoleCommand('player_position').catch(() => 'unknown')
-        throw new Error(`The walk stopped before ${to.x} ${to.y} ${to.z}: something blocks the way or the target is higher than a step. The player is at ${at}. Walk around it in shorter legs; a route that needs a jump is for the creator to try.`)
-      })
-    } else if (action === 'click') {
-      const { x, y } = request
-      if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) throw new Error('click x and y must be fractions of the viewport from 0 to 1.')
-      const target = canvas()
-      const rect = target.getBoundingClientRect()
-      // Bevy reads synthetic pointer events in device pixels, whatever the canvas renders at: the
-      // editor's lower 3D resolution shrinks target.width, and a click scaled by it misses.
-      const scale = getEngineWindow().devicePixelRatio
-      const point = { clientX: (rect.left + x * rect.width) * scale, clientY: (rect.top + y * rect.height) * scale, bubbles: true, pointerId: 1, pointerType: 'mouse', isPrimary: true }
-      target.dispatchEvent(new PointerEvent('pointermove', point))
-      try {
-        target.dispatchEvent(new PointerEvent('pointerdown', { ...point, button: 0, buttons: 1 }))
-        await wait(100, signal)
-      } finally {
-        target.dispatchEvent(new PointerEvent('pointerup', { ...point, button: 0, buttons: 0 }))
-      }
-    } else throw new Error('Unknown playtest action.')
+    const act = playerAction(request, signal)
+    if (!gameSilent) before = await probeGame(signal)
+    since = `before this ${String(action)}`
+    await act.run()
     await wait(300, signal)
   }
-  return status()
+  return status(signal, before, since)
 }
