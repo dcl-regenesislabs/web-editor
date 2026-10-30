@@ -26,6 +26,16 @@ export function worldRealm(worldsContent: string, world: string): string {
   return lambdasFor(worldsContent) === null ? `${worldsContent}/world/${world}` : world
 }
 
+// The page link to a world. A world named on Decentraland's servers resolves against the page's own
+// domain, so a page on decentraland.zone that deployed to the .org servers has to say baseDomain.
+export function worldLink(pageDir: string, worldsContent: string, world: string): string {
+  const link = `${pageDir}?realm=${encodeURIComponent(worldRealm(worldsContent, world))}`
+  if (lambdasFor(worldsContent) === null) return link
+  const domain = new URL(worldsContent).hostname.split('.').slice(-2).join('.')
+  const page = new URL(pageDir).hostname
+  return page === domain || page.endsWith(`.${domain}`) ? link : `${link}&baseDomain=${domain}`
+}
+
 async function ownedNames(lambdas: string, wallet: string): Promise<string[]> {
   const names: string[] = []
   for (let page = 1; page <= MAX_PAGES; page++) {
