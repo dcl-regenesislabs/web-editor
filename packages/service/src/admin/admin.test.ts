@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAccountPool } from '../ai/accounts.ts'
 import { createOperations } from '../ai/operations.ts'
+import { createSessionLog } from '../ai/session-log.ts'
 import { ACCESS_AUD, ACCESS_TEAM, accessKeyPair, accessToken } from '../testing/access.ts'
 import { createTestService } from '../testing/components.ts'
 import { createAccessVerifier } from './access.ts'
@@ -129,5 +130,51 @@ describe('Claude accounts from the dashboard', () => {
     expect(await (await add(page, { label: 'x', token: 'sk-live-123' }))?.json()).toEqual({ error: 'invalid-token' })
     expect((await add({ ...page, 'cf-access-jwt-assertion': '' }))?.status).toBe(401)
     expect(await accounts.list()).toHaveLength(1)
+  })
+})
+
+describe('recorded sessions', () => {
+  const wallet = '0x' + 'c'.repeat(40)
+  const conversation = 'e'.repeat(32)
+
+  async function withSessions(enabled: boolean) {
+    const dir = await mkdtemp(join(tmpdir(), 'admin-sessions-'))
+    cleanup.push(() => rm(dir, { recursive: true, force: true }))
+    const sessions = createSessionLog(dir)
+    await sessions.forWallet(wallet).record({
+      turnId: 't1', projectId: 'kitchen', conversation, startedAt: '2026-10-30T18:00:00.000Z', endedAt: '2026-10-30T18:20:00.000Z',
+      ms: 1_200_000, outcome: 'completed', prompt: 'arma un juego', steps: [], toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0,
+      usage: { cost: 5.1, tokens: { input: 160, output: 103_948, cacheRead: 9_905_492, cacheWrite: 207_216 }, calls: 78 }
+    }, [{ type: 'session' }])
+    const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'OFF' }) })
+    const component = createAdminComponent({ logs }, {
+      access: { kind: 'cloudflare-access', verifier: createAccessVerifier({ teamDomain: ACCESS_TEAM, audience: ACCESS_AUD, fetchKeys: async () => [key.jwk] }) },
+      basePath: '/svc', sessions: enabled ? sessions : undefined
+    })
+    const token = accessToken(key.privateKey, 'k1', now)
+    return (path: string, headers: Record<string, string> = { 'cf-access-jwt-assertion': token }) =>
+      component.handle(new Request(`${BASE}/admin/api/sessions${path}`, { headers }))
+  }
+
+  it('lists sessions, returns a conversation\'s turns and downloads its transcript to a signed-in admin only', async () => {
+    const get = await withSessions(true)
+    const list = await get('')
+    expect(await list?.json()).toMatchObject({ enabled: true, sessions: [{ wallet, conversation, turns: 1, cost: 5.1, firstPrompt: 'arma un juego' }] })
+    expect(await (await get(`/${wallet}/${conversation}`))?.json()).toMatchObject({ turns: [{ turnId: 't1', usage: { calls: 78 } }] })
+    const download = await get(`/${wallet}/${conversation}/session.jsonl`)
+    expect(download?.status).toBe(200)
+    expect(download?.headers.get('content-type')).toContain('application/x-ndjson')
+    expect(download?.headers.get('content-disposition')).toContain('attachment')
+    expect(await download?.text()).toBe('{"type":"session"}\n')
+    expect((await get('', {}))?.status).toBe(401)
+    for (const path of [`/${wallet}/${'f'.repeat(32)}`, `/${wallet}/../${conversation}`, `/0xABC/${conversation}`]) {
+      expect((await get(path))?.status).toBe(404)
+    }
+  })
+
+  it('reports the log as off and answers 404 for a session while ASSISTANT_SESSION_LOG is unset', async () => {
+    const get = await withSessions(false)
+    expect(await (await get(''))?.json()).toEqual({ enabled: false, sessions: [] })
+    expect((await get(`/${wallet}/${conversation}`))?.status).toBe(404)
   })
 })

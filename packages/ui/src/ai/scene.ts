@@ -27,6 +27,7 @@ import { runRequestText } from './requests'
 import { resolveEntityRef } from './request-format'
 import { sceneOutline } from './roster'
 import { invalidateSceneCheckCache, refreshSceneChecks } from '../features/editor/scene-check-context'
+import { materialsGrowthWarning } from '../features/editor/scene-check-budget'
 import { readThumbnail, saveThumbnail, THUMBNAIL_VERSION, thumbnailPath } from './thumbnail'
 
 function entity(ref: unknown): string {
@@ -249,6 +250,8 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       throw new Error(`The scene has ${Math.max(0, textures.limit - textures.used)} of its ${textures.limit} textures left and this model would add ${adds}. ` +
         'Reuse materials the scene already has, give parts seen from afar relief:false, use fewer materials, or grow the parcels.')
     }
+    // materials are not refused like textures, but a build that spends them past the limit says so
+    const before = await sceneBudget()
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
     // a rebuild gets a new path, so the engine loads it instead of a cached copy
     const rel = `models/${slug}-${[...digest.slice(0, 4)].map((b) => b.toString(16).padStart(2, '0')).join('')}.glb`
@@ -266,7 +269,10 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     // the old build stays: undo can still point the entity back at it, and Assets can delete it
     const placed = await placeGltf({ ...request, name: request.into === undefined ? name : undefined }, rel, name, signal, settings)
     announceBuiltModel({ name, path: rel, triangles: stats.triangles })
-    return { ...placed, script: `models/src/${slug}.js`, stats, clips, materials: library, ...(warnings.length > 0 ? { warnings } : {}), budget: MODEL_BUDGET, kb: Math.round(bytes.length / 1024), scene: await sceneBudget() }
+    const scene = await sceneBudget()
+    const overMaterials = materialsGrowthWarning(before, scene)
+    const told = overMaterials === null ? warnings : [...warnings, overMaterials]
+    return { ...placed, script: `models/src/${slug}.js`, stats, clips, materials: library, ...(told.length > 0 ? { warnings: told } : {}), budget: MODEL_BUDGET, kb: Math.round(bytes.length / 1024), scene }
   }
   if (request.type === 'createEntity') {
     if (typeof request.name !== 'string' || !request.name.trim() || request.name.length > 100) throw new Error('Choose an entity name of 1–100 characters.')

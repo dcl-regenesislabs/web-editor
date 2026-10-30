@@ -1,6 +1,8 @@
 // Polls the service's in-memory status every five seconds while the page is visible; its only writes add and
 // remove Claude accounts.
 const POLL_MS = 5000
+// listing sessions reads every recorded conversation's turns, so it refreshes less often than the status
+const SESSIONS_MS = 30000
 const STALE_MS = 15000
 const $ = (id) => document.getElementById(id)
 
@@ -9,6 +11,7 @@ let lastAt = 0
 let clockOffset = 0
 let timer = null
 let signedOut = false
+let sessionsAt = 0
 
 const time = (iso) => iso === null ? '—' : new Date(iso).toLocaleString()
 const count = (n) => typeof n === 'number' ? n.toLocaleString() : '—'
@@ -279,6 +282,38 @@ function render(status) {
   if (status.historyUrl !== null) history.href = status.historyUrl
 }
 
+function link(href, text, download) {
+  const a = el('a', '', text)
+  a.href = href
+  if (download) a.download = ''
+  return a
+}
+
+async function pollSessions() {
+  if (Date.now() - sessionsAt < SESSIONS_MS) return
+  sessionsAt = Date.now()
+  const response = await fetch('api/sessions', { credentials: 'same-origin', cache: 'no-store', redirect: 'manual' })
+  if (!response.ok) return
+  const { enabled, sessions } = await response.json()
+  $('sessions-card').hidden = !enabled
+  if (!enabled) return
+  rows('session-rows', 10, sessions.map((s) => {
+    const wallet = el('td', 'mono', shortWallet(s.wallet))
+    wallet.title = s.wallet
+    const prompt = el('td', '', s.firstPrompt.length > 60 ? `${s.firstPrompt.slice(0, 60)}…` : s.firstPrompt)
+    prompt.title = s.firstPrompt
+    const base = `api/sessions/${s.wallet}/${s.conversation}`
+    const open = el('td')
+    open.append(link(base, 'turns'), ' · ', link(`${base}/session.jsonl`, 'transcript', true))
+    const t = s.tokens
+    return [
+      el('td', '', time(s.updatedAt)), wallet, el('td', 'mono', s.projectId), prompt, el('td', 'num', count(s.turns)),
+      el('td', 'num', count(s.steps)), el('td', 'num', compact(t.input + t.cacheRead + t.cacheWrite)), el('td', 'num', compact(t.output)),
+      el('td', 'num', usd(s.cost)), open
+    ]
+  }), 'No sessions recorded yet.')
+}
+
 async function poll() {
   try {
     // An expired Access session answers with a redirect to the sign-in page, not with this API.
@@ -297,6 +332,8 @@ async function poll() {
     clockOffset = Date.parse(status.now) - Date.now()
     setState('live', 'Live')
     render(status)
+    // the session list is extra: failing it must not mark the dashboard disconnected
+    await pollSessions().catch((error) => { console.warn('Recorded sessions could not be listed', error) })
   } catch {
     if (last === null) setState('disconnected', 'Cannot reach the service')
     else setState('disconnected', `Disconnected — last update ${time(new Date(lastAt).toISOString())}`)

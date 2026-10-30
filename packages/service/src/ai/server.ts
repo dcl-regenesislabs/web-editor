@@ -11,6 +11,7 @@ import { createConnection } from './connection.ts'
 import type { AssistantMemory } from './memory.ts'
 import type { Operations } from './operations.ts'
 import type { UsageMeter } from './usage.ts'
+import type { SessionLog } from './session-log.ts'
 import type { ImageProvider } from './images.ts'
 import { createWalletImages, DEFAULT_IMAGES_PER_DAY } from './thumbnail.ts'
 import { profileAvatar } from './profile.ts'
@@ -82,6 +83,8 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
   limits?: AssistantLimits
   usage?: UsageMeter
   memory?: AssistantMemory
+  /** Plaintext session record for /admin/ (ASSISTANT_SESSION_LOG); off by default. */
+  sessions?: SessionLog
   /** Where today's prompt counts are kept, so a restart does not hand out a fresh day. */
   countsPath?: string
   /** The image model and its per-wallet day count; without it thumbnails report themselves unavailable. */
@@ -103,9 +106,13 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
   const closing = new Set<Promise<void>>()
   let stopped = false
   const memory = options.memory
-  const sweep = () => { void memory?.sweep().catch(() => { logger.error('Assistant memory sweep failed') }) }
+  const sessions = options.sessions
+  const sweep = () => {
+    void memory?.sweep().catch(() => { logger.error('Assistant memory sweep failed') })
+    void sessions?.sweep().catch(() => { logger.error('Assistant session log sweep failed') })
+  }
   sweep()
-  const sweeper = memory === undefined ? undefined : setInterval(sweep, 60 * 60_000)
+  const sweeper = memory === undefined && sessions === undefined ? undefined : setInterval(sweep, 60 * 60_000)
   sweeper?.unref()
   const socketOptions = {
     noServer: true, maxPayload: ASSISTANT_MAX_MESSAGE_BYTES, perMessageDeflate: false,
@@ -208,7 +215,8 @@ export function createAssistantComponent({ logs }: Pick<BaseComponents, 'logs'>,
           }
         }
       }
-      connection = createConnection({ factory, logger, send, allowTurn: () => allowTurn(wallet, client), memory: memory?.forWallet(wallet), usage, images, operations })
+      connection = createConnection({ factory, logger, send, allowTurn: () => allowTurn(wallet, client), memory: memory?.forWallet(wallet), usage, images, operations,
+        sessions: sessions?.forWallet(wallet) })
       connections.set(socket, connection)
       send({ kind: 'ready', providers })
     }).catch(() => socket.close(1011, 'Assistant unavailable'))

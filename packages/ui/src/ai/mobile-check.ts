@@ -5,7 +5,7 @@ import { object } from '@dcl-editor/contract'
 import { writeCustomComponent } from '@scene/inspector'
 import { state } from '@scene/state'
 import { cmd } from '../engine/cmd'
-import { layoutIssues, touchIssues, usedActions, visibleButtons, type Canvas, type Issue, type MeasuredNode, type Rect } from './mobile-rules'
+import { keyHintIssues, layoutIssues, touchIssues, usedActions, visibleButtons, type Canvas, type Issue, type MeasuredNode, type Rect } from './mobile-rules'
 import { playtest, playtestPlatform } from './playtest'
 import { measuredNodes } from './ui-measure'
 import { captureView } from './view'
@@ -76,7 +76,7 @@ async function measureState(name: string, controlsShown: boolean, signal: AbortS
   const { nodes, unnamed } = nodesOf(snapshot)
   const issues = canvas === null
     ? [{ rule: 'setup', state: name, detail: 'the engine reported no UiCanvasInformation' }]
-    : layoutIssues(name, canvas, nodes, controlsShown)
+    : [...layoutIssues(name, canvas, nodes, controlsShown), ...keyHintIssues(name, nodes)]
   if (name.startsWith('modal') && !nodes.some((node) => node.elementId !== undefined && !node.elementId.startsWith('hud:'))) {
     issues.push({ rule: 'M1', state: name, detail: 'nothing inside this dialog is measured: give its panel a uiTransform elementId, and make its render draw the dialog whenever it is called (open() decides when it shows)' })
   }

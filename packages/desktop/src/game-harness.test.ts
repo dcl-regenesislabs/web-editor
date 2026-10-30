@@ -9,6 +9,8 @@ import {
   MAX_SEND_BYTES,
   PLAYER_DATA_CAP_BYTES,
   PUBLISH_PER_KEY_PER_S,
+  REFUSED_ADVICE,
+  refusalKind,
   type CorePorts,
   type ErrorCard,
   type Player,
@@ -1370,5 +1372,67 @@ describe('regression: a held broadcast keeps its place in line', () => {
     world.server.broadcast('score', { n: 99 })
     world.server.flushState()
     expect(heard).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 99])
+  })
+})
+
+// A script that swallows the rejection must not make the refusal silent: the
+// card is what reaches the scene console, and from there the assistant's run.errors.
+describe('harness: a refused request is carded on the client, whatever the script does with it', () => {
+  const mine = (): ErrorCard[] => world.errors.filter((c) => c.side === 'you' && c.name.startsWith('game.request:'))
+
+  it('a swallowed rate refusal still prints one card, and the promise still rejects', async () => {
+    world.server.onRequest('use', () => 'ok', 'kitchen.ts')
+    const ana = world.join('0xana')
+    let busy = true
+    const results = await Promise.allSettled(
+      Array.from({ length: 20 }, () =>
+        ana.request('use', {}).catch((e: unknown) => {
+          busy = false
+          throw e
+        })
+      )
+    )
+    expect(busy).toBe(false)
+    expect(results.some((r) => r.status === 'rejected')).toBe(true)
+    expect(mine()).toEqual([
+      {
+        side: 'you',
+        name: 'game.request:use',
+        message: `'use' dropped — asked too often. Send it less often. ${REFUSED_ADVICE}`
+      }
+    ])
+  })
+
+  it('one card per name and kind of refusal, not per press', async () => {
+    world.server.onRequest('use', (data) => {
+      if ((data as { fail?: boolean }).fail === true) throw new Error('station busy')
+      return 'ok'
+    }, 'kitchen.ts')
+    const ana = world.join('0xana')
+    for (let i = 0; i < 3; i++) {
+      await ana.request('use', { fail: true }).catch(() => {})
+      world.tick(1000)
+    }
+    await ana.request('use', { blob: 'x'.repeat(MAX_PAYLOAD_BYTES) }).catch(() => {})
+    await ana.request('serve', {}).catch(() => {})
+    expect(mine().map((c) => c.message)).toEqual([
+      `station busy ${REFUSED_ADVICE}`,
+      `'use' carries too much data — send less than ${MAX_PAYLOAD_BYTES} bytes. ${REFUSED_ADVICE}`,
+      `No handler named 'serve'. Answer it with game.onRequest('serve', …) on the server. ${REFUSED_ADVICE}`
+    ])
+  })
+
+  it('an answered request prints nothing', async () => {
+    world.server.onRequest('use', () => 'ok', 'kitchen.ts')
+    await world.join('0xana').request('use', {})
+    expect(mine()).toEqual([])
+  })
+
+  it('sorts the reasons the transport and the server give into bounded kinds', () => {
+    expect(refusalKind(new Error("'use' dropped — asked too often. Send it less often."))).toBe('rate')
+    expect(refusalKind(new Error('rpc timeout: game:3:abc'))).toBe('timeout')
+    expect(refusalKind(new Error('no handler: use'))).toBe('no-handler')
+    expect(refusalKind(new Error("'use' was dropped while the server was waking — ask again."))).toBe('waking')
+    expect(refusalKind(new Error('whatever the handler threw'))).toBe('failed')
   })
 })

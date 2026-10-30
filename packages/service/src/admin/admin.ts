@@ -12,6 +12,7 @@ import type { QuotaView } from '../ai/quota.ts'
 import { createRateLimiter } from '../config.ts'
 import { createAccessVerifier } from './access.ts'
 import type { PoolStatus } from '../pool/pool.ts'
+import type { SessionLog } from '../ai/session-log.ts'
 import type { AccessVerifier } from './access.ts'
 
 const asset = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
@@ -125,6 +126,8 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
   pool?: () => Promise<PoolStatus>
   /** Claude accounts admins may add and remove; unset, the dashboard only shows usage. */
   accounts?: AccountPool
+  /** Recorded assistant sessions (ASSISTANT_SESSION_LOG); unset, the session API answers 404. */
+  sessions?: SessionLog
 }): AdminComponent {
   const logger = logs.getLogger('admin')
   const root = `${options.basePath ?? ''}/admin`
@@ -197,6 +200,29 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
     }
   }
 
+  async function readSessions(rest: string, admin: string): Promise<Response> {
+    const sessions = options.sessions
+    if (rest === '') return json(200, { enabled: sessions !== undefined, sessions: await sessions?.list() ?? [] })
+    const match = /^\/(0x[a-f0-9]{40})\/([a-f0-9]{32})(\/session\.jsonl)?$/.exec(rest)
+    if (sessions === undefined || match === null) return json(404, { error: 'not-found' })
+    const [, wallet, conversation, file] = match
+    if (file === undefined) {
+      const turns = await sessions.turns(wallet, conversation)
+      return turns === null ? json(404, { error: 'not-found' }) : json(200, { wallet, conversation, turns })
+    }
+    const transcript = await sessions.transcript(wallet, conversation)
+    if (transcript === null) return json(404, { error: 'not-found' })
+    // a download of someone's conversation is worth a line in the log
+    logger.info(`${admin} downloaded assistant session ${wallet}/${conversation}`)
+    return new Response(transcript, {
+      status: 200,
+      headers: {
+        ...SECURITY_HEADERS, 'content-type': 'application/x-ndjson; charset=utf-8',
+        'content-disposition': `attachment; filename="session-${wallet.slice(0, 10)}-${conversation}.jsonl"`
+      }
+    })
+  }
+
   return {
     async handle(request) {
       const path = new URL(request.url).pathname
@@ -214,6 +240,9 @@ export function createAdminComponent({ logs }: { logs: ILoggerComponent }, optio
       if (path === `${root}/dashboard.js`) return respond(200, SCRIPT, 'text/javascript; charset=utf-8')
       if (path === `${root}/dashboard.css`) return respond(200, STYLE, 'text/css; charset=utf-8')
       if (path === `${root}/api/status`) return json(200, await status())
+      if (path === `${root}/api/sessions` || path.startsWith(`${root}/api/sessions/`)) {
+        return readSessions(path.slice(`${root}/api/sessions`.length), verdict)
+      }
       if (write) return changeAccounts(request, verdict, accountPath[1])
       return json(404, { error: 'not-found' })
     }

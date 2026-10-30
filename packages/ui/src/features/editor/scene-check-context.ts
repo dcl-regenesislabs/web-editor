@@ -17,6 +17,7 @@ import { authoredOnly } from '../../prefabs/capture'
 import { prefabFoldersIn, readPrefabFolder } from '../../prefabs/storage'
 import { findGameConfig } from '../../gameconfig/generate'
 import { log } from '../../log'
+import { sceneBudget, type SceneBudget } from '../../scene-budget'
 import {
   runSceneChecks,
   sceneFindings,
@@ -98,9 +99,21 @@ export function invalidateSceneCheckCache(): void {
   cached = null
 }
 
+// The model files it reads are cached per write, so counting on every check run is cheap. A count that
+// fails costs only the budget finding, never the other checks.
+async function readBudget(): Promise<SceneBudget | undefined> {
+  try {
+    return await sceneBudget()
+  } catch (e) {
+    log.warn('scene checks: budget uncountable', e)
+    return undefined
+  }
+}
+
 export async function collectSceneCheckContext(): Promise<SceneCheckContext | null> {
   if (dataLayerAvailable() !== true) return null
   const { prefabs, scripts, thumbnailPath } = await readProject()
+  const budget = await readBudget()
   const baseline = provenanceBaseline()
   return {
     snapshot: authoredOnly(state.snapshot, (id) => !isReservedEntity(id) && isRuntimeEntity(id, baseline)),
@@ -108,7 +121,8 @@ export async function collectSceneCheckContext(): Promise<SceneCheckContext | nu
     scripts,
     gameConfig: findGameConfig(state.snapshot)?.value ?? null,
     parcels: state.scene?.parcels,
-    thumbnailPath
+    thumbnailPath,
+    budget
   }
 }
 

@@ -1,5 +1,5 @@
 // The phone layout rules the mobile check applies in code, so a result does not depend on the model
-// reading a picture: the scene-ui skill's L rules (references/layout-check.md) and its C2 touch rule,
+// reading a picture: the scene-ui skill's L rules (references/layout-check.md) and its C2 and C3 touch rules,
 // on the layout the engine measured. Rects are canvas units, [x, y, width, height] from the top left.
 
 export type Rect = [number, number, number, number]
@@ -35,6 +35,8 @@ const NATIVE: Array<{ id: string; rect: Rect; touch?: boolean }> = [
   { id: 'action buttons', rect: [1211, 394, 281, 281] }
 ]
 
+// the floor the assistant prompt states, not the skill's L4 (24, still proposed): the editor's own HUD
+// modules and the UI skill's examples draw 16–20, so 24 would fail almost every scene
 export const MIN_TEXT = 16
 export const MIN_TARGET = 48
 
@@ -132,6 +134,34 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
       if (intersects(a.rect, b.rect)) issues.push({ rule: 'H1', state, node: label(a), detail: `overlaps ${label(b)}` })
     }
   })
+  return issues
+}
+
+// A desktop key named as the way to act. Letters are case-sensitive and must stand alone, so words, "E-mail"
+// and "F1" pass; digits only count bracketed or after a press verb, since "Round 1:", "1 / 4" and "press 3 buttons" are not keys.
+const KEY_HINTS: RegExp[] = [
+  /(?:^|[\s([{"'¿¡])([EF])\s*(?::|\/(?!\d)|\s+(?:to|para|pour)\s)/gu,
+  /[[(]\s*([EF])\s*[\])]/gu,
+  /\[\s*([1-4])\s*\]/gu,
+  /(?:^|[^\p{L}])(?:press|hold|hit|pulsa|pulsá|presiona|presioná|aprieta|apretá|mantén|mantené|tecla|key)\s+[[(]?([EF])(?![\p{L}\p{N}-])/giu,
+  /(?:^|[^\p{L}])(?:press|pulsa|pulsá|presiona|presioná|aprieta|apretá|tecla|key)\s+[[(]?([1-4])[\])]?(?=\s*(?:$|[:,.!)]|(?:to|para|pour)\s))/giu
+]
+// the verb patterns ignore case, but "presiona e intenta" is Spanish for "and"
+const KEY = /^[EF1-4]$/
+
+/** C3: text a phone shows that tells the player to press a keyboard key it does not have. */
+export function keyHintIssues(state: string, nodes: MeasuredNode[]): Issue[] {
+  const issues: Issue[] = []
+  for (const node of nodes) {
+    if (node.text === undefined || marker(node)) continue
+    const text = node.text
+    const key = KEY_HINTS.flatMap((pattern) => [...text.matchAll(pattern)].map((match) => match[1])).find((found) => KEY.test(found))
+    if (key === undefined) continue
+    issues.push({
+      rule: 'C3-key-letter', state, node: label(node),
+      detail: `names the key "${key}" as the way to act, and a phone has no keyboard. On mobile name the action (or show its icon) and keep the key for desktop: isMobile() ? 'Tap the station' : 'E: use the station'`
+    })
+  }
   return issues
 }
 

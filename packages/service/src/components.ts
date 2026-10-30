@@ -15,6 +15,7 @@ import { createAccountPool } from './ai/accounts.ts'
 import type { AccountPool } from './ai/accounts.ts'
 import { DISABLED_QUOTA } from './ai/quota.ts'
 import { createAssistantMemory } from './ai/memory.ts'
+import { createSessionLog, DEFAULT_SESSION_LOG_LIMITS } from './ai/session-log.ts'
 import { createUsageMeter, DEFAULT_USAGE_LIMITS } from './ai/usage.ts'
 import { ASSISTANT_MODEL, createPiFactory } from './ai/pi.ts'
 import { codexTokenSource, createCodexImageProvider } from './ai/images.ts'
@@ -114,6 +115,15 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
       spend: () => telemetry.operations.snapshot().sinceStart.usage.estimatedCostUsd
     })
   }
+  const sessionLog = await config.getString('ASSISTANT_SESSION_LOG')
+  if (sessionLog !== undefined && sessionLog !== '0' && sessionLog !== '1') throw new Error('ASSISTANT_SESSION_LOG must be 0 or 1')
+  const sessionDays = (await config.getNumber('ASSISTANT_SESSION_LOG_DAYS')) ?? DEFAULT_SESSION_LOG_LIMITS.maxAgeMs / 86_400_000
+  if (!Number.isSafeInteger(sessionDays) || sessionDays < 1) throw new Error('ASSISTANT_SESSION_LOG_DAYS must be a positive whole number')
+  const sessions = sessionLog !== '1' || authPath === undefined ? undefined
+    : createSessionLog(join(dirname(authPath), 'sessions'), { ...DEFAULT_SESSION_LOG_LIMITS, maxAgeMs: sessionDays * 86_400_000 })
+  if (sessions !== undefined) {
+    logs.getLogger('assistant').warn(`ASSISTANT_SESSION_LOG is on: assistant sessions are kept in plaintext for ${sessionDays} days and readable at /admin/`)
+  }
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
       logs.getLogger('assistant'), accounts))
@@ -131,7 +141,8 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     basePath: env.basePath, version: env.version, historyUrl: telemetry.historyUrl,
     operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery, accounts,
     allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance(),
-    pool: poolService === undefined ? undefined : () => poolService.status()
+    pool: poolService === undefined ? undefined : () => poolService.status(),
+    sessions
   })
   const drainSeconds = (await config.getNumber('ASSISTANT_DRAIN_SECONDS')) ?? 600
   if (!Number.isSafeInteger(drainSeconds) || drainSeconds < 0) throw new Error('ASSISTANT_DRAIN_SECONDS must be a whole number of seconds')
@@ -140,6 +151,7 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     limits, operations: telemetry.operations, drainMs: drainSeconds * 1000,
     // beside the credential, outside STORAGE_DIR and its project backups
     memory: authPath === undefined ? undefined : createAssistantMemory(join(dirname(authPath), 'memory')),
+    sessions,
     countsPath: authPath === undefined ? undefined : join(dirname(authPath), 'prompt-counts.json'),
     usage,
     // one image counts 1, so the meter's daily limit is the image cap

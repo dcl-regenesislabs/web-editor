@@ -186,6 +186,11 @@ today: `config-shadowing`, `server-pool-multi-entity`,
 the sides rules (`features/editor/scene-check-sides.ts`): `isServer()` read at
 the top of a file, where it is false on both sides, and a client-only call left
 inside an `if (isServer())` branch, where it resolves and does nothing.
+`swallowed-request-error` (`features/editor/scene-check-requests.ts`) warns on a
+`game.request` whose `.catch` (or `catch {}` around an awaited one) calls
+nothing, throws nothing and never reads the error — the player's key did
+nothing and no one said why. The runtime cards every refused request on the
+client anyway, once per name and kind of refusal (`gameCore.ts` `reportRefused`).
 Five are the Spawner's and live in their own file
 (`features/editor/scene-check-spawner.ts`), registered by the same table.
 `mixed-pool-authority` is a `blocker` for one prefab claimed by two spawn

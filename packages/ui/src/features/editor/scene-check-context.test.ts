@@ -24,7 +24,8 @@ describe('which files the scene checks read', () => {
 
 vi.mock('../../engine/datalayer', () => ({
   dataLayerAvailable: () => true, dataLayerListFiles: async () => [],
-  dataLayerWriteTick: () => 0, dataLayerReadFile: async () => ''
+  dataLayerWriteTick: () => 0, dataLayerReadFile: async () => '',
+  dataLayerReadFileBytes: async () => new Uint8Array(0), dataLayerRealm: () => 'project', dataLayerPathTick: () => 0
 }))
 
 it('keeps the engine world origin when filtering code-spawned entities for bounds checks', async () => {
@@ -42,4 +43,19 @@ it('keeps the engine world origin when filtering code-spawned entities for bound
   expect(context?.snapshot['600']).toBeUndefined()
   expect(context?.snapshot['5']).toBeDefined()
   expect(runSceneChecks(context!).filter(f => f.id === 'outside-scene-bounds').map(f => f.entityId)).toEqual(['512'])
+})
+
+it('hands the rules the parcel budget, so an over-budget scene is a finding like any other', async () => {
+  const colours = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [String(512 + i), {
+    Material: { material: { pbr: { albedoColor: { r: i / 21, g: 0, b: 0, a: 1 } } } }
+  }]))
+  state.initialBaseline = { '0': {}, ...colours }
+  state.savedBaseline = null
+  state.snapshot = { ...state.initialBaseline }
+  state.scene = { hash: 'test', title: 'One parcel', parcels: [{ x: 0, y: 0 }],
+    isPortable: false, isBroken: false, isBlocked: false, isSuper: false, sdkVersion: '7' }
+  const context = await collectSceneCheckContext()
+  expect(context?.budget).toMatchObject({ parcels: 1, over: ['materials'] })
+  expect(runSceneChecks(context!).filter((f) => f.id === 'scene-over-budget').map((f) => f.title))
+    .toEqual([`Too many materials (21 of ${context!.budget!.limits.materials})`])
 })
