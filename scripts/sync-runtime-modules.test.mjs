@@ -161,14 +161,17 @@ describe('the built-in prefabs', () => {
       .map(([folder]) => folder)
     expect(users).toEqual([
       'announcer',
+      'camera-rig',
       'game-flow',
       'health-respawn',
       'leaderboard',
+      'pickup-item',
       'run-progress',
       'server-clock',
       'spawner',
       'trigger-zone',
-      'ui-theme'
+      'ui-theme',
+      'work-station'
     ])
   })
 })

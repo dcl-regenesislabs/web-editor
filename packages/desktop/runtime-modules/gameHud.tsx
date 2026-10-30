@@ -2,6 +2,7 @@
 import ReactEcs from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import type { Color4 } from '@dcl/sdk/math'
+import { isMobile } from '@dcl/sdk/platform'
 import { sceneUiTheme } from './uiTheme'
 import { ThemedEntity as UiEntity, ProgressPips, UiButton, UiNotice, UiPanel, UiText } from './uiComponents'
 import type { UiTheme } from './pure/uiTheme'
@@ -73,6 +74,19 @@ function RunPanel(props: { run: RunHudProps; theme: UiTheme }) {
     <UiText value={run.phase === 'ready' ? 'Cross the start to begin' : run.objective} color={theme.muted} size={18} height={52} />
     <Progress label="Collected" value={run.collected} maximum={run.collectibles} theme={theme} />
     <Progress label="Checkpoint" value={run.checkpoint} maximum={run.checkpoints} theme={theme} />
+  </UiPanel>
+}
+
+// On a phone the left column runs into the middle of a short screen, so the run is one short card there: name, goals
+// and health, with no controls hint (the joystick shows itself) and no separate health panel.
+function PhoneRunPanel(props: { run: RunHudProps; theme: UiTheme }) {
+  const { run, theme } = props
+  const goals = runGoals(run)
+  const health = run.respawnSeconds > 0 ? `Respawning in ${Math.ceil(run.respawnSeconds)}…` : run.health !== null ? `Health ${run.health} / ${run.maxHealth}` : ''
+  return <UiPanel theme={theme} uiTransform={{ width: HUD_COLUMN_WIDTH, height: 24 + 30 + (goals === '' ? 0 : 24) + (health === '' ? 0 : 24), padding: 12 }}>
+    <UiText value={run.phase === 'ready' ? 'Cross the start to begin' : run.title} color={theme.text} size={20} height={30} />
+    {goals !== '' && <UiText value={goals} color={theme.muted} size={16} height={24} />}
+    {health !== '' && <UiText value={health} color={run.respawnSeconds > 0 ? theme.danger : theme.text} size={16} height={24} />}
   </UiPanel>
 }
 
@@ -166,8 +180,9 @@ export function mountRunHud(read: () => RunHudProps): () => void {
   const playing = () => run.phase !== 'finished'
   const full = () => run.hud !== 'Big timer'
   const removals = [
-    addHudItem('left', () => playing() && full() ? <RunPanel run={run} theme={theme()} /> : null, { order: -100 }),
-    addHudItem('left', () => playing() && (full() || run.health !== null || run.respawnSeconds > 0)
+    addHudItem('left', () => !playing() || !full() ? null
+      : isMobile() ? <PhoneRunPanel run={run} theme={theme()} /> : <RunPanel run={run} theme={theme()} />, { order: -100 }),
+    addHudItem('left', () => playing() && !(isMobile() && full()) && (full() || run.health !== null || run.respawnSeconds > 0)
       ? <LifePanel run={run} theme={theme()} hint={full()} /> : null, { order: -90 }),
     addHudItem('top', () => playing() && !full() ? <BigTimer run={run} theme={theme()} /> : null, { order: -100 }),
     addHudItem('right', () => playing() && full() ? <UiPanel theme={theme()} uiTransform={{ width: 208, height: 120 }}>

@@ -7,24 +7,38 @@ const mock = vi.hoisted(() => ({
   play: vi.fn(async () => {}), restart: vi.fn(async () => {}),
   command: vi.fn(async (_command: string, _args?: string[]) => '(1, 2, 3)'),
   snapshot: vi.fn(async (): Promise<Record<string, Record<string, unknown>>> => ({ '2': { Transform: { rotation: { x: 0, y: 0, z: 0, w: 1 } } }, '512': { UiText: { value: '3 / 5' } } })),
-  serverLogs: [] as Array<{ seq: number; level: 'log' | 'error' | 'system'; msg: string }>
+  serverLogs: [] as Array<{ seq: number; level: 'log' | 'error' | 'system'; msg: string }>,
+  // what game.ts would answer the next probe with; null is a scene without the game module
+  game: null as Record<string, unknown> | null,
+  answers: [] as string[],
+  probe: vi.fn(async (_entity: string, _name: string, value: { seq: number }) => {
+    if (mock.game !== null) mock.answers.push(`[2.0] Log: [studio] game-probe ${value.seq} ${JSON.stringify(mock.game)}`)
+  })
 }))
 vi.mock('@scene/state', () => ({ state: mock.state }))
-vi.mock('@scene/inspector', () => ({ syncFrozenState: async () => {} }))
+vi.mock('@scene/inspector', () => ({ syncFrozenState: async () => {}, writeCustomComponent: mock.probe }))
 vi.mock('../actions/playback', () => ({ uiPlay: mock.play }))
 vi.mock('../boot/boot', () => ({ restartScene: mock.restart }))
 vi.mock('../engine/console', () => ({ consoleCommand: mock.command, getEngineWindow: () => window }))
 vi.mock('../engine/cmd', () => ({ cmd: {
-  crdtSnapshot: () => mock.snapshot(), sceneLogs: async () => ''
+  crdtSnapshot: () => mock.snapshot(), sceneLogs: async () => mock.answers.join('\n')
 } }))
 vi.mock('../engine/hosted', () => ({ hostV1: () => ({ previewServerLogs: () => mock.serverLogs }) }))
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  mock.state.frozen = false
+function answer(state: Record<string, unknown>, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { state, omitted: {}, now: 10_000, life: 'running', requests: [], ...extra }
+}
+
+beforeEach(async () => {
+  mock.state.frozen = true // stopped: edit mode, so the stop below reads no game
   mock.state.saveStatus = ''
   mock.serverLogs = []
+  mock.game = answer({ round: { id: 'w-1', number: 1, seed: 5, phase: 0 }, score: 0 })
+  mock.answers = []
   document.body.innerHTML = '<canvas tabindex="0"></canvas>'
+  await playtest({ action: 'stop' }, new AbortController().signal) // a fresh run: no state remembered
+  mock.state.frozen = false
+  vi.clearAllMocks()
 })
 afterEach(() => vi.useRealTimers())
 
@@ -62,7 +76,9 @@ describe('assistant playtesting', () => {
 
   it('reports observed player position and HUD without changing game state', async () => {
     expect(await playtest({ action: 'status' }, new AbortController().signal)).toEqual({
-      playing: true, platform: 'desktop', position: { x: 1, y: 2, z: 3 }, hud: ['3 / 5'], errors: [], serverErrors: []
+      playing: true, platform: 'desktop', position: { x: 1, y: 2, z: 3 }, hud: ['3 / 5'],
+      game: { life: 'running', now: 10_000, round: { id: 'w-1', number: 1, phase: 0 }, state: { score: 0 }, requests: [] },
+      errors: [], serverErrors: []
     })
     expect(mock.command).toHaveBeenCalledTimes(1)
     expect(mock.command).toHaveBeenCalledWith('player_position')
@@ -133,5 +149,53 @@ describe('assistant playtesting', () => {
     await vi.runAllTimersAsync()
     await failed
     expect(pressed).toEqual([3])
+  })
+})
+
+describe('the game state a playtest result carries', () => {
+  it('shows what an F press changed, and the request the server refused', async () => {
+    document.querySelector('canvas')!.addEventListener('keydown', () => {
+      mock.game = answer(
+        { round: { id: 'w-1', number: 1, seed: 5, phase: 0 }, score: 0, boards: { left: { item: 'tomato', chopped: 1 }, right: { item: null } } },
+        { now: 10_400, requests: [{ name: 'chop', at: 9_000, reply: '{"ok":true}' }, { name: 'chop', at: 10_300, refused: 'too far' }] }
+      )
+    })
+    mock.game = answer({ round: { id: 'w-1', number: 1, seed: 5, phase: 0 }, score: 0, boards: { left: { item: 'tomato', chopped: 0 }, right: { item: null } } }, {
+      requests: [{ name: 'chop', at: 9_000, reply: '{"ok":true}' }]
+    })
+    const result = (await playtest({ action: 'input', keys: ['F'], durationMs: 50 }, new AbortController().signal)) as { game: Record<string, unknown> }
+    expect(result.game).toMatchObject({
+      since: 'before this input',
+      changed: { 'boards.left.chopped': { before: 0, after: 1 } },
+      requests: [
+        { name: 'chop', secondsAgo: 1.4, reply: '{"ok":true}' },
+        { name: 'chop', secondsAgo: 0.1, refused: 'too far', new: true }
+      ]
+    })
+    expect(mock.probe).toHaveBeenCalledTimes(2)
+
+    // a status right after compares with that result: nothing moved since
+    expect(((await playtest({ action: 'status' }, new AbortController().signal)) as { game: Record<string, unknown> }).game).toMatchObject({
+      since: 'the previous playtest result', changed: {}
+    })
+  })
+
+  it('reads no game state in edit mode, and says so when the scene never answers', async () => {
+    mock.state.frozen = true
+    expect(await playtest({ action: 'status' }, new AbortController().signal)).not.toHaveProperty('game')
+    expect(mock.probe).not.toHaveBeenCalled()
+
+    mock.state.frozen = false
+    mock.game = null
+    vi.useFakeTimers()
+    const pending = playtest({ action: 'status' }, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    expect(await pending).toMatchObject({ game: expect.stringContaining('did not answer the probe') })
+    // after one silent answer it only glances, so a scene without a game stays quick to test
+    const started = Date.now()
+    const again = playtest({ action: 'wait', durationMs: 0 }, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    await again
+    expect(Date.now() - started).toBeLessThan(1000)
   })
 })

@@ -24,6 +24,51 @@ import { LivenessTracker } from '../runtime-modules/pure/liveness'
 import { PendingMap } from '../runtime-modules/pure/pending'
 import { Membership } from '../runtime-modules/pure/membership'
 import { ZoneRegistry, zoneKey } from '../runtime-modules/pure/zoneRegistry'
+import {
+  CAMERA_FOV_DEG,
+  DESKTOP_ASPECT,
+  FOLLOW_FRAME_M,
+  PHONE_ASPECT,
+  TOP_DOWN_PITCH_DEG,
+  aspectFor,
+  cameraOnTop,
+  cameraPose,
+  cameraRotation,
+  claimCamera,
+  fitDistance,
+  framingDistance,
+  marginFor,
+  pitchFor,
+  releaseCamera,
+  yawOf,
+  type Box,
+  type RigClaims
+} from '../runtime-modules/pure/cameraRig'
+import { rotateVec, type Quat, type Vec3 } from '../runtime-modules/pure/worldTransform'
+import {
+  THROW_MS,
+  applyCarry,
+  clampThrow,
+  flightPosition,
+  freshCarry,
+  giveCarry,
+  heldItem,
+  leaveCarry,
+  parseCombines,
+  parseKinds,
+  parseTurns,
+  readAction,
+  readCarry,
+  setStationKind,
+  stationProgress,
+  tickCarry,
+  useHeld,
+  type CarryAction,
+  type CarryRules,
+  type CarryState
+} from '../runtime-modules/pure/carryRules'
+import { CarryPrediction } from '../runtime-modules/pure/carryPrediction'
+import { nearestCandidate, promptText, verbWith } from '../runtime-modules/pure/interactPick'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -382,5 +427,337 @@ describe('_runtime rpc pending', () => {
     expect(p.tick(12_000, 4000)).toEqual([]) // budget spent → failed
     expect(error).not.toBeNull()
     expect(p.size).toBe(0)
+  })
+})
+
+describe('_runtime camera rig framing', () => {
+  const DEG = Math.PI / 180
+
+  // Project a world point into the camera's normalized screen: |x|, |y| <= 1 is on screen.
+  function project(pose: { position: Vec3; rotation: Quat }, point: Vec3, aspect: number): { x: number; y: number; depth: number } {
+    const inverse = { x: -pose.rotation.x, y: -pose.rotation.y, z: -pose.rotation.z, w: pose.rotation.w }
+    const local = rotateVec(inverse, {
+      x: point.x - pose.position.x,
+      y: point.y - pose.position.y,
+      z: point.z - pose.position.z
+    })
+    const tanV = Math.tan((CAMERA_FOV_DEG * DEG) / 2)
+    return { x: local.x / (local.z * tanV * aspect), y: local.y / (local.z * tanV), depth: local.z }
+  }
+
+  function corners(center: Vec3, yaw: number, box: Box): Vec3[] {
+    const out: Vec3[] = []
+    for (const a of [-1, 1]) {
+      for (const b of [-1, 1]) {
+        for (const c of [-1, 1]) {
+          const x = (a * box.width) / 2
+          const z = (b * box.depth) / 2
+          out.push({
+            x: center.x + x * Math.cos(yaw) + z * Math.sin(yaw),
+            y: center.y + (c * box.height) / 2,
+            z: center.z - x * Math.sin(yaw) + z * Math.cos(yaw)
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  function worstEdge(center: Vec3, yaw: number, box: Box, pitch: number, aspect: number): number {
+    const pose = cameraPose(center, yaw, pitch, fitDistance(box, pitch, aspect))
+    let worst = 0
+    for (const corner of corners(center, yaw, box)) {
+      const screen = project(pose, corner, aspect)
+      expect(screen.depth).toBeGreaterThan(0)
+      worst = Math.max(worst, Math.abs(screen.x), Math.abs(screen.y))
+    }
+    return worst
+  }
+
+  it('looks straight-ish down for top-down and clamps the creator angle otherwise', () => {
+    expect(pitchFor('top-down', 30)).toBe(TOP_DOWN_PITCH_DEG)
+    expect(pitchFor('isometric', 55)).toBe(55)
+    expect(pitchFor('follow', 2)).toBe(10)
+    expect(pitchFor('isometric', 120)).toBe(TOP_DOWN_PITCH_DEG)
+    expect(pitchFor('isometric', Number.NaN)).toBe(55)
+  })
+
+  it('reads the heading off a rotation, tilted or not', () => {
+    expect(yawOf({ x: 0, y: 0, z: 0, w: 1 })).toBeCloseTo(0)
+    expect(yawOf(cameraRotation(Math.PI / 2, 0))).toBeCloseTo(Math.PI / 2)
+    expect(yawOf(cameraRotation(-2, 40))).toBeCloseTo(-2)
+    // straight down: the heading survives through the up vector
+    expect(yawOf(cameraRotation(1, 90))).toBeCloseTo(1)
+  })
+
+  it('points the camera at its target from the requested distance', () => {
+    const target = { x: 8, y: 0, z: 8 }
+    const pose = cameraPose(target, 0, 55, 20)
+    const offset = { x: target.x - pose.position.x, y: target.y - pose.position.y, z: target.z - pose.position.z }
+    expect(Math.hypot(offset.x, offset.y, offset.z)).toBeCloseTo(20)
+    // above and behind (south of) the target, looking north and down
+    expect(pose.position.y).toBeCloseTo(20 * Math.sin(55 * DEG))
+    expect(pose.position.z).toBeCloseTo(8 - 20 * Math.cos(55 * DEG))
+    const center = project(pose, target, DESKTOP_ASPECT)
+    expect(center.x).toBeCloseTo(0)
+    expect(center.y).toBeCloseTo(0)
+  })
+
+  // The fit is exact: every corner on screen, and at least one on the edge.
+  for (const [label, aspect] of [
+    ['desktop 16:9', DESKTOP_ASPECT],
+    ['phone 1600x720', PHONE_ASPECT]
+  ] as const) {
+    it(`fits every corner of the area on a ${label} canvas, tightly`, () => {
+      for (const pitch of [TOP_DOWN_PITCH_DEG, 55, 30]) {
+        for (const box of [
+          { width: 12, depth: 12, height: 4 },
+          { width: 30, depth: 8, height: 3 },
+          { width: 6, depth: 24, height: 2 }
+        ]) {
+          const worst = worstEdge({ x: 16, y: 1, z: 16 }, 0.7, box, pitch, aspect)
+          expect(worst).toBeLessThanOrEqual(1 + 1e-9)
+          expect(worst).toBeGreaterThan(0.999)
+        }
+      }
+    })
+  }
+
+  it('needs less distance for a wide area on the wide phone canvas, and the same for a deep one', () => {
+    const wide = { width: 30, depth: 6, height: 2 }
+    expect(fitDistance(wide, 55, PHONE_ASPECT)).toBeLessThan(fitDistance(wide, 55, DESKTOP_ASPECT))
+    const deep = { width: 4, depth: 30, height: 2 }
+    expect(fitDistance(deep, 55, PHONE_ASPECT)).toBeCloseTo(fitDistance(deep, 55, DESKTOP_ASPECT))
+  })
+
+  it('never puts the camera inside or right on top of a tiny area', () => {
+    expect(fitDistance({ width: 0, depth: 0, height: 0 }, 55, DESKTOP_ASPECT)).toBeGreaterThanOrEqual(2)
+    const tall = { width: 1, depth: 1, height: 20 }
+    const pose = cameraPose({ x: 0, y: 0, z: 0 }, 0, TOP_DOWN_PITCH_DEG, fitDistance(tall, TOP_DOWN_PITCH_DEG, DESKTOP_ASPECT))
+    expect(pose.position.y).toBeGreaterThan(10)
+  })
+
+  it('uses the real canvas aspect, and the platform default without one', () => {
+    expect(aspectFor({ width: 1600, height: 720 }, false)).toBeCloseTo(PHONE_ASPECT)
+    expect(aspectFor({ width: 1000, height: 1000 }, true)).toBe(1)
+    expect(aspectFor(null, true)).toBe(PHONE_ASPECT)
+    expect(aspectFor({ width: 0, height: 0 }, false)).toBe(DESKTOP_ASPECT)
+    expect(marginFor(true)).toBeGreaterThan(marginFor(false))
+  })
+
+  it('frames the area from its scale unless a distance or fitSize says otherwise', () => {
+    const base = { mode: 'isometric' as const, distance: 0, fitSize: 0, area: { x: 12, y: 4, z: 12 }, pitchDeg: 55, aspect: DESKTOP_ASPECT, mobile: false }
+    const fromScale = framingDistance(base)
+    expect(fromScale).toBeCloseTo(fitDistance({ width: 12, depth: 12, height: 4 }, 55, DESKTOP_ASPECT, CAMERA_FOV_DEG, marginFor(false)))
+    expect(framingDistance({ ...base, distance: 7 })).toBe(7)
+    expect(framingDistance({ ...base, fitSize: 24 })).toBeGreaterThan(fromScale)
+    // follow frames the player, not the rig's area
+    const follow = framingDistance({ ...base, mode: 'follow', area: { x: 100, y: 4, z: 100 } })
+    expect(follow).toBeCloseTo(fitDistance({ width: FOLLOW_FRAME_M, depth: FOLLOW_FRAME_M, height: 2 }, 55, DESKTOP_ASPECT, CAMERA_FOV_DEG, marginFor(false)))
+    // a phone adds room for the touch buttons
+    expect(framingDistance({ ...base, mobile: true, aspect: PHONE_ASPECT })).toBeGreaterThan(fitDistance({ width: 12, depth: 12, height: 4 }, 55, PHONE_ASPECT))
+  })
+
+  it('gives the screen to the rig entered last and falls back as rigs let go', () => {
+    const claims: RigClaims<number> = { order: [], applied: null }
+    expect(cameraOnTop(claims)).toBeNull()
+    claimCamera(claims, 1)
+    claimCamera(claims, 2)
+    claimCamera(claims, 1)
+    expect(cameraOnTop(claims)).toBe(2)
+    releaseCamera(claims, 2)
+    expect(cameraOnTop(claims)).toBe(1)
+    releaseCamera(claims, 1)
+    expect(cameraOnTop(claims)).toBeNull()
+  })
+})
+
+describe('_runtime carry rules', () => {
+  const rules: CarryRules = {
+    sources: {
+      ball: { kind: 'Ball', endless: false, returnMs: 5000 },
+      'tomato crate': { kind: 'Tomato', endless: true, returnMs: 0 }
+    },
+    stations: {
+      board: { mode: 'hold', accepts: [], recipes: parseTurns('Tomato > Chopped Tomato', 2000), combines: {} },
+      stove: { mode: 'timed', accepts: parseKinds('Chopped Tomato, Soup'), recipes: parseTurns('Chopped Tomato > Soup, Soup > Burnt Soup', 4000), combines: {} },
+      plate: { mode: 'counter', accepts: [], recipes: {}, combines: parseCombines('Bread + Chopped Tomato > Sandwich') }
+    }
+  }
+  const apply = (state: CarryState, action: CarryAction, player = 'a', now = 0) => applyCarry(state, action, player, rules, now)
+  const at = { x: 1, y: 0, z: 1 }
+
+  it('gives a placed item one holder at a time', () => {
+    const picked = apply(freshCarry(), { type: 'pick', item: 'ball' })
+    expect(picked.accepted).toBe(true)
+    expect(heldItem(picked.state, 'a')).toEqual({ item: 'ball', kind: 'Ball' })
+    expect(apply(picked.state, { type: 'pick', item: 'ball' }, 'b')).toMatchObject({ accepted: false, message: 'Someone else has it' })
+    expect(apply(picked.state, { type: 'pick', item: 'tomato crate' })).toMatchObject({ accepted: false, message: 'Your hands are full' })
+  })
+
+  it('mints a new item per pick from an endless source', () => {
+    const first = apply(freshCarry(), { type: 'pick', item: 'tomato crate' }, 'a').state
+    const second = apply(first, { type: 'pick', item: 'tomato crate' }, 'b').state
+    expect(heldItem(second, 'a')).toEqual({ item: 'tomato crate#1', kind: 'Tomato' })
+    expect(heldItem(second, 'b')).toEqual({ item: 'tomato crate#2', kind: 'Tomato' })
+  })
+
+  it('drops and throws what is held, and anyone can pick it up from the floor', () => {
+    const held = apply(freshCarry(), { type: 'pick', item: 'ball' }).state
+    expect(apply(freshCarry(), { type: 'drop', pos: at }).accepted).toBe(false)
+    const dropped = apply(held, { type: 'drop', pos: at }).state
+    expect(dropped.items.ball).toEqual({ kind: 'Ball', at: 'floor', pos: at })
+    expect(heldItem(apply(dropped, { type: 'pick', item: 'ball' }, 'b').state, 'b')?.item).toBe('ball')
+    const thrown = apply(held, { type: 'throw', from: { x: 0, y: 1, z: 0 }, to: { x: 4, y: 0, z: 0 } }, 'a', 1000).state.items.ball
+    expect(flightPosition(thrown, 1000)).toEqual({ x: 0, y: 1, z: 0 })
+    expect(flightPosition(thrown, 1000 + THROW_MS / 2)!.y).toBeGreaterThan(1)
+    expect(flightPosition(thrown, 1000 + THROW_MS)).toEqual({ x: 4, y: 0, z: 0 })
+    expect(clampThrow({ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }).x).toBe(8)
+  })
+
+  it('holds one item per station, takes only what it accepts and gives it back', () => {
+    const tomato = apply(freshCarry(), { type: 'pick', item: 'tomato crate' }).state
+    expect(apply(tomato, { type: 'put', station: 'stove' })).toMatchObject({ accepted: false, message: 'Tomato does not go here' })
+    const onBoard = apply(tomato, { type: 'put', station: 'board' }).state
+    expect(heldItem(onBoard, 'a')).toBeNull()
+    expect(onBoard.stations.board.item).toBe('tomato crate#1')
+    const other = apply(onBoard, { type: 'pick', item: 'tomato crate' }, 'b').state
+    expect(apply(other, { type: 'put', station: 'board' }, 'b')).toMatchObject({ accepted: false, message: 'Something is already here' })
+    expect(heldItem(apply(onBoard, { type: 'take', station: 'board' }, 'b').state, 'b')?.kind).toBe('Tomato')
+  })
+
+  it('turns an item only while someone holds work, and keeps the progress when they stop', () => {
+    let state = apply(apply(freshCarry(), { type: 'pick', item: 'tomato crate' }).state, { type: 'put', station: 'board' }).state
+    expect(apply(state, { type: 'work', station: 'stove', on: true }).accepted).toBe(false)
+    state = apply(state, { type: 'work', station: 'board', on: true }, 'a', 1000).state
+    expect(apply(state, { type: 'work', station: 'board', on: true }, 'b', 1100).message).toBe('Someone is already working here')
+    expect(stationProgress(state.stations.board, 2000, 2000)).toBe(0.5)
+    state = apply(state, { type: 'work', station: 'board', on: false }, 'a', 2000).state
+    expect(stationProgress(state.stations.board, 2000, 9000)).toBe(0.5)
+    state = apply(state, { type: 'work', station: 'board', on: true }, 'b', 3000).state
+    const ticked = tickCarry(state, rules, 4000, () => true)
+    expect(ticked.events).toEqual([{ type: 'done', item: 'tomato crate#1', kind: 'Chopped Tomato', was: 'Tomato', station: 'board', player: 'b' }])
+    expect(ticked.state.stations.board).toEqual({ item: 'tomato crate#1', work: 0, since: undefined })
+  })
+
+  it('stops a worker who walks away', () => {
+    let state = apply(apply(freshCarry(), { type: 'pick', item: 'tomato crate' }).state, { type: 'put', station: 'board' }).state
+    state = apply(state, { type: 'work', station: 'board', on: true }, 'a', 0).state
+    const away = tickCarry(state, rules, 500, () => false)
+    expect(away.state.stations.board).toEqual({ item: 'tomato crate#1', work: 500 })
+    expect(away.events).toEqual([])
+  })
+
+  it('cooks by itself on a timed station and keeps going into the next recipe', () => {
+    let state = giveCarry(freshCarry(), 'a', 'Chopped Tomato').state
+    state = apply(state, { type: 'put', station: 'stove' }, 'a', 0).state
+    expect(tickCarry(state, rules, 3999, () => true).changed).toBe(false)
+    const soup = tickCarry(state, rules, 4000, () => true).state
+    expect(Object.values(soup.items)[0].kind).toBe('Soup')
+    expect(soup.stations.stove.since).toBe(4000)
+    expect(Object.values(tickCarry(soup, rules, 8000, () => true).state.items)[0].kind).toBe('Burnt Soup')
+  })
+
+  it('combines two kinds on a station, in either order', () => {
+    let state = giveCarry(freshCarry(), 'a', 'Chopped Tomato').state
+    state = apply(state, { type: 'put', station: 'plate' }).state
+    state = giveCarry(state, 'a', 'bread').state
+    const combined = apply(state, { type: 'put', station: 'plate' })
+    expect(combined.events[0]).toMatchObject({ type: 'combine', kind: 'Sandwich', was: 'Chopped Tomato' })
+    expect(Object.keys(combined.state.items)).toHaveLength(1)
+  })
+
+  it('uses up a placed item until it comes back home, and ends a minted one', () => {
+    const used = useHeld(apply(freshCarry(), { type: 'pick', item: 'ball' }).state, 'a', rules, 1000).state
+    expect(used.items.ball).toEqual({ kind: 'Ball', at: 'gone', t: 1000 })
+    expect(apply(used, { type: 'pick', item: 'ball' }, 'b').message).toBe('That is gone')
+    expect(tickCarry(used, rules, 6000, () => true).state.items.ball).toBeUndefined()
+    const minted = useHeld(giveCarry(freshCarry(), 'a', 'Key').state, 'a', rules, 0).state
+    expect(minted.items).toEqual({})
+  })
+
+  it("lets the server set or clear a station, and drops a leaver's item where they were", () => {
+    const set = setStationKind(freshCarry(), 'plate', 'Bread', rules, 0)
+    expect(set.accepted).toBe(true)
+    expect(setStationKind(set.state, 'plate', null, rules, 0).state.stations.plate).toEqual({ work: 0 })
+    expect(setStationKind(freshCarry(), 'nowhere', 'Bread', rules, 0).accepted).toBe(false)
+    const held = apply(freshCarry(), { type: 'pick', item: 'ball' }).state
+    expect(leaveCarry(held, 'a', at, 0).items.ball).toEqual({ kind: 'Ball', at: 'floor', pos: at })
+    expect(leaveCarry(held, 'a', null, 0).items.ball).toBeUndefined()
+  })
+
+  it('reads synced state and requests defensively', () => {
+    const state = apply(freshCarry(), { type: 'pick', item: 'ball' }).state
+    expect(readCarry(JSON.parse(JSON.stringify(state)))).toEqual(state)
+    expect(readCarry({ items: { x: { kind: 'Ball', at: 'hand' }, y: { kind: 1, at: 'floor' } }, stations: { s: { item: 'x', work: -5 } } }))
+      .toEqual({ items: {}, stations: { s: { work: 0 } }, n: 0 })
+    expect(readCarry('nonsense')).toEqual(freshCarry())
+    expect(readAction({ type: 'pick', item: 'ball' })).toEqual({ type: 'pick', item: 'ball' })
+    expect(readAction({ type: 'drop', pos: { x: 1, y: 'up', z: 0 } })).toBeNull()
+    expect(readAction({ type: 'work', station: 'board' })).toBeNull()
+    expect(readAction({ type: 'take', station: 'board', extra: true })).toEqual({ type: 'take', station: 'board' })
+  })
+})
+
+describe('_runtime carry prediction', () => {
+  const rules: CarryRules = { sources: { ball: { kind: 'Ball', endless: false, returnMs: 0 } }, stations: {} }
+  const make = () => new CarryPrediction(() => rules, () => 'a')
+
+  it('shows a pick at once and drops it once the server agrees', () => {
+    const prediction = make()
+    prediction.reconcile(freshCarry(), 0)
+    expect(prediction.predict({ type: 'pick', item: 'ball' }, 100).id).not.toBeNull()
+    expect(heldItem(prediction.view(100)!, 'a')?.item).toBe('ball')
+    prediction.reconcile(applyCarry(freshCarry(), { type: 'pick', item: 'ball' }, 'a', rules, 200).state, 300)
+    expect(prediction.pendingCount).toBe(0)
+    expect(heldItem(prediction.view(300)!, 'a')?.item).toBe('ball')
+  })
+
+  it('rolls a refused pick back, and lets a pending one expire', () => {
+    const prediction = make()
+    prediction.reconcile(freshCarry(), 0)
+    const id = prediction.predict({ type: 'pick', item: 'ball' }, 0).id!
+    expect(prediction.reject(id)).toBe(true)
+    expect(heldItem(prediction.view(10)!, 'a')).toBeNull()
+    prediction.predict({ type: 'pick', item: 'ball' }, 100)
+    expect(heldItem(prediction.view(3200)!, 'a')).toBeNull()
+  })
+
+  it('keeps a chain of pending actions in order, and drops one someone else overtook', () => {
+    const prediction = make()
+    prediction.reconcile(freshCarry(), 0)
+    prediction.predict({ type: 'pick', item: 'ball' }, 0)
+    prediction.predict({ type: 'drop', pos: { x: 1, y: 0, z: 1 } }, 50)
+    expect(prediction.view(60)!.items.ball.at).toBe('floor')
+    expect(prediction.predict({ type: 'drop', pos: { x: 0, y: 0, z: 0 } }, 70).id).toBeNull()
+    prediction.reconcile(applyCarry(freshCarry(), { type: 'pick', item: 'ball' }, 'b', rules, 80).state, 90)
+    expect(prediction.pendingCount).toBe(0)
+    expect(prediction.view(90)!.items.ball.who).toBe('b')
+  })
+})
+
+describe('_runtime interact prompt', () => {
+  const near = { position: { x: 1, y: 0, z: 0 }, range: 2, name: 'near' }
+  const far = { position: { x: 5, y: 0, z: 0 }, range: 2, name: 'far' }
+  const above = { position: { x: 0.5, y: 4, z: 0 }, range: 2, name: 'above' }
+
+  it('points at the nearest candidate in range, across the floor only', () => {
+    expect(nearestCandidate([far, near, above], { x: 0, y: 0, z: 0 })?.name).toBe('near')
+    expect(nearestCandidate([far], { x: 0, y: 0, z: 0 })).toBeNull()
+    expect(nearestCandidate([{ position: null, name: 'held' }], { x: 0, y: 0, z: 0 })).toBeNull()
+    expect(nearestCandidate([near], null)).toBeNull()
+  })
+
+  it('names the key on desktop and only the verb on a phone', () => {
+    const verbs = [{ verb: 'Take Tomato', button: 'primary' as const }, { verb: 'Chop Tomato', button: 'secondary' as const }]
+    expect(promptText(verbs, false)).toBe('[E] Take Tomato   [F] Chop Tomato')
+    expect(promptText(verbs, true)).toBe('Take Tomato · Chop Tomato')
+  })
+
+  it('puts the kind where the language wants it', () => {
+    expect(verbWith('Pick up', 'Tomato')).toBe('Pick up Tomato')
+    expect(verbWith('Coger {item}', 'Tomate')).toBe('Coger Tomate')
+    expect(verbWith('{item} aufheben', 'Ball')).toBe('Ball aufheben')
+    expect(verbWith('Drop {item}', '')).toBe('Drop')
   })
 })

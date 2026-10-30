@@ -35,6 +35,13 @@ describe('packaged SDK skills', () => {
     expect(skill.content).toContain('AudioSource.playSound')
   })
 
+  it('advertises game feel for every game', () => {
+    expect(skills.catalog).toContain('game-feel/SKILL.md')
+    const skill = JSON.parse(skills.read('game-feel/SKILL.md'))
+    expect(skill.content).toContain('AAPT_RIGHT_HAND')
+    expect(skill.content).toContain('game.state')
+  })
+
   it.each([
     '../.auth.json', '../../.env', '/etc/passwd', 'C:\\secrets', 'constructor', '__proto__',
     'sdk-scenes/SKILL.md', 'deploy-worlds/SKILL.md', 'https://example.com/image.png',

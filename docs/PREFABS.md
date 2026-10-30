@@ -717,6 +717,32 @@ folder there with a `data.json`). To add one, follow the
   there; server-validated zones are a separate prefab. Serverless: no
   `requiresSdk`, no permissions.
 
+- **camera-rig** ("Camera Rig") — a fixed game camera for games played on a
+  board, arena or kitchen the player should see whole (the default third-person
+  camera trails the avatar and hides most of such an area). One entity: its
+  position is where the camera looks, its rotation is which way is up on screen,
+  and its scale (12×4×12 by default) is the area — both what the camera frames
+  and a mask-8 `core::TriggerArea`, so the editor draws the volume while
+  building and nothing shows while playing. While the local player is inside
+  (or always), `scripts/camera-rig.ts` points `MainCamera` at a `VirtualCamera`
+  on a separate root entity (the rig's scale must not reach the camera), and
+  hands the default camera back on the way out. The distance that fits the
+  whole area is exact — the box's eight corners projected for the player's real
+  canvas aspect (`UiCanvasInformation`, falling back to 1600/720 on `isMobile()`
+  and 16/9 elsewhere), plus a wider margin on phones for the touch buttons; the
+  math is `runtime-modules/pure/cameraRig.ts`, tested in `runtime-pure.test.ts`.
+  Params: `mode` (`top-down` / `isometric` / `follow`), `activeWhen`
+  (`inside this area` / `always`), `angle`, `distance` (0 = fit), `fitSize`
+  (0 = the rig's scale) and `transitionSeconds`. Top-down is 88°, not 90°, so a
+  flattened camera forward still has a heading. Several rigs share
+  `__dclCameraRig_v1`: the one entered last owns the screen, and a rig only
+  clears a `MainCamera` it wrote. Stays on long-stable SDK surface (the `$case`
+  transition literal, not `VirtualCamera.Transition`; `fov` passed as a value an
+  older pin's types accept). Not `requiresSdk`, no permissions; the explorer
+  allows ForceCamera by default. Unverified live: whether movement keys stay
+  camera-relative under a scene camera, and whether the explorer's free camera
+  in Play mode wins over the rig. Ships `ai.md`.
+
 ### The Multiplayer Server kit
 
 Six prefabs. All but the Spawner are
@@ -851,6 +877,37 @@ project copy filed to the library cannot vanish with it.
   and the modules the pool machinery pulls in. Copies appear **at the
   Spawner** — there is no runtime-computed spawn position. Ships `ai.md`; the
   right-click gesture below is the primary way it gets placed.
+
+- **pickup-item** ("Pickup Item") and **work-station** ("Work Station") — things
+  a player carries, built on `runtime/carry.ts` over the `game` module, so both
+  are `requiresSdk: "auth-server"`, ungrouped (a creator looking for "pick up"
+  does not look in Multiplayer Server) and self-driving. The server owns
+  `game.state.carry`: which items are away from home and where (a hand, a
+  station, the floor, used up), which item sits on each station and its banked
+  work. One request name (`carry.act`) carries every player action, refused
+  unless the server's view of the player is within the thing's range; one
+  broadcast (`carry.event`) tells clients what changed. A player's own action
+  is applied at once through `pure/carryPrediction.ts` and rolled back on
+  refusal or after 3 s unconfirmed, the Run Progress pattern. The rules both
+  sides run are `pure/carryRules.ts`. An item's id is its entity Name, a station's
+  is its Name, a kind is a plain word; all three match like zone names. The look
+  in a hand, on a station or on the floor is a collider-free copy of the kind's
+  Pickup Item model (its GltfContainer or MeshRenderer and Material, children
+  included), held with `AvatarAttach` `AAPT_RIGHT_HAND`; a placed "one item" is
+  hidden while away. A kind only a station makes gets its look from a Pickup Item
+  with `supply: 'look only'`. Supply "endless" mints `<name>#<n>` per pick.
+  Stations hold one item: "hold to work" progresses while a player holds F and
+  stays near, "timed" progresses alone and chains into the next recipe (so a
+  burn is a recipe), `combines` merges a second kind put on top. Every round
+  start empties hands and stations. No carry pose: no carry clip ships, and the
+  SDK pin has no call to stop a looping emote (the engine has `stopEmote` and
+  upper-body masks; a pose needs both reaching the SDK plus a clip).
+  The prompt is `runtime/interactPrompt.ts`: one billboard `TextShape` over the
+  nearest candidate any script offers, "[E] Verb" on desktop and the bare verb
+  on phones, with what a held item can do in the bottom HUD slot. Both prefabs
+  declare E as the phone's main button (plus F where used, and jump, which
+  declaring would otherwise hide). Spawner copies cannot be pickups: they are
+  client-local and nameless.
 
 **Right-click → Add a spawner.** The one gesture that configures a prefab for
 you (`actions/prefabs.ts` `uiAddSpawnerFor`, the menu item directly under

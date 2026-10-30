@@ -77,6 +77,14 @@ const LIFE_LINE = '[studio] game-life'
 // shape cannot stand in for it — a kit script's own notice has the same shape.
 // Read and stripped by `log-roles.ts` (`PROBLEM_MARKER`); keep the two in step.
 const PROBLEM_LINE = '[studio] problem'
+// The editor's playtest asks what this client sees by bumping editor::GameProbe
+// on the root entity, and reads the answer as one console line (`game-probe.ts`
+// in the editor parses it); a scene nobody probes never prints it. Kept under
+// the engine's 8 KB line cap: a key that does not fit is named with its size.
+const PROBE_LINE = '[studio] game-probe'
+const PROBE_STATE_BYTES = 6000
+const RECENT_REQUESTS = 6
+const REPLY_CHARS = 200
 
 // The one funnel every error card leaves by, marker included — a card printed
 // past it would read to the editor as an ordinary notice and go uncounted.
@@ -103,6 +111,19 @@ function defineSharedFact() {
 }
 const SharedFact =
   (engine.getComponentOrNull('runtime::SharedFact') as ReturnType<typeof defineSharedFact> | null) ?? defineSharedFact()
+
+function defineGameProbe() {
+  return engine.defineComponent('editor::GameProbe', { seq: Schemas.Int })
+}
+const GameProbe =
+  (engine.getComponentOrNull('editor::GameProbe') as ReturnType<typeof defineGameProbe> | null) ?? defineGameProbe()
+
+interface RecentRequest {
+  name: string
+  at: number
+  reply?: string
+  refused?: string
+}
 
 function registerBroadcast() {
   return registerMessages({
@@ -168,6 +189,9 @@ interface GameDriver {
   storeFails: number
   /** server: the give-up line is printed once per fault, never per failed write */
   storeSaid: boolean
+  /** client: the last probe seq answered, and this player's last few requests for it */
+  probeSeen: number
+  recent: RecentRequest[]
 }
 
 // Byte-identical copies of this file are still separate module instances, so
@@ -221,7 +245,9 @@ function createDriver(): GameDriver {
     layouts: new Map<string, LayoutSpec>(),
     lifeSaid: null,
     storeFails: 0,
-    storeSaid: false
+    storeSaid: false,
+    probeSeen: 0,
+    recent: []
   }
   return d
 }
@@ -344,6 +370,14 @@ function makePorts(self: () => GameDriver): CorePorts {
     dropPlayer: (player) => self().rpc.forget(player),
     findZones: (key) => findZoneVolumes(key),
     playerPosition: (player) => playerPosition(player),
+    noteRequest: (name, outcome) => {
+      const recent = self().recent
+      const entry: RecentRequest = { name, at: Number(getServerTime()) }
+      if ('refused' in outcome) entry.refused = outcome.refused
+      else entry.reply = (JSON.stringify(outcome.reply) ?? 'null').slice(0, REPLY_CHARS)
+      recent.push(entry)
+      if (recent.length > RECENT_REQUESTS) recent.shift()
+    },
     // The coming round's seed lives in serverState — reading it from a client
     // throws — and only leaves the stash by being published in the tuple, so
     // no client can precompute the next layout (§11 seed secrecy).
@@ -667,6 +701,27 @@ function clientTick(d: GameDriver): void {
     }
   }
   layoutTick(d)
+  const probe = GameProbe.getOrNull(engine.RootEntity)
+  if (probe !== null && probe.seq !== d.probeSeen) {
+    d.probeSeen = probe.seq
+    console.log(`${PROBE_LINE} ${probe.seq} ${probeAnswer(d)}`)
+  }
+}
+
+function probeAnswer(d: GameDriver): string {
+  const state: Record<string, unknown> = {}
+  const omitted: Record<string, number> = {}
+  let room = PROBE_STATE_BYTES
+  for (const [key, value] of Object.entries(d.core.state)) {
+    const json = (JSON.stringify(value) ?? 'null').length
+    const bytes = json + key.length + 4
+    if (bytes > room) omitted[key] = json
+    else {
+      state[key] = value
+      room -= bytes
+    }
+  }
+  return JSON.stringify({ state, omitted, now: Number(getServerTime()), life: serverLifeState(), requests: d.recent })
 }
 
 // Layouts are client-built: every client reconstructs the same field from the

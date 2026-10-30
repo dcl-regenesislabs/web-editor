@@ -71,6 +71,9 @@ export interface CorePorts {
    * a client) and replaced with a fresh draw on every take, so no client can
    * precompute a layout before its round starts (§11 seed secrecy). */
   takeNextSeed(): number
+  /** client: how this player's request ended — its reply, or why it was refused.
+   * The SDK half keeps the last few for the editor's playtest to read. */
+  noteRequest?(name: string, outcome: { reply: unknown } | { refused: string }): void
 }
 
 // §11 hardening defaults. Tunable per handler later; the caps are checked
@@ -263,6 +266,10 @@ export function callerLabel(): string {
 
 function tooMuchData(name: string, cap: number = MAX_SEND_BYTES): string {
   return `'${name}' carries too much data — send less than ${cap} bytes.`
+}
+
+function noAnswer(name: string): string {
+  return `'${name}' got no answer from the server in time.`
 }
 
 function why(e: unknown): string {
@@ -495,9 +502,12 @@ export class GameCore {
       // the server refuses at MAX_PAYLOAD_BYTES, so name that number here or a
       // creator trims to the one they were given and is refused a second time
       if (json.length > MAX_PAYLOAD_BYTES) throw new Error(tooMuchData(name, MAX_PAYLOAD_BYTES))
-      const reply = await this.ports.sendRequest(name, json)
-      return reply === '' ? null : JSON.parse(reply)
+      const raw = await this.ports.sendRequest(name, json)
+      const reply: unknown = raw === '' ? null : JSON.parse(raw)
+      this.ports.noteRequest?.(name, { reply })
+      return reply
     } catch (e) {
+      this.ports.noteRequest?.(name, { refused: refusalKind(e) === 'timeout' ? noAnswer(name) : why(e) })
       this.reportRefused(name, e)
       throw e
     }
@@ -515,7 +525,7 @@ export class GameCore {
     const key = `game.request:${name}:${kind}`
     if (this.reported.has(key)) return
     this.reported.add(key)
-    const reason = kind === 'timeout' ? `'${name}' got no answer from the server in time.` : why(e)
+    const reason = kind === 'timeout' ? noAnswer(name) : why(e)
     this.ports.emitError({ side: 'you', name: `game.request:${name}`, message: `${reason} ${REFUSED_ADVICE}` })
   }
 

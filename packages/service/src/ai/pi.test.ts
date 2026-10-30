@@ -4,12 +4,12 @@ import { dirname, join } from 'node:path'
 import { ModelRuntime, SettingsManager } from '@earendil-works/pi-coding-agent'
 import type { FileEntry } from '@earendil-works/pi-coding-agent'
 import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai'
-import type { Provider } from '@earendil-works/pi-ai'
+import type { FauxResponseFactory, Provider } from '@earendil-works/pi-ai'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createAccountPool } from './accounts.ts'
 import { createPiFactory } from './pi.ts'
 import { ProviderLimited } from './types.ts'
-import type { AssistantAgent } from './types.ts'
+import type { AssistantAgent, CompactionStep } from './types.ts'
 
 const directories: string[] = []
 afterEach(async () => {
@@ -78,12 +78,15 @@ it('charges compaction and replies once, including after restoring a conversatio
     agent = await factory.create(params, async () => 'unused', () => {})
     let charged = 0
     let inputTokens = 0
+    const compactions = () => (agent?.snapshot() as FileEntry[]).filter((entry) => entry.type === 'compaction').length
     for (let turn = 0; turn < 10; turn++) {
+      const before = compactions()
       await agent.prompt({ ...params, text: `Request ${turn}: ${'x'.repeat(18_000)}` })
       const usage = agent.takeUsage()
       charged += usage.cost
       inputTokens += usage.tokens?.input ?? 0
-      expect(usage).toMatchObject({ calls: 1, unreported: 0, responseModel: 'test' })
+      // the reply, and the summary call of each compaction
+      expect(usage).toMatchObject({ calls: 1 + compactions() - before, unreported: 0, responseModel: 'test' })
       expect(agent.takeUsage()).toMatchObject({ cost: 0, calls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } })
     }
     const entries = agent.snapshot() as FileEntry[]
@@ -108,6 +111,70 @@ it('charges compaction and replies once, including after restoring a conversatio
     await agent.prompt(params)
     expect(agent.takeUsage().cost).toBe(1)
   } finally { agent?.dispose() }
+})
+
+it('summarizes the start of a long turn between its tool calls, keeping the request, the files written and recent results', async () => {
+  const faux = fauxProvider({ provider: 'anthropic', models: [{ id: 'test', contextWindow: 200_000, maxTokens: 8192 }] })
+  const originalCreate = ModelRuntime.create.bind(ModelRuntime)
+  vi.spyOn(ModelRuntime, 'create').mockImplementation(async (options) => {
+    const runtime = await originalCreate(options)
+    const auth = runtime.getProvider('anthropic')?.auth
+    if (auth === undefined) throw new Error('Missing synthetic OAuth provider')
+    runtime.registerNativeProvider({ ...faux.provider, auth })
+    return runtime
+  })
+  const script = [
+    fauxAssistantMessage(fauxToolCall('write_file', { path: 'src/game.ts', content: 'export {}', revision: null }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('read_file', { path: 'src/index.ts' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('build', {}), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('read_file', { path: 'src/hud.ts' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('playtest', { action: 'status' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Done.')
+  ]
+  const summaries: string[] = []
+  const text = (message: Parameters<FauxResponseFactory>[0]['messages'][number] | undefined) => message === undefined ? ''
+    : typeof message.content === 'string' ? message.content
+      : message.content.map((block) => block.type === 'text' ? block.text : '').join('')
+  faux.setResponses(Array.from({ length: 20 }, () => (context: Parameters<FauxResponseFactory>[0]) => {
+    const [system, request] = context.messages
+    if (system?.role !== 'system' || !text(system).startsWith('You are a context summarization assistant')) {
+      return script.shift() ?? fauxAssistantMessage('Out of script.')
+    }
+    summaries.push(text(request))
+    return fauxAssistantMessage('## Goal\nA game in src/game.ts')
+  }))
+  // each result is about 10k tokens, so the context passes 30k after the third tool
+  const call = async (tool: string) => tool === 'build' ? `Build failed: Cannot find name 'Door'. ${'b'.repeat(40_000)}` : 'r'.repeat(40_000)
+  const steps: CompactionStep[] = []
+  const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token', undefined, undefined, undefined, 30_000)
+  const params = { provider: 'claude' as const, model: 'test', text: 'Build an Overcooked-like kitchen game' }
+  const agent = await factory.create(params, call, () => {}, undefined, undefined, (step) => steps.push(step))
+  try {
+    await agent.prompt(params)
+    const entries = agent.snapshot() as FileEntry[]
+    const compactions = entries.filter((entry) => entry.type === 'compaction')
+    expect(compactions.length).toBeGreaterThan(0)
+    // within the one prompt: a single request, and the reply after the summary
+    expect(entries.filter((entry) => entry.type === 'message' && entry.message.role === 'user')).toHaveLength(1)
+    const last = entries.map((entry) => entry.type === 'message' && entry.message.role === 'assistant').lastIndexOf(true)
+    expect(entries.findIndex((entry) => entry.type === 'compaction')).toBeLessThan(last)
+    // one structured summary per compaction, with the start of the turn folded in and the editor's focus
+    expect(summaries).toHaveLength(compactions.length)
+    expect(summaries[0]).toContain('[User]: \n\nBuild an Overcooked-like kitchen game')
+    expect(summaries[0]).toContain('## Constraints & Preferences')
+    expect(summaries[0]).toContain('Additional focus: This is a Decentraland SDK7 scene')
+    const [first] = compactions
+    if (first.type !== 'compaction') throw new Error('No compaction')
+    expect(first.summary).toContain('<modified-files>\nsrc/game.ts\n</modified-files>')
+    // a later summary still lists it
+    const latest = compactions.at(-1)
+    expect(latest?.type === 'compaction' ? latest.summary : '').toContain('<modified-files>\nsrc/game.ts\n</modified-files>')
+    expect(steps).toHaveLength(compactions.length)
+    expect(steps[0]).toMatchObject({ ok: true, summaryChars: first.summary.length })
+    expect(steps[0].tokensBefore).toBeGreaterThan(30_000)
+    expect(steps[0].tokensAfter).toBeLessThan(steps[0].tokensBefore ?? 0)
+    expect(agent.takeUsage()).toMatchObject({ calls: 6 + compactions.length, unreported: 0 })
+  } finally { agent.dispose() }
 })
 
 it('moves a turn to the next Claude account when one reaches its limit, and says so when all have', async () => {

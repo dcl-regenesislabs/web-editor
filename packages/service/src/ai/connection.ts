@@ -9,7 +9,7 @@ import type { AssistantTurnOutcome } from '../../../contract/src/analytics.ts'
 import type { SessionOperations } from './operations.ts'
 import type { StepRecord, WalletSessionLog } from './session-log.ts'
 import { ProviderLimited } from './types.ts'
-import type { AgentFactory, AssistantAgent } from './types.ts'
+import type { AgentFactory, AssistantAgent, CompactionStep } from './types.ts'
 import type { WalletImages } from './thumbnail.ts'
 
 const MAX_TURN_RESULT_CHARS = 2_000_000
@@ -148,6 +148,24 @@ export function createConnection(options: {
     return result
   }
 
+  // the summary runs between steps: its time is neither the model's thinking nor the next tool's
+  function compacted(step: CompactionStep): void {
+    const live = active
+    if (live === null) return
+    const n = ++live.steps
+    const thinkMs = Math.max(0, Date.now() - step.ms - live.lastStepAt)
+    options.logger.info(`assistant step turn=${live.id} n=${n} tool=compaction think=${thinkMs}ms tool_ms=${step.ms} ok=${step.ok} ` +
+      `tokens_before=${step.tokensBefore ?? 0} tokens_after=${step.tokensAfter ?? 0}`)
+    if (live.stepLog.length < MAX_STEPS_LOGGED) {
+      live.stepLog.push({
+        n, tool: 'compaction', thinkMs, toolMs: step.ms, ok: step.ok, chars: step.summaryChars,
+        ...step.tokensBefore === undefined ? {} : { tokensBefore: step.tokensBefore },
+        ...step.tokensAfter === undefined ? {} : { tokensAfter: step.tokensAfter }
+      })
+    }
+    live.lastStepAt = Date.now()
+  }
+
   function tally(turn: ActiveTurn, tool: BrowserToolName, ok: boolean): void {
     turn.tools.toolCalls++
     if (!ok) turn.tools.failedToolCalls++
@@ -193,7 +211,7 @@ export function createConnection(options: {
         const restore = ref === null ? null : await options.memory?.load(ref) ?? null
         const created = await options.factory.create(params, call, ({ text }) => {
           if (active !== null && !active.controller.signal.aborted) send({ kind: 'event', event: { kind: 'text', turnId: active.id, text } })
-        }, restore ?? undefined, options.images)
+        }, restore ?? undefined, options.images, compacted)
         if (closed || turn.controller.signal.aborted) {
           created.dispose()
           return

@@ -11,6 +11,10 @@
     "version": "1.1.0",
     "digest": "085963a209dcedc598dbd874a2648c0a357bda4c8cfde00f1f91695eb2bd6e48"
   },
+  "camera-rig": {
+    "version": "1.0.0",
+    "digest": "866054d60b22a2f8d4fe33ee9a0e1debd74c0629ad7187a876c39518a2f82a78"
+  },
   "classic-bench": {
     "version": "1.1.0",
     "digest": "8a491fe903e6462af09fbc56ac75a6b93f2f9bd01d6aa21811b10d59c88d8276"
@@ -62,6 +66,10 @@
   "outdoor-chair": {
     "version": "1.1.0",
     "digest": "90fc9953c2c3c085854c9ba2d547208155b3ecfd5c8fdde80558dd644511ffad"
+  },
+  "pickup-item": {
+    "version": "1.0.0",
+    "digest": "cab732dbde946b39e8d35b1323997e032f615c056decdab09c72fd140af23585"
   },
   "run-progress": {
     "version": "1.4.0",
@@ -134,5 +142,9 @@
   "wooden-chair-armrests": {
     "version": "1.1.0",
     "digest": "8351b2400ca57c0120f614bc8bec703f5b680e86e2370836d56f25243663750d"
+  },
+  "work-station": {
+    "version": "1.0.0",
+    "digest": "600b964d6d66df2bfd02a432a3297dd336c9b50f2a818230f3c7bb9bd2c65921"
   }
 }
