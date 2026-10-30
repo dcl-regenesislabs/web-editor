@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "node dev-server.ts",
     "session": "node scripts/session.ts",
+    "new-wallet": "node scripts/new-wallet.ts",
     "typecheck": "tsc --noEmit",
     "image-login": "node scripts/image-login.ts"
   },

@@ -320,6 +320,76 @@ block and directory overhead when sizing the volume; logical byte limits are not
 Fixed in code: signed-fetch window 60 seconds, ticket lifetime 15 minutes, JSON body 2 MB, project
 name 100 characters, path 512 characters, 3 auth-chain links, 500 spent tickets per purge run.
 
+## Shared worlds
+
+For a creator without a NAME (issue #52, approach 5). The service holds a pool wallet that the
+owners of some NAMEs granted world-wide deployment to. It lends a signed-in wallet a zone of one
+of those worlds and signs that wallet's deployments there. The browser builds the entity and
+uploads it to the Worlds server itself; the service only reads the entity file and decides whether
+to sign its id. Code: `src/pool/`; the web side: `packages/web/src/publish/shared.ts`.
+
+| Route (signed, `dcl:editor:projects`) | |
+|---|---|
+| `GET /pool` | `{ available, worldsContent, zoneSize, maxSceneBytes, lease }` |
+| `POST /pool/lease` | `{ lease: { world, zone: { x, y, size }, maxSceneBytes, worldConfiguration, scene } }`, the same one on every call |
+| `POST /pool/sign` | `{ entity, bytes }` (the entity file as text, the scene's size) → `{ world, entityId, authChain }` |
+| `POST /pool/published` | `{ entityId }` after the upload: 200 once the scene is seen on Worlds, 202 while it is not yet |
+| `DELETE /pool/scene` | undeploys the wallet's scene and gives the zone back |
+
+Before signing, the entity must be a v3 scene of the lent world, at most 5 minutes old, with every
+parcel inside the zone, pointers equal to its parcels, the `worldConfiguration` the NAME's own
+scenes carry (world settings are shared by every scene in a world), and nothing standing on its
+parcels that is not this wallet's. Once it lands, the scene is checked against the size the
+browser declared: larger than `POOL_MAX_SCENE_BYTES`, or than declared, and it is undeployed and
+the wallet blocked. A scene moved within the zone replaces the earlier one.
+
+What bounds it, measured against production in issue #52:
+
+- **Storage is the owner's**: every NAME of one owner shares `(NAMEs + LAND + MANA/2000) × 100 MiB`.
+  A lease is refused while the owner has less free than `POOL_MAX_SCENE_BYTES`; a signature, while
+  the declared size does not fit (the scene it replaces is credited, as Worlds does). A NAME the
+  Worlds whitelist exempts (`config.decentraland.org/worlds-whitelist.json`: a fixed per-scene cap,
+  no shared total) goes in `POOL_WHITELISTED` — the pool then does not gate on the owner's free
+  space (it would otherwise self-limit to the on-chain allowance, which the exemption makes moot).
+  Confirmed against production: a whitelisted world took 100+ scenes past the owner's allowance, so
+  there `leasesPerName × POOL_MAX_SCENE_BYTES` is the only total bound.
+- **One deployer**: every guest deploys as the pool wallet, and Worlds holds at most 10 pending
+  uploads per deployer, so at most `POOL_PENDING_DEPLOYS` signatures wait for their upload at once.
+- **100 scenes per world**: bevy-explorer loads only the first page of `/scenes`. Zones go out from
+  the far corner, oldest first, which is the page it reads.
+- **Bots**: wallets are free, so new leases are capped per client address and for the whole pool
+  each hour; a lease that never got a scene goes back after `POOL_IDLE_LEASE_HOURS`; signatures are
+  capped per wallet a minute and a day; `POOL_WALLETS` and `POOL_BLOCKED_WALLETS` admit and refuse.
+  The per-wallet and per-address counters are in memory and restart with the process.
+
+State (leases, scenes, blocked wallets) is a JSON file in `POOL_STATE_DIR`: Worlds names the pool
+wallet as the deployer of every guest scene, so this file is the only record of whose each one is.
+`/admin/` shows the pool: each NAME's leases and owner storage, every lease, and blocked wallets.
+
+| Variable | Default | |
+|---|---|---|
+| `POOL_NAMES` | none: shared worlds are off | comma-separated NAMEs whose owners granted the pool wallet deployment |
+| `POOL_SIGNER_KEY` / `POOL_SIGNER_KEY_FILE` | one required with `POOL_NAMES` | the signer key as inline JSON `{ address, privateKey, publicKey }` (fits an `env_file`/`.env` deploy), or a path to that JSON (mode 0600, outside `STORAGE_DIR`) |
+| `POOL_STATE_DIR` | `STORAGE_DIR/../.pool` | where `pool.json` lives |
+| `POOL_WALLETS` | any wallet in development; required in production | comma-separated addresses, or explicit `*` |
+| `POOL_WHITELISTED` | none | NAMEs (a subset of `POOL_NAMES`) the Worlds whitelist exempts from the owner's allowance; the pool skips the free-space gate for them |
+| `POOL_BLOCKED_WALLETS` | none | comma-separated addresses refused on top of those the pool blocked |
+| `POOL_WORLDS_SERVER` | `https://worlds-content-server.decentraland.org` | must be the one the editor's host deploys to |
+| `CLIENT_IP_HEADER` | none; required in production with the pool | the header the proxy puts the client address in (`x-real-ip` behind the nginx template) |
+| `POOL_ZONE_SIZE` | 10 | parcels per side of a guest's zone, at most 50 |
+| `POOL_KEEP_CLEAR` | 30 | no zone within this many parcels of 0,0, where the NAME's own scenes are |
+| `POOL_LEASES_PER_NAME` | 100 | |
+| `POOL_MAX_SCENE_BYTES` | 52428800 | per guest scene; keep well under ~200 MB — a single request above that is cut by Cloudflare (413) before reaching Worlds |
+| `POOL_SIGNS_PER_MINUTE`, `POOL_SIGNS_PER_DAY` | 4, 60 | per wallet |
+| `POOL_LEASES_PER_ADDRESS_PER_DAY` | 3 | new leases per client address |
+| `POOL_LEASES_PER_HOUR` | 60 | new leases for the whole pool |
+| `POOL_PENDING_DEPLOYS`, `POOL_PENDING_SECONDS` | 8, 120 | signatures waiting for their upload, and how long one waits |
+| `POOL_IDLE_LEASE_HOURS` | 24 | |
+| `POOL_REQUESTS_PER_MINUTE` | 30 | all `/pool` requests per wallet |
+
+To add a NAME: its owner adds the pool wallet to the world's deployment list (world-wide, not
+per parcel), then the NAME goes in `POOL_NAMES`. The log warns at startup for a NAME that has not.
+
 ## Operations dashboard and telemetry
 
 `<BASE_PATH>/admin/` is a page for operators, styled with the editor's design tokens.

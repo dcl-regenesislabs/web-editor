@@ -45,3 +45,7 @@ skills-lock.json
 .claude/skills/*
 !.claude/skills/add-builtin-prefab
 .data/
+
+# Local pool signer key and scratch explorations (never commit)
+signer.json
+explorations/

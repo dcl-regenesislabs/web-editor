@@ -21,6 +21,7 @@ import { codexTokenSource, createCodexImageProvider } from './ai/images.ts'
 import type { AgentFactory } from './ai/types.ts'
 import { createRateLimiter, createUploadGate, envFromConfig, DEFAULT_LIMITS, walletAllowlist } from './config.ts'
 import { createQuotaStore } from './quota-store.ts'
+import { createPoolComponent } from './pool/component.ts'
 import { createFsStore } from './fs-store.ts'
 import { metricDeclarations } from './metrics.ts'
 import { createLock } from './store.ts'
@@ -116,6 +117,9 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
       logs.getLogger('assistant'), accounts))
+  const pool = await createPoolComponent({ config, logs })
+  env.pool = pool.service
+  const poolService = pool.service
   const admin = createAdminComponent({ logs }, {
     access: adminAccessFromConfig({
       teamDomain: await config.getString('CF_ACCESS_TEAM_DOMAIN'),
@@ -126,7 +130,8 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     }),
     basePath: env.basePath, version: env.version, historyUrl: telemetry.historyUrl,
     operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery, accounts,
-    allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance()
+    allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance(),
+    pool: poolService === undefined ? undefined : () => poolService.status()
   })
   const assistant = createAssistantComponent({ logs }, {
     factory, allowedOrigins: env.allowedOrigins, basePath: env.basePath,
@@ -150,5 +155,5 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
 
   // Stop WebSockets before the HTTP listener, then drain the purge job before storage; telemetry
   // stops after the assistant so the last turns' events are queued.
-  return { config, logs, metrics, store, skills, telemetry, admin, projectStorage, purgeJob, server, statusChecks, assistant }
+  return { config, logs, metrics, store, skills, telemetry, admin, projectStorage, purgeJob, pool, server, statusChecks, assistant }
 }

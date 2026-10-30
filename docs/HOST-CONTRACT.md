@@ -76,4 +76,5 @@ event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, ti
   - `GET /projects/:id/files/:hash` -> the blob (only hashes in that wallet's manifests)
   - `DELETE /projects/:id` -> soft delete (kept 30 days); `POST /projects/:id/restore`
 - `hash` is the Decentraland content hash a Worlds deployment uses (hashV1: `bafkrei…` up to 262,144 bytes, `bafybei…` above), so files are hashed once.
+  - `/pool`, `/pool/lease`, `/pool/sign`, `/pool/published`, `/pool/scene`: shared worlds for a wallet without a NAME, off unless configured ([service README](../packages/service/README.md#shared-worlds))
 - Order: content first, manifest last. Project ids match `/^[a-z0-9][a-z0-9-]{0,63}$/`.
