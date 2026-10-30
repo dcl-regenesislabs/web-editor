@@ -30,7 +30,9 @@ write in the turn; read its ai.md before wiring it.
 ## 2. Camera (F1)
 
 - A game where the whole area matters gets a **fixed camera** that frames all of it, on a phone too (a phone
-  is wider and shorter than a monitor, so frame for 1600x720). The Camera Rig prefab does this; read its guide.
+  is wider and shorter than a monitor, so frame for 1600x720). That is the built-in "camera-rig" prefab:
+  placePrefab it at the play area's centre with its scale set to the area's size, then read
+  custom/camera_rig/ai.md. Never write VirtualCamera or MainCamera code yourself.
 - Keep the play area compact enough to fit one frame: an Overcooked kitchen is about 12 x 8 m, not a parcel
   of scattered stations.
 - Look at it from the camera's point of view before you finish: view from the rig's position, and on mobile.
