@@ -12,7 +12,7 @@ import { buildDeployment, type Deployment } from './entity'
 import { PublishError } from './errors'
 import { type PoolClient, type SharedLease, createPoolClient, placeInZone } from './shared'
 import { uploadDeployment, validAuthChain } from './upload'
-import { worldRealm } from './worlds'
+import { worldLink } from './worlds'
 
 export interface PublishSource {
   host: DclEditorHostV1
@@ -146,7 +146,7 @@ export function createPublisher(source: PublishSource): Publisher {
     const published: PublishedScene = {
       world,
       entityId: deployment.entityId,
-      url: `${host.pageDir}?realm=${encodeURIComponent(worldRealm(server, world))}${position(deployment)}`,
+      url: `${worldLink(host.pageDir, server, world)}${position(deployment)}`,
       files: deployment.fileCount,
       bytes: deployment.bytes,
       at: Date.now()
