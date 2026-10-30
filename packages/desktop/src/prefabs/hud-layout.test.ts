@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { addHudItem, declareTouchButtons } from '../../runtime-modules/hudLayout'
 
-interface Touch { touchInputs: Array<{ inputAction: number; hide: boolean }>; mainAction?: number; hideJoystick: boolean }
+interface Touch { touchInputs: Array<{ inputAction: number; hide: boolean; icon?: { tex: { $case: string; texture: { src: string } } } }>; mainAction?: number; hideJoystick: boolean }
 
 const host = vi.hoisted(() => ({
   systems: [] as Array<() => void>,
@@ -99,6 +99,19 @@ it('shows the union of what every script declares', () => {
   removers.push(declareTouchButtons([1]), declareTouchButtons([2, 8]))
   tick()
   expect(hidden(host.touch.at(-1))).toEqual([0, 10, 11, 12, 13])
+})
+
+it('draws the icon a script gives a button, keeps the first one given, and accepts bare actions beside it', () => {
+  removers.push(
+    declareTouchButtons([{ action: 1, icon: 'assets/images/action-icons/pick-up.png' }, 2], { main: 1 }),
+    declareTouchButtons([{ action: 1, icon: 'assets/images/other.png' }, { action: 8 }])
+  )
+  tick()
+  const inputs = host.touch.at(-1)?.touchInputs ?? []
+  expect(hidden(host.touch.at(-1))).toEqual([0, 10, 11, 12, 13])
+  expect(inputs.find((input) => input.inputAction === 1)?.icon).toEqual({ tex: { $case: 'texture', texture: { src: 'assets/images/action-icons/pick-up.png' } } })
+  expect(inputs.filter((input) => input.icon !== undefined)).toHaveLength(1)
+  expect('icon' in (inputs.find((input) => input.inputAction === 2) ?? {})).toBe(false)
 })
 
 it('names every item for the mobile check and opens the modal the editor previews', () => {

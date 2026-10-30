@@ -1,11 +1,11 @@
 // The phone check as one fixed path, so it runs the same however the model would have walked it: play as
 // on a 1600x720 phone, measure the HUD, open every modal the shared HUD layout holds (editor::HudPreview)
-// and measure each, then apply the layout and touch-button rules in code (mobile-rules.ts).
+// and measure each, then apply the layout, HUD-coverage and touch-button rules in code (mobile-rules.ts).
 import { object } from '@dcl-editor/contract'
 import { writeCustomComponent } from '@scene/inspector'
 import { state } from '@scene/state'
 import { cmd } from '../engine/cmd'
-import { keyHintIssues, layoutIssues, touchIssues, usedActions, visibleButtons, type Canvas, type Issue, type MeasuredNode, type Rect } from './mobile-rules'
+import { keyHintIssues, layoutIssues, touchIssues, touchLayout, usedActions, visibleButtons, type Canvas, type Issue, type MeasuredNode, type Rect } from './mobile-rules'
 import { playtest, playtestPlatform } from './playtest'
 import { measuredNodes } from './ui-measure'
 import { captureView } from './view'
@@ -76,7 +76,7 @@ async function measureState(name: string, controlsShown: boolean, signal: AbortS
   const { nodes, unnamed } = nodesOf(snapshot)
   const issues = canvas === null
     ? [{ rule: 'setup', state: name, detail: 'the engine reported no UiCanvasInformation' }]
-    : [...layoutIssues(name, canvas, nodes, controlsShown), ...keyHintIssues(name, nodes)]
+    : [...layoutIssues(name, canvas, nodes, controlsShown ? touchLayout(snapshot['0']?.TouchScreenControls) : null), ...keyHintIssues(name, nodes)]
   if (name.startsWith('modal') && !nodes.some((node) => node.elementId !== undefined && !node.elementId.startsWith('hud:'))) {
     issues.push({ rule: 'M1', state: name, detail: 'nothing inside this dialog is measured: give its panel a uiTransform elementId, and make its render draw the dialog whenever it is called (open() decides when it shows)' })
   }

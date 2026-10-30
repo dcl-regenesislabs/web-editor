@@ -62,11 +62,17 @@ column that fits 1080 units does not fit 720.
 - **L7** A dialog that asks for an action is centred in the area (on a phone the interactable area, not the whole screen, so its buttons stay inside L1); a message that asks for nothing sits top-centre.
 - **L8** Nothing visible falls off either canvas; every stack fits in 720 units of height.
 
+**H — the HUD leaves the game visible (measured on the phone)** · `references/layout-check.md`
+
+- **H1** No two HUD panels overlap.
+- **H2** The HUD covers at most 25% of the phone screen (a compact game HUD is 15–20%).
+- **H3** No HUD panel sits in the screen centre (the middle third both ways), where the player and the game are.
+
 **C — controls (read from the code)** · `references/touch-controls.md`
 
 - **C1** Inventory every `InputAction` the scene reads.
 - **C2** Hide every native touch button the scene does not use.
-- **C3** Set the main action (`setMainAction`) to the scene's main verb; give kept buttons an icon that says what they do.
+- **C3** Set the main action (`setMainAction`) to the scene's main verb; give kept buttons an icon that says what they do, and never name E, F or 1–4 in text a phone shows.
 - **C4** No core action on `IA_ACTION_3`–`IA_ACTION_6` (on a phone they hide behind "+").
 - **C5** Buttons appear only while their action is possible (E near a usable thing, an item button once you hold the item).
 - **C6** Never hide the joystick unless the scene gives the player another way to move.
@@ -82,9 +88,9 @@ column that fits 1080 units does not fit 720.
 - **D5** Show the least that works; disclose the rest on demand.
 - **D6** One HUD fits both canvases; branch on `isMobile()` only where a rule needs it.
 
-**H — on a device (the creator does it)**
+**P — on a phone (the creator does it)**
 
-- **H1** The creator plays it on a phone before shipping (Preview → *Show QR Code for Mobile*, or
+- **P1** The creator plays it on a phone before shipping (Preview → *Show QR Code for Mobile*, or
   `npm run start -- --mobile`). You cannot do this step; you ask for it, every time.
 
 ## Closing message (mandatory)
@@ -94,7 +100,7 @@ in the creator's language:
 
 > Many Decentraland players come from mobile devices — try it there too! (Preview → Show QR Code for Mobile)
 
-Before it, list the rules you could not verify (any L you checked only by reading code, every D, H1),
+Before it, list the rules you could not verify (any L or H you checked only by reading code, every D, P1),
 so the creator knows what to look at on the phone. Spanish:
 
 > Muchos usuarios de Decentraland vienen de dispositivos móviles, ¡hacé una prueba ahí! (Preview → Show QR Code for Mobile)
@@ -131,12 +137,14 @@ wrappers at all. Never both: an area inside an inset renderer applies the inset 
 `ReactEcsRenderer.addUiRenderer`. The shared layout draws inside `UI_CANVAS` (`screenInset: 'interactable'`),
 stacks panels in the `left`, `right`, `top` and `bottom` slots, leaves the bottom corners to the phone's
 joystick and jump/E/F buttons, and hides the touch controls while a `modal` panel is open. The native buttons the
-scene uses are declared with `declareTouchButtons([...], { main })` from the same module (C2, C3 and C7 are then
-the layout's job; never call `TouchScreenControls` yourself). A modal's render draws the dialog whenever it is
+scene uses are declared with `declareTouchButtons([...], { main })` from the same module, each with the icon of what
+it does: `{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') }`, with `actionIcon` and the `ActionHint`
+that shows the same icon in a HUD hint from `./runtime/actionIcons` (C2, C3 and C7 are then the layout's job; never
+call `TouchScreenControls` yourself). A modal's render draws the dialog whenever it is
 called, and its panel carries a `uiTransform` `elementId`. Style panels with
 `sceneUiTheme` from `./runtime/uiTheme` and the components from `./runtime/uiComponents`. In the editor,
-`mobile_check` measures every HUD state and modal on a phone and checks L1–L5, L8, C1 and C2 in code: run it
-after every UI or input change, instead of judging a picture.
+`mobile_check` measures every HUD state and modal on a phone and checks L1–L5, L8, H1–H3, C1, C2 and C3 in code:
+run it after every UI or input change, instead of judging a picture.
 `UiButton` is 52 units tall: below L3, so give it `uiTransform={{ height: 80 }}` (96 for the primary action)
 wherever a phone player has to press it.
 

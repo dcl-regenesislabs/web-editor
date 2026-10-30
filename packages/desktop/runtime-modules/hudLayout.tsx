@@ -14,10 +14,16 @@
 // joystick and the jump/E/F buttons are there. Every item needs an explicit width and height.
 // render() returns an element and calls no hooks (it runs inside the layout); state lives in the component it returns.
 //
-// declareTouchButtons(actions, { main }) says which native touch buttons the scene uses; on phones every other
-// one is hidden (an unused button tells the player there is an action that does nothing). Prefabs and
-// scripts each declare their own and the layout shows the union. Set the touch controls only through here:
-// the layout writes TouchScreenControls itself, and restores this setup when a modal closes.
+// declareTouchButtons(buttons, { main }) says which native touch buttons the scene uses; on phones every other
+// one is hidden (an unused button tells the player there is an action that does nothing). Each entry is an
+// InputAction, or { action, icon } where icon is an image in the scene that replaces the button's generic
+// E/F/1-4 glyph: actionIcon('chop') from ./actionIcons (pick-up, drop, chop, cook, wash, throw, use, serve,
+// jump, interact, attack, talk), or your own white-on-transparent square PNG. `main` takes the large button.
+//   declareTouchButtons([{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') },
+//     { action: InputAction.IA_SECONDARY, icon: actionIcon('chop') }], { main: InputAction.IA_PRIMARY })
+// Prefabs and scripts each declare their own and the layout shows the union (the first icon given for an
+// action wins). Set the touch controls only through here: the layout writes TouchScreenControls itself, and
+// restores this setup when a modal closes.
 import ReactEcs, { ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
 import { engine, InputAction, Schemas, TouchScreenControls, type LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
@@ -51,7 +57,10 @@ interface HudItem {
   open?(): boolean
 }
 
-interface TouchDeclaration { id: number; actions: InputAction[]; main?: InputAction }
+/** A native touch button the scene uses, with the image (a path in the scene) drawn on it instead of its glyph. */
+export interface TouchButton { action: InputAction; icon?: string }
+
+interface TouchDeclaration { id: number; buttons: TouchButton[]; main?: InputAction }
 
 interface HudLayoutState {
   items: HudItem[]
@@ -92,9 +101,10 @@ export function addHudItem(slot: HudSlot, render: () => ReactEcs.JSX.Element | n
 }
 
 /** The native touch buttons this script uses; on phones the ones no script declares are hidden. */
-export function declareTouchButtons(actions: InputAction[], options: { main?: InputAction } = {}): () => void {
+export function declareTouchButtons(buttons: Array<InputAction | TouchButton>, options: { main?: InputAction } = {}): () => void {
   const state = layout()
-  const declaration: TouchDeclaration = { id: state.nextId++, actions, main: options.main }
+  const declaration: TouchDeclaration = { id: state.nextId++, main: options.main,
+    buttons: buttons.map((button) => typeof button === 'object' ? button : { action: button }) }
   state.touch.push(declaration)
   mount(state)
   return () => { state.touch = state.touch.filter((other) => other !== declaration) }
@@ -111,18 +121,26 @@ function modalOpen(item: HudItem, index: number): boolean {
 function syncTouchControls(): void {
   const state = layout()
   const hideAll = itemsIn('modal').some((item, index) => item.open !== undefined && modalOpen(item, index))
-  const used = new Set(state.touch.flatMap((declaration) => declaration.actions))
+  const buttons = state.touch.flatMap((declaration) => declaration.buttons)
+  const used = new Set(buttons.map((button) => button.action))
+  const icons = new Map<InputAction, string>()
+  for (const button of buttons) if (button.icon !== undefined && !icons.has(button.action)) icons.set(button.action, button.icon)
   const main = state.touch.find((declaration) => declaration.main !== undefined)?.main
   // nothing declared and no dialog: the explorer's defaults stand
-  const next = hideAll || used.size > 0 ? JSON.stringify({ hideAll, used: [...used].sort(), main }) : ''
+  const next = hideAll || used.size > 0 ? JSON.stringify({ hideAll, used: [...used].sort(), main, icons: [...icons].sort() }) : ''
   if (next === state.applied) return
   state.applied = next
   TouchScreenControls.createOrReplace(engine.RootEntity, {
-    touchInputs: TOUCH_BUTTONS.map((inputAction) => ({ inputAction, hide: hideAll || (used.size > 0 && !used.has(inputAction)) })),
+    touchInputs: TOUCH_BUTTONS.map((inputAction) => ({ inputAction, hide: hideAll || (used.size > 0 && !used.has(inputAction)),
+      ...iconField(icons.get(inputAction)) })),
     mainAction: main,
     hideJoystick: hideAll,
     hideCrosshair: false
   })
+}
+
+function iconField(src: string | undefined) {
+  return src === undefined ? {} : { icon: { tex: { $case: 'texture' as const, texture: { src } } } }
 }
 
 function itemsIn(slot: HudSlot): HudItem[] {

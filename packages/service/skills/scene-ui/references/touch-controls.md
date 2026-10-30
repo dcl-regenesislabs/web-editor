@@ -20,10 +20,13 @@ actions that do nothing.
 
 How the cluster fills (mobile client):
 - Priority order is fixed: JUMP, POINTER, PRIMARY, SECONDARY, ACTION_3…6. Hidden buttons drop out and the
-  rest move up. `setMainAction(x)` moves `x` to the front (into the large button).
+  rest move up. `setMainAction(x)` moves `x` to the front (into the large button); jump stays where it is.
 - The first visible action takes the large button; the next ones take an arc around it.
 - **5 or fewer visible**: all of them show, no "+". **More than 5**: three on the arc, and the rest
   behind a "+", one tap away — never put a core action there (C4).
+- The arc runs from the bottom edge (left of the large button) round to the right edge (above it). With
+  one arc button it sits midway (centre about `(1296, 479)`); with two or three they keep the three-button
+  spacing from the bottom; four (or three and "+") spread over the whole arc.
 
 Where the cluster sits on a 1600 × 720 canvas (R and B are the right and bottom insets, normally 108 and
 45; scale the rest with the canvas):
@@ -57,6 +60,8 @@ TouchScreenControls.hideCrosshair() / showCrosshair()
 It lives on the root entity, merges with what is already set, does nothing on desktop (no `isMobile()`
 guard needed), and resets when the player leaves the scene. For a custom icon per button write the
 component directly: `touchInputs: [{ inputAction, hide: false, icon: { tex: { $case: 'texture', texture: { src } } } }]`.
+The icon replaces the button's glyph, drawn about 56 units square on the button: a bold white shape on a
+transparent square PNG reads; a thin or dark one does not.
 
 To replace a native button with your own, bind your element to the action with `uiInputBinding`: while it
 is pressed the action is held exactly as the native button would hold it (movement included), and your
@@ -80,7 +85,9 @@ a bug.
 at scene start. Jump is a button like any other: a puzzle that never needs a jump hides it.
 
 **C3 — Name the main verb.** `setMainAction` puts the scene's most frequent action in the large button.
-Give each kept button an icon that says what it does — a generic "E" means nothing to a phone player.
+Give each kept button an icon that says what it does — a generic "E" means nothing to a phone player — and
+never tell a phone player to press E, F or 1–4: a hint shows the action's word and icon on a phone and keeps
+the key for desktop (`isMobile() ? 'Tap the station' : 'E: use the station'`).
 
 **C4 — Not behind "+".** `IA_ACTION_3`–`IA_ACTION_6` sit behind "+" on phones whenever more than five
 buttons are visible. Use them only for shortcuts that also exist elsewhere, or keep the visible count at
@@ -105,5 +112,10 @@ action that needs a keyboard key with no button. Desktop keeps its shortcuts as 
 
 Decentraland Studio projects declare their buttons with `declareTouchButtons` from `./runtime/hudLayout`,
 which writes `TouchScreenControls` itself and restores the declared set after a modal: call that, never the
-component. Prefabs and UI-Designer scenes may manage `TouchScreenControls` themselves (a generated
+component. Give each button its icon there, from the shipped set in `./runtime/actionIcons` (pick-up, drop,
+chop, cook, wash, throw, use, serve, jump, interact, attack, talk; the editor copies the images into
+`assets/images/action-icons/` once a script imports the module):
+`declareTouchButtons([{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') }, { action: InputAction.IA_SECONDARY, icon: actionIcon('chop') }], { main: InputAction.IA_PRIMARY })`.
+Show the same icon in the HUD hint with `ActionHint` from that module: the icon and the word on a phone, the
+key on desktop. Both headers are the API. Prefabs and UI-Designer scenes may manage `TouchScreenControls` themselves (a generated
 `src/mobile-hud.ts`, a prefab guide that says so): read that first and don't fight it.
