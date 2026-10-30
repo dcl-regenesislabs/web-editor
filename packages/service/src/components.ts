@@ -17,7 +17,7 @@ import { DISABLED_QUOTA } from './ai/quota.ts'
 import { createAssistantMemory } from './ai/memory.ts'
 import { createSessionLog, DEFAULT_SESSION_LOG_LIMITS } from './ai/session-log.ts'
 import { createUsageMeter, DEFAULT_USAGE_LIMITS } from './ai/usage.ts'
-import { ASSISTANT_MODEL, createPiFactory } from './ai/pi.ts'
+import { ASSISTANT_MODEL, createPiFactory, DEFAULT_COMPACT_AT_TOKENS, MIN_COMPACT_AT_TOKENS } from './ai/pi.ts'
 import { codexTokenSource, createCodexImageProvider } from './ai/images.ts'
 import type { AgentFactory } from './ai/types.ts'
 import { createRateLimiter, createUploadGate, envFromConfig, DEFAULT_LIMITS, walletAllowlist } from './config.ts'
@@ -124,9 +124,14 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   if (sessions !== undefined) {
     logs.getLogger('assistant').warn(`ASSISTANT_SESSION_LOG is on: assistant sessions are kept in plaintext for ${sessionDays} days and readable at /admin/`)
   }
+  const compactAt = (await config.getNumber('ASSISTANT_COMPACT_AT_TOKENS')) ?? DEFAULT_COMPACT_AT_TOKENS
+  // below this the system prompt and one file read would trigger a summary on nearly every call
+  if (!Number.isSafeInteger(compactAt) || (compactAt !== 0 && compactAt < MIN_COMPACT_AT_TOKENS)) {
+    throw new Error(`ASSISTANT_COMPACT_AT_TOKENS must be 0 or a whole number of at least ${MIN_COMPACT_AT_TOKENS}`)
+  }
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
-      logs.getLogger('assistant'), accounts))
+      logs.getLogger('assistant'), accounts, compactAt))
   const pool = await createPoolComponent({ config, logs })
   env.pool = pool.service
   const poolService = pool.service
