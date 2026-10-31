@@ -7,6 +7,7 @@ import { notify } from '@scene/reactive'
 import { saveCompositeDirect, setCompositeWriter, isLocalScene } from '@scene/inspector'
 import { refreshAuthoredIds } from '../panels/authored-ids'
 import { dataLayerSaveFile, probeDataLayer, dataLayerAvailable } from '../engine/datalayer'
+import { hostedRoute } from '../engine/hosted'
 import { regenerateSpawnables } from '../prefabs/generate'
 import { regenerateGameConfig } from '../gameconfig/generate'
 import { noteCompositeWritten, noteSceneStale } from '../features/editor/scene-health'
@@ -42,12 +43,32 @@ export function autoSaveEnabled(): boolean {
   return dataLayerAvailable() === true && isLocalScene()
 }
 
+// The project the editor's scene state was loaded for. Hosted, one page opens
+// project after project and the data layer writes into whichever is open when the
+// write lands, so a composite built from one scene must never reach another.
+// Null on desktop (one project per page) and between hosted projects.
+let owner: string | null = null
+
+export function bindSavesTo(project: string | null): void {
+  owner = project
+}
+
+// A save still owed to a project that is closing (route already null) goes through:
+// the data layer only lets go of it after that save.
+export function savesBelongToOpenProject(): boolean {
+  return hostedRoute.project === null || hostedRoute.project === owner
+}
+
 export async function initAutoSave(): Promise<void> {
   const ok = await probeDataLayer()
   if (ok) {
     // all composite saves (auto + manual) go to disk through the data layer;
     // when unavailable, the engine writer (directory picker) stays in place
     setCompositeWriter(async (composite) => {
+      if (!savesBelongToOpenProject()) {
+        log.warn(`composite of ${owner ?? 'a closed scene'} not written: ${hostedRoute.project ?? 'another scene'} is open`)
+        throw new Error('another scene is open')
+      }
       await dataLayerSaveFile(COMPOSITE_PATH, composite)
       return COMPOSITE_PATH
     })

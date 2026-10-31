@@ -4,7 +4,7 @@
 // engine — so the editor owns the boot page.
 import { getHost, hostedRoute, isHosted } from '../../engine/hosted'
 import { flushPendingSave } from '../../core/autosave'
-import { reattachScene } from '../../boot/boot'
+import { endSession, reattachScene } from '../../boot/boot'
 
 // Leave the current scene for the scene list (hosted: the HUD's Create page). Stops the project's dev server (and
 // its auth-server child) first via the shell so it doesn't linger, then
@@ -17,6 +17,7 @@ export function backToProjects(): void {
     void flushPendingSave()
       .then(() => shell?.closeProject?.())
       .finally(() => {
+        endSession()
         hostedRoute.project = null
         host.setMode('off')
         if (host.openCreatePage !== undefined) host.openCreatePage()
