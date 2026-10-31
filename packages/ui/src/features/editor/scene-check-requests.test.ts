@@ -3,7 +3,7 @@ import { BUILTIN_SCENE_CHECKS } from './scene-check-rules'
 import { REQUEST_CHECK_IDS, REQUEST_SCENE_CHECKS } from './scene-check-requests'
 import { check, context, entityScripts, scriptRow } from './scene-check-fixtures'
 
-// requestUse as the assistant wrote it in the overcooked run (kitchenClient.ts).
+// requestUse as the assistant once wrote it (kitchenClient.ts).
 const KITCHEN_CLIENT = `import { game } from './runtime/game'
 import { msg } from './i18n'
 
@@ -34,7 +34,7 @@ it('registers with the shared registry', () => {
 })
 
 describe('a refused request the script drops', () => {
-  it('flags the overcooked requestUse, even in a helper no entity carries', () => {
+  it('flags a dropped requestUse, even in a helper no entity carries', () => {
     expect(run(context({ scripts: { [CLIENT]: KITCHEN_CLIENT } }))).toEqual([
       {
         id: 'swallowed-request-error',

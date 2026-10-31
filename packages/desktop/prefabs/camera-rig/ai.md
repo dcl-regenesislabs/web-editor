@@ -16,7 +16,7 @@ second copy is custom/camera_rig_2/.
 ## When to use
 
 Any game played on a board, arena or kitchen the player should see whole:
-Overcooked-style co-op, party games, top-down shooters, puzzle rooms, a
+co-op cooking, party games, top-down shooters, puzzle rooms, a
 mini-golf hole. The default third-person camera trails the avatar and hides
 most of such a play area; place one Camera Rig over it instead of writing
 VirtualCamera code.
@@ -34,7 +34,7 @@ The rig's own Transform is the setup — no code, no names to wire:
   side, tell them to turn the rig with the rotate gizmo.
 
 Params, set in the placePrefab request:
-- mode: 'isometric' (default; angled, the Overcooked look) | 'top-down'
+- mode: 'isometric' (default; angled, the co-op cooking look) | 'top-down'
   (straight down, a board-game view) | 'follow' (the same fixed angle, but
   the camera tracks the player, for areas bigger than one screen).
 - activeWhen: 'inside this area' (default) | 'always' (the whole scene, as

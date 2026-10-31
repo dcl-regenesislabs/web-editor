@@ -1,12 +1,12 @@
 ---
 name: game-feel
-description: "Make a game feel like its genre from the first build: the camera, the controls and their verbs, what the player holds, the immediate feedback on every action, the effects, the look of the HUD and the first minute of play. Use whenever you build a game or a game mechanic, and above all when the creator names a genre or a known game (\"like Overcooked\", \"a kart race\", \"a tower defense\") — the genre decides these things before any code. For the HUD's layout rules see scene-ui; for sounds see game-sounds; for particle payloads see particle-system."
+description: "Make a game feel like its genre from the first build: the camera, the controls and their verbs, what the player holds, the immediate feedback on every action, the effects, the look of the HUD and the first minute of play. Use whenever you build a game or a game mechanic, and above all when the creator names a genre or a known game (\"a co-op cooking game\", \"a kart race\", \"a tower defense\") — the genre decides these things before any code. For the HUD's layout rules see scene-ui; for sounds see game-sounds; for particle payloads see particle-system."
 ---
 
 # Game feel — what makes it play like the game they meant
 
 A game that compiles, passes its checks and still plays badly fails on what this skill covers. Creators
-rarely ask for these things by name: "like Overcooked" already says top-down camera, items carried in the
+rarely ask for these things by name: "a co-op cooking game" already says top-down camera, items carried in the
 hands, chop by holding a button, orders as small cards. Decide them yourself, before the first script, and
 write them in the plan or, when you build without one, in the first line of the reply.
 
@@ -16,10 +16,10 @@ Name the genre the request implies and what defines it. Answer each row before b
 
 | Decision | Ask yourself | Examples |
 |---|---|---|
-| **Camera** (F1) | Must the player see the whole play area at once? | Overcooked, party games, puzzles, tower defense: fixed top-down or isometric. Racing, platformers, exploration: the default third person. |
+| **Camera** (F1) | Must the player see the whole play area at once? | Co-op cooking, party games, puzzles, tower defense: fixed top-down or isometric. Racing, platformers, exploration: the default third person. |
 | **Verbs** (F2) | What does the player do, in one word each? | Pick up, drop, chop, cook, serve, throw, jump, shoot. At most three on buttons. |
 | **Held things** (F3) | Does the player carry something? | An ingredient, a ball, a key, a box: it is in the hands and every player sees it. |
-| **Pace** (F4) | Rounds, a clock, waves, endless? | Overcooked: 2–3 minute shifts with stars. |
+| **Pace** (F4) | Rounds, a clock, waves, endless? | Co-op cooking: 2–3 minute shifts with stars. |
 | **Failure** (F5) | What goes wrong, and how does the player see it coming? | Burning food smokes before it burns; an order's bar turns red before it expires. |
 | **First minute** (F6) | How does a new player learn the loop? | The first order is the easiest, and the next step is pointed at in the world. |
 
@@ -33,7 +33,7 @@ write in the turn; read its ai.md before wiring it.
   is wider and shorter than a monitor, so frame for 1600x720). That is the built-in "camera-rig" prefab:
   placePrefab it at the play area's centre with its scale set to the area's size, then read
   custom/camera_rig/ai.md. Never write VirtualCamera or MainCamera code yourself.
-- Keep the play area compact enough to fit one frame: an Overcooked kitchen is about 12 x 8 m, not a parcel
+- Keep the play area compact enough to fit one frame: a co-op kitchen is about 12 x 8 m, not a parcel
   of scattered stations.
 - Look at it from the camera's point of view before you finish: view from the rig's position, and on mobile.
 

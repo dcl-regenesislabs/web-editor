@@ -13,11 +13,15 @@
     "multiplayer"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "changelog": [
     {
       "version": "1.0.0",
       "notes": "Initial release: put down and take back one carried item, hold-to-work and timed modes that turn one kind into another with a progress bar, combining two kinds, and station events a script reacts to by the station's Name."
+    },
+    {
+      "version": "1.0.1",
+      "notes": "The AI guide names genres in its examples, not a specific game."
     }
   ],
   "origin": {
