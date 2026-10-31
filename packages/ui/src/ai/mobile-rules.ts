@@ -85,7 +85,7 @@ function nativeControls(touch: TouchLayout): Array<{ id: string; rect: Rect; tou
 
 // A compact game HUD (score, timer, a hint) takes 15–20% of a phone screen; the shared layout's four slots
 // filled with one compact panel each come to about 15%. 25% leaves that room and still fails a HUD that hides
-// the game, as the Overcooked score box did.
+// the game, as a test game's score box did.
 export const HUD_COVERAGE_BUDGET = 0.25
 // the share of the screen centre (its middle third both ways: the avatar, the crosshair, what the player acts on)
 // one HUD item may cover: a status panel may clip its edge, a score box may not sit in it

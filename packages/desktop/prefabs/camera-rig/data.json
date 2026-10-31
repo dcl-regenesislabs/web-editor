@@ -9,11 +9,15 @@
     "isometric",
     "view"
   ],
-  "version": "1.0.0",
+  "version": "1.0.1",
   "changelog": [
     {
       "version": "1.0.0",
       "notes": "Initial release: a top-down, isometric or follow camera that takes over while a player is inside its area (or all the time), fits the whole area on desktop and phone screens, and hands the default camera back on the way out."
+    },
+    {
+      "version": "1.0.1",
+      "notes": "The AI guide names genres in its examples, not a specific game."
     }
   ],
   "origin": {

@@ -113,7 +113,7 @@ describe('HUD coverage', () => {
     expect(issues[0].detail).toMatch(/Shrink hud:right:0 to 340x\d+ or less/)
   })
 
-  it('fails the Overcooked score box over the screen centre, and says how to clear it', () => {
+  it('fails a score box over the screen centre, and says how to clear it', () => {
     const issues = layoutIssues('hud', PHONE, [{ entity: 1, elementId: 'hud:left:0', rect: [456, 132, 340, 420] }], none)
     expect(issues.map((issue) => issue.rule)).toEqual(['H3-centre'])
     expect(issues[0].detail).toContain('at most 340x108')
@@ -130,7 +130,7 @@ describe('keyHintIssues', () => {
   const keyed = (text: string) => keyHintIssues('hud', [{ entity: 1, elementId: 'hud-help', rect: [700, 300, 300, 40], text, fontSize: 18 }])
   const flagged = (text: string) => keyed(text).map((issue) => issue.rule)
 
-  it('flags the Overcooked hints, which name E and F on a phone', () => {
+  it('flags hints that name E and F on a phone', () => {
     expect(flagged('E / tocar: usar estación')).toEqual(['C3-key-letter'])
     expect(flagged('E: Coger tomate / F: Cortar')).toEqual(['C3-key-letter'])
     expect(keyed('E / tocar: usar estación')[0].detail).toContain('isMobile()')

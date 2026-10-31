@@ -147,7 +147,7 @@ it('summarizes the start of a long turn between its tool calls, keeping the requ
   const call = async (tool: string) => tool === 'build' ? `Build failed: Cannot find name 'Door'. ${'b'.repeat(40_000)}` : 'r'.repeat(40_000)
   const steps: CompactionStep[] = []
   const factory = await createPiFactory(await authPath(), 'test', 'sk-ant-oat-synthetic-test-token', undefined, undefined, undefined, 30_000)
-  const params = { provider: 'claude' as const, model: 'test', text: 'Build an Overcooked-like kitchen game' }
+  const params = { provider: 'claude' as const, model: 'test', text: 'Build a co-op kitchen game' }
   const agent = await factory.create(params, call, () => {}, undefined, undefined, (step) => steps.push(step))
   try {
     await agent.prompt(params)
@@ -160,7 +160,7 @@ it('summarizes the start of a long turn between its tool calls, keeping the requ
     expect(entries.findIndex((entry) => entry.type === 'compaction')).toBeLessThan(last)
     // one structured summary per compaction, with the start of the turn folded in and the editor's focus
     expect(summaries).toHaveLength(compactions.length)
-    expect(summaries[0]).toContain('[User]: \n\nBuild an Overcooked-like kitchen game')
+    expect(summaries[0]).toContain('[User]: \n\nBuild a co-op kitchen game')
     expect(summaries[0]).toContain('## Constraints & Preferences')
     expect(summaries[0]).toContain('Additional focus: This is a Decentraland SDK7 scene')
     const [first] = compactions

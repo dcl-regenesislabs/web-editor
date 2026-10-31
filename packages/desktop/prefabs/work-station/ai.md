@@ -59,7 +59,7 @@ the module header there: `onStation(name, fn)` for put/take/combine/done events,
 
 ## Example
 
-"Overcooked-style: chop tomatoes and serve them for points". Place:
+"A co-op cooking game: chop tomatoes and serve them for points". Place:
 Pickup Item "Tomato Crate" (`kind` "Tomato", `supply` "endless"); Pickup Item
 "Chopped Tomato Look" (`kind` "Chopped Tomato", `supply` "look only"); Work
 Station "Chopping Board" (`mode` "hold to work", `turns` "Tomato > Chopped

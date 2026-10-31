@@ -11,7 +11,7 @@ import { gameView, parseProbe, type ProbeAnswer } from './game-probe'
 
 const WAIT_FOR_TEXT_MS = 15_000
 const PROBE = 'editor::GameProbe'
-// The editor's write reaches the scene's tick 3–6 s later in the web editor (measured on an Overcooked run, where
+// The editor's write reaches the scene's tick 3–6 s later in the web editor (measured on a test run, where
 // every answer arrived after a 1.5 s wait had given up). A scene that never answers (no game module, or a runtime
 // copy from before the probe) costs this once per run, then only a short look; one that answered once is waited
 // for in full every time.
