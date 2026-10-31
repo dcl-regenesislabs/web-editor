@@ -91,10 +91,10 @@ async function leaveProject(): Promise<void> {
   open = null
 }
 
-const delivery: Snapshot = {
-  '512': { [NAME]: { value: 'Depot' }, [SCRIPT]: { value: [{ path: 'src/scripts/DeliveryGame.ts', priority: 0, layout: '{}' }] } }
+const first: Snapshot = {
+  '512': { [NAME]: { value: 'Crate' }, [SCRIPT]: { value: [{ path: 'src/scripts/FirstGame.ts', priority: 0, layout: '{}' }] } }
 }
-const obby: Snapshot = { '512': { [NAME]: { value: 'Obby start' } }, '513': { [NAME]: { value: 'Platform' } } }
+const second: Snapshot = { '512': { [NAME]: { value: 'Second start' } }, '513': { [NAME]: { value: 'Platform' } } }
 
 describe('switching scenes in one hosted page', () => {
   beforeEach(() => {
@@ -113,37 +113,37 @@ describe('switching scenes in one hosted page', () => {
   })
 
   it('saves only the new scene’s entities into the new scene', async () => {
-    await openProject('delivery')
-    loadScene('delivery', delivery)
+    await openProject('first')
+    loadScene('first', first)
     markDirty()
     expect((await flushPendingSave()).ok).toBe(true)
-    expect(disk.get('delivery')?.get(COMPOSITE)).toContain('DeliveryGame.ts')
+    expect(disk.get('first')?.get(COMPOSITE)).toContain('FirstGame.ts')
     await leaveProject()
 
-    await openProject('obby')
-    loadScene('obby', obby)
+    await openProject('second')
+    loadScene('second', second)
     markDirty()
     expect((await flushPendingSave()).ok).toBe(true)
-    const written = disk.get('obby')?.get(COMPOSITE) ?? ''
-    expect(written).toContain('Obby start')
-    expect(written).not.toContain('DeliveryGame.ts')
-    expect(written).not.toContain('Depot')
+    const written = disk.get('second')?.get(COMPOSITE) ?? ''
+    expect(written).toContain('Second start')
+    expect(written).not.toContain('FirstGame.ts')
+    expect(written).not.toContain('Crate')
   })
 
   it('writes nothing of the last scene into the next one before the next one boots', async () => {
-    await openProject('delivery')
-    loadScene('delivery', delivery)
+    await openProject('first')
+    loadScene('first', first)
     markDirty()
     await flushPendingSave()
     await leaveProject()
 
     // the Create page opened the next scene: the store points at it, the editor has not booted yet
-    hostedRoute.project = 'obby'
-    open = 'obby'
+    hostedRoute.project = 'second'
+    open = 'second'
     expect(state.snapshot).toEqual({})
-    loadScene('delivery', delivery)
+    loadScene('first', first)
     markDirty()
     await flushPendingSave()
-    expect(disk.get('obby')).toBeUndefined()
+    expect(disk.get('second')).toBeUndefined()
   })
 })
