@@ -8,6 +8,7 @@ const write = vi.fn<() => Promise<void>>(() => Promise.resolve())
 
 vi.mock('@scene/state', () => ({ state: { frozen: true, playEditWarn: false } }))
 vi.mock('@scene/reactive', () => ({ notify: () => {} }))
+vi.mock('../engine/hosted', () => ({ hostedRoute: { project: null } }))
 vi.mock('@scene/inspector', () => ({
   saveCompositeDirect: () => write(),
   setCompositeWriter: () => {},
