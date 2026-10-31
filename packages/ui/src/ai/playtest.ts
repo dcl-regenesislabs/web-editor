@@ -11,9 +11,11 @@ import { gameView, parseProbe, type ProbeAnswer } from './game-probe'
 
 const WAIT_FOR_TEXT_MS = 15_000
 const PROBE = 'editor::GameProbe'
-// a game scene answers on its next frame; one that never answers (no game module, or a runtime copy
-// from before the probe) costs this once per run, then only a short look
-const PROBE_WAIT_MS = 1500
+// The editor's write reaches the scene's tick 3–6 s later in the web editor (measured on an Overcooked run, where
+// every answer arrived after a 1.5 s wait had given up). A scene that never answers (no game module, or a runtime
+// copy from before the probe) costs this once per run, then only a short look; one that answered once is waited
+// for in full every time.
+const PROBE_WAIT_MS = 8000
 const SILENT_PROBE_WAIT_MS = 150
 const KEYS: Record<string, { key: string; code: string; keyCode: number }> = {
   E: { key: 'e', code: 'KeyE', keyCode: 69 }, F: { key: 'f', code: 'KeyF', keyCode: 70 }
@@ -45,6 +47,7 @@ async function usePlatform(next: 'desktop' | 'mobile'): Promise<void> {
 let probeSeq = 1 + Math.floor(Math.random() * 1_000_000)
 let lastGame: ProbeAnswer | null = null
 let gameSilent = false
+let gameAnswered = false
 
 async function probeGame(signal: AbortSignal): Promise<ProbeAnswer | null> {
   if (state.frozen) return null
@@ -55,10 +58,11 @@ async function probeGame(signal: AbortSignal): Promise<ProbeAnswer | null> {
     const answer = parseProbe(await cmd.sceneLogs(100), seq)
     if (answer !== null) {
       gameSilent = false
+      gameAnswered = true
       return answer
     }
     if (Date.now() > until) {
-      gameSilent = true
+      gameSilent = !gameAnswered
       return null
     }
     await wait(50, signal)
@@ -192,6 +196,7 @@ function playerAction(request: Record<string, unknown>, signal: AbortSignal): Pl
 }
 
 const NO_GAME = 'No game state: the scene did not answer the probe. It does not use the game module, or its runtime copy predates the probe (reopen the project to refresh it).'
+const LATE_GAME = 'No game state this time: the game answered earlier in this run but not within 8 s now, so this result says nothing about what changed. Run status to read it again.'
 
 async function status(signal: AbortSignal, before: ProbeAnswer | null, since: string): Promise<unknown> {
   const answer = await probeGame(signal)
@@ -203,7 +208,7 @@ async function status(signal: AbortSignal, before: ProbeAnswer | null, since: st
     platform,
     position: playerPosition(position),
     hud,
-    ...(state.frozen ? {} : { game: answer === null ? NO_GAME : gameView(answer, before, since) }),
+    ...(state.frozen ? {} : { game: answer === null ? (gameAnswered ? LATE_GAME : NO_GAME) : gameView(answer, before, since) }),
     errors: errorLines(logs).slice(-20),
     serverErrors: hostV1()?.previewServerLogs?.(0).filter(isServerError).slice(-20).map((line) => line.msg) ?? []
   }
@@ -217,6 +222,7 @@ export async function playtest(request: Record<string, unknown>, signal: AbortSi
   if (action === 'start' || action === 'stop') {
     lastGame = null
     gameSilent = false
+    gameAnswered = false
   }
   if (action === 'start') {
     if (request.platform !== undefined && request.platform !== 'desktop' && request.platform !== 'mobile') throw new Error('platform is desktop or mobile.')
