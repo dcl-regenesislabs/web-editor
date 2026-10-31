@@ -11,8 +11,13 @@ const mock = vi.hoisted(() => ({
   // what game.ts would answer the next probe with; null is a scene without the game module
   game: null as Record<string, unknown> | null,
   answers: [] as string[],
+  // how long the scene takes to see the probe; the web editor measured 3–6 s
+  lateMs: 0,
   probe: vi.fn(async (_entity: string, _name: string, value: { seq: number }) => {
-    if (mock.game !== null) mock.answers.push(`[2.0] Log: [studio] game-probe ${value.seq} ${JSON.stringify(mock.game)}`)
+    if (mock.game === null) return
+    const line = `[2.0] Log: [studio] game-probe ${value.seq} ${JSON.stringify(mock.game)}`
+    if (mock.lateMs === 0) mock.answers.push(line)
+    else setTimeout(() => mock.answers.push(line), mock.lateMs)
   })
 }))
 vi.mock('@scene/state', () => ({ state: mock.state }))
@@ -35,6 +40,7 @@ beforeEach(async () => {
   mock.serverLogs = []
   mock.game = answer({ round: { id: 'w-1', number: 1, seed: 5, phase: 0 }, score: 0 })
   mock.answers = []
+  mock.lateMs = 0
   document.body.innerHTML = '<canvas tabindex="0"></canvas>'
   await playtest({ action: 'stop' }, new AbortController().signal) // a fresh run: no state remembered
   mock.state.frozen = false
@@ -197,5 +203,24 @@ describe('the game state a playtest result carries', () => {
     await vi.runAllTimersAsync()
     await again
     expect(Date.now() - started).toBeLessThan(1000)
+  })
+
+  it('waits seconds for a game that answers late, and keeps waiting once it has answered', async () => {
+    vi.useFakeTimers()
+    mock.game = answer({ score: 1 })
+    mock.lateMs = 5000
+    const first = playtest({ action: 'status' }, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    expect(await first).toMatchObject({ game: { state: { score: 1 } } })
+
+    // a later probe it misses says it was late, and the one after still waits in full
+    mock.game = null
+    const missed = playtest({ action: 'status' }, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    expect(await missed).toMatchObject({ game: expect.stringContaining('answered earlier in this run') })
+    mock.game = answer({ score: 1 })
+    const again = playtest({ action: 'status' }, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    expect(await again).toMatchObject({ game: { state: { score: 1 } } })
   })
 })
