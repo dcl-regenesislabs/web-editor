@@ -1,6 +1,6 @@
 # Checking the layout
 
-Rules: **L1–L8, H1–H3**. The point: a layout bug found by measuring costs a minute; found on a phone it costs a
+Rules: **L1–L8, H1–H4, W1**. The point: a layout bug found by measuring costs a minute; found on a phone it costs a
 build, a QR scan and a play-through. Measure first, then send the creator to the phone for what only a
 hand can judge.
 
@@ -56,27 +56,32 @@ Let `A` be the interactable area on mobile and the screen inset area on desktop,
 |---|---|
 | **L1** | a `pointer` node's rect is not fully inside `A` |
 | **L2** | a `pointer` node, or a node with a background or text that does not cover the whole canvas, intersects a visible native control's rect (desktop has none) |
-| **L3** | a `pointer` node is shorter than 80 on its short side (the main action than 96), or two `pointer` nodes are closer than 16 |
-| **L4** | a text node's `fontSize` < 24 on mobile (< 20 if marked secondary), or its text is clipped |
+| **L3** | a `pointer` node is shorter than 80 on its short side on mobile (48 on desktop; a window's main action than 96), or two `pointer` nodes are closer than 16 |
+| **L4** | a text node's `fontSize` < 20 on mobile (< 16 on desktop), or its text is clipped. The sizes to aim for are higher: the table in `SKILL.md` |
 | **L5** | a `pointer` node is covered (intersects) by a node with a higher `order` that also has `pointer` and is not its descendant |
 | **L6** | a node of `kind: "area"` has an explicit width or height in its `uiTransform` |
 | **L7** | a dialog (a node holding ≥ 1 button and a backdrop) is off the centre of `A` by more than 5% of the canvas; a toast without buttons is not in the top third |
 | **L8** | a visible node's rect leaves the canvas, or a column's content height exceeds the area's height |
 
 The H rules measure the HUD panels (in Decentraland Studio projects, the `hud:left|right|top|bottom:<n>` boxes
-`addHudItem` draws) on the mobile canvas, in the HUD state only: a dialog is meant to cover the game.
+`addHudItem` draws) on the mobile canvas, in the HUD state only: the screen during play, with every window
+closed and the touch buttons the scene declares on screen. A window is meant to cover the game while it is open.
 
 | Rule | Fails when |
 |---|---|
 | **H1** | two HUD panels intersect |
 | **H2** | the HUD panels together (overlaps counted once) cover more than **25%** of the canvas |
 | **H3** | one HUD panel covers more than **15%** of the screen centre, the middle third both ways (`[533, 240, 533, 240]` on 1600 × 720) |
+| **H4** | a HUD panel intersects a touch button the scene declares (reported as L2), measured mid-game: lists at their longest |
+| **W1** | in the HUD state a window is still drawn (a `modal` with no `open()`), or a node that takes presses covers more than half the screen |
 
 Why these numbers: a compact game HUD — a score, a timer, a hint — takes 15–20% of a phone screen, and one compact
 panel in each of the four slots comes to about 15%; 25% leaves room for that and still fails a HUD that hides the
 game. The centre is where the avatar, the crosshair and what the player acts on are. On a phone the left column
 starts at x = 456, right of the chat column, so a left panel taller than about 108 (ending below y = 240) reaches
-into the centre: keep left panels short, or use the right column, which never does. Fix H2 by showing less
+into the centre: keep left panels short, or use the right column, which never does. On a phone the right
+column ends above the action buttons (y ≈ 394 with four or more buttons, 439 with two or three, 519 with one):
+`hudSpace('right')` from `./runtime/hudLayout` is its height, so size a growing list to it. Fix H2 by showing less
 (D5): one line of score instead of a table, detail in a modal the player opens.
 
 Report each failure with the rule, the node and the numbers: `L3 node 512 (Use button): 96×64, short side 64 < 80`.

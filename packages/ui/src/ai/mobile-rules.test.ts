@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ALL_CONTROLS, actionButtons, keyHintIssues, layoutIssues, touchIssues, touchLayout, unionArea, usedActions, visibleButtons,
+  ALL_CONTROLS, actionButtons, keyHintIssues, layoutIssues, touchIssues, touchLayout, unionArea, usedActions, visibleButtons, windowIssues,
   type Canvas, type MeasuredNode, type TouchLayout
 } from './mobile-rules'
 
@@ -22,7 +22,7 @@ describe('layoutIssues', () => {
   })
 
   it('ignores the touch controls while a modal hides them', () => {
-    expect(rules([{ entity: 1, elementId: 'card', rect: [1250, 420, 200, 200], text: 'Close', fontSize: 18 }], null)).toEqual([])
+    expect(rules([{ entity: 1, elementId: 'card', rect: [1250, 420, 200, 200], text: 'Close', fontSize: 20 }], null)).toEqual([])
   })
 
   it('checks touch targets, text size and clipping', () => {
@@ -35,9 +35,9 @@ describe('layoutIssues', () => {
 
   it('flags a pressable covered by a later pressable that is not its child', () => {
     expect(rules([
-      { entity: 1, parent: 0, elementId: 'under', order: 1, rect: [700, 300, 100, 60], pointer: ['pointer_events'] },
-      { entity: 2, parent: 0, elementId: 'over', order: 2, rect: [720, 310, 100, 60], pointer: ['pointer_events'] },
-      { entity: 3, parent: 2, elementId: 'label', order: 3, rect: [730, 320, 60, 50], pointer: ['pointer_events'] }
+      { entity: 1, parent: 0, elementId: 'under', order: 1, rect: [700, 300, 100, 80], pointer: ['pointer_events'] },
+      { entity: 2, parent: 0, elementId: 'over', order: 2, rect: [720, 310, 100, 80], pointer: ['pointer_events'] },
+      { entity: 3, parent: 2, elementId: 'label', order: 3, rect: [730, 320, 80, 80], pointer: ['pointer_events'] }
     ])).toEqual(['L5', 'L5'])
   })
 
@@ -47,6 +47,49 @@ describe('layoutIssues', () => {
       { entity: 2, elementId: 'hud:right:0', rect: [1050, 52, 300, 100] },
       { entity: 3, elementId: 'hud:modals:2', rect: [0, 0, 1, 1] }
     ])).toEqual(['H1'])
+  })
+})
+
+describe('the phone size floors', () => {
+  it('fails a press under 80 and text under 20, the phone floors of uiSizes', () => {
+    expect(rules([
+      { entity: 1, elementId: 'buy', rect: [700, 300, 200, 80], pointer: ['pointer_events'] },
+      { entity: 2, elementId: 'sell', rect: [700, 400, 200, 64], pointer: ['pointer_events'] },
+      { entity: 3, elementId: 'price', rect: [950, 300, 200, 30], text: '12 coins', fontSize: 20 },
+      { entity: 4, elementId: 'fine', rect: [950, 400, 200, 30], text: 'fine print', fontSize: 18 }
+    ], null)).toEqual(['L3', 'L4'])
+  })
+
+  it('measures a press in the scene units on a smaller preview canvas', () => {
+    const preview: Canvas = { width: 1460, height: 657, interactable: { left: 398, top: 29, right: 99, bottom: 41 } }
+    const button = (height: number): MeasuredNode => ({ entity: 1, elementId: 'ok', rect: [700, 300, 200, height], pointer: ['pointer_events'] })
+    expect(layoutIssues('modal 0', preview, [button(73)], null)).toEqual([])
+    const small = layoutIssues('modal 0', preview, [button(60)], null)
+    expect(small.map((issue) => issue.rule)).toEqual(['L3'])
+    expect(small[0].detail).toContain('219x66')
+  })
+})
+
+describe('windows', () => {
+  it('fails a modal still drawn while the game plays with every window closed', () => {
+    const issues = layoutIssues('hud', PHONE, [{ entity: 9, elementId: 'hud:modal:0', rect: [0, 0, 1600, 720], pointer: ['pointer_filter'] }], { visible: [], joystick: true })
+    expect(issues.map((issue) => issue.rule)).toEqual(['W1-window-open'])
+    expect(issues[0].detail).toContain('open()')
+  })
+
+  it('fails a custom layer that takes presses over most of the screen during play', () => {
+    const backdrop: MeasuredNode = { entity: 3, elementId: 'shop-backdrop', rect: [436, 32, 1056, 643], pointer: ['pointer_filter'] }
+    expect(windowIssues('hud', PHONE, [backdrop]).map((issue) => issue.rule)).toEqual(['W1-window-open'])
+    expect(windowIssues('hud', PHONE, [{ ...backdrop, pointer: undefined }])).toEqual([])
+  })
+
+  it('lets an open window fill the interactable area and dim the whole screen', () => {
+    expect(rules([
+      { entity: 9, elementId: 'hud:modal:0', rect: [0, 0, 1600, 720], pointer: ['pointer_filter'] },
+      { entity: 10, parent: 9, elementId: 'shop', rect: [436, 32, 1056, 643], pointer: ['pointer_filter'] },
+      { entity: 11, parent: 10, elementId: 'shop-choice-0', rect: [448, 124, 512, 96], pointer: ['pointer_events'] },
+      { entity: 12, parent: 10, elementId: 'shop-title', rect: [448, 44, 900, 80], text: 'Shop', fontSize: 32 }
+    ], null)).toEqual([])
   })
 })
 
@@ -72,6 +115,14 @@ describe('the phone controls', () => {
     expect(issues.map((issue) => issue.rule)).toEqual(['L2'])
     expect(issues[0].detail).toContain('"+" button')
     expect(rules([score], { visible: ['IA_PRIMARY', 'IA_SECONDARY'], joystick: true })).toEqual([])
+  })
+
+  it('tells a HUD item on the action buttons where the HUD has to end', () => {
+    const orders: MeasuredNode = { entity: 1, elementId: 'hud:right:0', rect: [1172, 52, 300, 416] }
+    const issues = layoutIssues('hud', PHONE, [orders], { visible: ['IA_PRIMARY', 'IA_SECONDARY', 'IA_JUMP'], main: 'IA_PRIMARY', joystick: true })
+    expect(issues.map((issue) => issue.rule)).toEqual(['L2'])
+    expect(issues[0].detail).toContain('end it above y=439')
+    expect(issues[0].detail).toContain("hudSpace('right')")
   })
 
   it('drops the joystick and its touch zone when the scene hides the joystick', () => {
@@ -118,6 +169,7 @@ describe('HUD coverage', () => {
     expect(issues.map((issue) => issue.rule)).toEqual(['H3-centre'])
     expect(issues[0].detail).toContain('at most 340x108')
     expect(issues[0].detail).toContain("'right' column")
+    expect(issues[0].detail).toContain("hudSpace('right')")
   })
 
   it('lets a status panel clip the centre edge, and a dialog cover the screen', () => {

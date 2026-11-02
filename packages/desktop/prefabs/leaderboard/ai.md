@@ -55,7 +55,7 @@ Params of the prefab's script — set them in the placePrefab request:
   reads the same key for its winners line — point both at one key.
 - `sort`: `'desc'` (highest wins — points) or `'asc'` (lowest wins — best times,
   which also renders the score as m:ss).
-- `rows`: how many places to list (default 8; max 25 in 3D, 10 on screen, 5 on phones).
+- `rows`: how many places to list (default 8; max 25 in 3D, 10 on screen, 3 on phones, where the HUD stays compact).
 
 For Run best times, Board Key and Sort are hidden: the course supplies the key,
 scores in seconds and ascending order. The shared key is `run:<courseId>:leaderboard`.

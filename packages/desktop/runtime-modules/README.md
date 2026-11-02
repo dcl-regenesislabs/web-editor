@@ -70,8 +70,10 @@ Rules for modules in this folder:
 | `pure/runState` | the run rules: start, ordered checkpoints, pickups, finish and restart, with forged or repeated actions refused |
 | `pure/runBoard` | best time per player for a course leaderboard, recovered and bounded from storage |
 | `uiTheme`, `pure/uiTheme` | the scene's UI Theme palette and `UI_CANVAS`, which keeps HUDs clear of the Explorer's reserved screen space |
-| `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices; `.tsx` |
-| `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls, modals that hide them, the touch buttons the scene declares, and an elementId on every item for the mobile check; `.tsx` |
+| `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices, and `uiSizes`: the one size set per surface (HUD or window) and platform; `.tsx` |
+| `hudKit` | the compact HUD set (timer, score, objective line, status, icon button) and `mountCompactHud`, for what stays on screen during play; `.tsx` |
+| `uiWindow` | windows for the moments the player interacts (shop, choice, dialog, results): `UiWindow`, a thumb-sized choice grid and action row, and `mountWindow` in the modal slot; `.tsx` |
+| `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls (the right one ends above the action buttons), full-screen windows that hide them, the touch buttons the scene declares, and an elementId on every item for the mobile check; `.tsx` |
 | `actionIcons` | the action-icon set (`actionIcon(name)`, `ActionIcon`, `ActionHint`) for touch buttons and HUD hints; its PNGs live in `../runtime-assets/action-icons/` and are copied into a scene's `assets/images/action-icons/` only when a script imports this module; `.tsx` |
 | `statusHud` | a one-line themed status readout in the shared HUD layout; `.tsx` |
 | `pure/cameraRig` | the Camera Rig's fixed-camera framing: heading and pitch to a pose, and the distance that fits a box on a canvas of a given aspect (phone 1600x720 included) |

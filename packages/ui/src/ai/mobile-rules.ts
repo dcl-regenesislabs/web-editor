@@ -1,6 +1,7 @@
 // The phone layout rules the mobile check applies in code, so a result does not depend on the model
-// reading a picture: the scene-ui skill's L and H rules (references/layout-check.md) and its C2 and C3 touch
+// reading a picture: the scene-ui skill's L, H and W rules (references/layout-check.md) and its C2 and C3 touch
 // rules, on the layout the engine measured. Rects are canvas units, [x, y, width, height] from the top left.
+// The HUD state is the screen during play, every window closed; each window is then measured open on its own.
 
 export type Rect = [number, number, number, number]
 
@@ -91,10 +92,11 @@ export const HUD_COVERAGE_BUDGET = 0.25
 // one HUD item may cover: a status panel may clip its edge, a score box may not sit in it
 export const CENTRE_SHARE_LIMIT = 0.15
 
-// the floor the assistant prompt states, not the skill's L4 (24, still proposed): the editor's own HUD
-// modules and the UI skill's examples draw 16–20, so 24 would fail almost every scene
-export const MIN_TEXT = 16
-export const MIN_TARGET = 48
+// the phone floors of the one size set (uiSizes in runtime-modules/uiComponents.tsx), in the scene's virtual units
+export const MIN_TEXT = 20
+export const MIN_TARGET = 80
+// a node that takes presses over more of the screen than this, during play, is a window left open
+export const WINDOW_SHARE = 0.5
 
 function scaled(rect: Rect, canvas: Canvas): Rect {
   const sx = canvas.width / PHONE.width
@@ -127,6 +129,15 @@ function hudItem(node: MeasuredNode): boolean {
 
 function marker(node: MeasuredNode): boolean {
   return /^hud:(modals:\d+|modal:\d+)$/.test(node.elementId ?? '')
+}
+
+function windowBox(node: MeasuredNode): boolean {
+  return /^hud:modal:\d+$/.test(node.elementId ?? '')
+}
+
+// virtual units per canvas unit: rects are the canvas's, sizes the scene's 1600x720 phone canvas
+function unit(canvas: Canvas): number {
+  return Math.min(canvas.width / PHONE.width, canvas.height / PHONE.height)
 }
 
 function ancestor(nodes: Map<number, MeasuredNode>, of: MeasuredNode, candidate: MeasuredNode): boolean {
@@ -195,7 +206,7 @@ export function coverageIssues(state: string, canvas: Canvas, nodes: MeasuredNod
     if (share <= CENTRE_SHARE_LIMIT) continue
     const above = Math.floor(centre[1] - rect[1])
     const fit = above >= 48 ? `keep it at most ${Math.round(rect[2])}x${above} so it ends above y=${Math.round(centre[1])}` : 'make it smaller'
-    const move = node.elementId?.startsWith('hud:left:') === true ? ", or move it to the 'right' column, which stays clear of the centre" : ''
+    const move = node.elementId?.startsWith('hud:left:') === true ? ", or move it to the 'right' column, which stays clear of the centre and ends above the action buttons (hudSpace('right') is its height)" : ''
     issues.push({
       rule: 'H3-centre', state, node: label(node),
       detail: `${numbers(rect)} covers ${percent(share)} of the screen centre ${numbers(centre)}, where the player and the game are: ${fit}${move}`
@@ -225,14 +236,20 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
       const hits = nativeControls(controls).filter((native) => native.touch !== true || pressable)
         .map((native) => ({ id: native.id, rect: scaled(native.rect, canvas) })).filter((native) => intersects(node.rect, native.rect))
       if (hits.length > 0) {
-        issues.push({ rule: 'L2', state, node: label(node), detail: `${numbers(node.rect)} overlaps the ${hits.map((hit) => `${hit.id} ${numbers(hit.rect)}`).join(', the ')}` })
+        const onButtons = hits.some((hit) => hit.id.endsWith('button') && !hit.id.startsWith('explorer'))
+        const top = Math.min(...actionButtons(controls).map((button) => scaled(button.rect, canvas)[1]))
+        const fix = hudItem(node) && onButtons
+          ? `. The HUD never sits on the touch buttons: end it above y=${Math.round(top)} (size a list that grows to hudSpace('${/^hud:(\w+):/.exec(node.elementId ?? '')?.[1] ?? 'right'}') from './runtime/hudLayout', and show fewer rows) or move detail into a window`
+          : ''
+        issues.push({ rule: 'L2', state, node: label(node), detail: `${numbers(node.rect)} overlaps the ${hits.map((hit) => `${hit.id} ${numbers(hit.rect)}`).join(', the ')}${fix}` })
       }
     }
-    if (pressable && Math.min(node.rect[2], node.rect[3]) < MIN_TARGET) {
-      issues.push({ rule: 'L3', state, node: label(node), detail: `${Math.round(node.rect[2])}x${Math.round(node.rect[3])}, under ${MIN_TARGET} on its short side` })
+    const scale = unit(canvas)
+    if (pressable && Math.min(node.rect[2], node.rect[3]) < MIN_TARGET * scale - 0.5) {
+      issues.push({ rule: 'L3', state, node: label(node), detail: `${Math.round(node.rect[2] / scale)}x${Math.round(node.rect[3] / scale)}, under ${MIN_TARGET} on its short side (uiSizes(...).button)` })
     }
     if (node.fontSize !== undefined && node.fontSize < MIN_TEXT) {
-      issues.push({ rule: 'L4', state, node: label(node), detail: `text size ${node.fontSize}, under ${MIN_TEXT}` })
+      issues.push({ rule: 'L4', state, node: label(node), detail: `text size ${node.fontSize}, under ${MIN_TEXT} (uiSizes(...).small)` })
     }
     if (node.clipped === true && node.text !== undefined) {
       issues.push({ rule: 'L4', state, node: label(node), detail: 'its text is clipped by its box' })
@@ -254,7 +271,32 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
       if (intersects(a.rect, b.rect)) issues.push({ rule: 'H1', state, node: label(a), detail: `overlaps ${label(b)}` })
     }
   })
-  if (controls !== null) issues.push(...coverageIssues(state, canvas, measured))
+  if (controls !== null) {
+    issues.push(...coverageIssues(state, canvas, measured))
+    issues.push(...windowIssues(state, canvas, nodes))
+  }
+  return issues
+}
+
+/** W1: during play no window covers the screen; a window shows only while it is open. */
+export function windowIssues(state: string, canvas: Canvas, nodes: MeasuredNode[]): Issue[] {
+  const issues: Issue[] = []
+  for (const node of nodes.filter(windowBox)) {
+    issues.push({
+      rule: 'W1-window-open', state, node: label(node),
+      detail: "a modal is drawn while the game plays with every window closed: it has no open(), so it never closes. Give addHudItem('modal', render, { open, close }) an open() that answers false during play"
+    })
+  }
+  const screen = canvas.width * canvas.height
+  for (const node of nodes) {
+    if (marker(node) || hudItem(node) || (node.pointer?.length ?? 0) === 0) continue
+    const share = area(node.rect) / screen
+    if (share <= WINDOW_SHARE) continue
+    issues.push({
+      rule: 'W1-window-open', state, node: label(node),
+      detail: `${numbers(node.rect)} takes presses over ${percent(share)} of the screen during play. A window covers the screen only while it is open: put it in the modal slot (mountWindow from './runtime/uiWindow') with an open() that answers false during play`
+    })
+  }
   return issues
 }
 

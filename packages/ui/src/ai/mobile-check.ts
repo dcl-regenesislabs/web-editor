@@ -1,6 +1,6 @@
 // The phone check as one fixed path, so it runs the same however the model would have walked it: play as
-// on a 1600x720 phone, measure the HUD, open every modal the shared HUD layout holds (editor::HudPreview)
-// and measure each, then apply the layout, HUD-coverage and touch-button rules in code (mobile-rules.ts).
+// on a 1600x720 phone, measure the HUD as it looks during play (every modal closed, the declared touch buttons
+// shown), open every modal the shared HUD layout holds (editor::HudPreview) and measure each, then apply the layout, HUD-coverage and touch-button rules in code (mobile-rules.ts).
 import { object } from '@dcl-editor/contract'
 import { writeCustomComponent } from '@scene/inspector'
 import { state } from '@scene/state'
@@ -14,6 +14,9 @@ type Snapshot = Record<string, Record<string, unknown>>
 
 const PREVIEW = 'editor::HudPreview'
 const MAX_MODALS = 6
+// what hudLayout reads as "every modal closed"; -1 leaves the scene's own open() in charge
+const ALL_CLOSED = -2
+const NO_PREVIEW = -1
 const UI_READY_MS = 5000
 // frames for the scene to read the preview and the engine to lay the dialog out
 const SETTLE_MS = 500
@@ -104,7 +107,7 @@ export async function mobileCheck(signal: AbortSignal, sources: ProjectSources):
     issues.push({ rule: 'setup', state: 'hud', detail: 'the scene has no HUD from ./runtime/hudLayout: place every panel with addHudItem, or check the layout by hand from the code and a view picture' })
   }
   if (modals !== null) {
-    await writeCustomComponent('0', PREVIEW, { modal: -1 })
+    await writeCustomComponent('0', PREVIEW, { modal: ALL_CLOSED })
     await sleep(SETTLE_MS, signal)
   }
   const hud = await measureState('hud', true, signal)
@@ -119,7 +122,7 @@ export async function mobileCheck(signal: AbortSignal, sources: ProjectSources):
       issues.push(...modal.issues)
     }
   } finally {
-    if (modals !== null) await writeCustomComponent('0', PREVIEW, { modal: -1 })
+    if (modals !== null) await writeCustomComponent('0', PREVIEW, { modal: NO_PREVIEW })
   }
   const used = usedActions(decoded(await sources()))
   const visible = visibleButtons(hud.snapshot['0']?.TouchScreenControls)

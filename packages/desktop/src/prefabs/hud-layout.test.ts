@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { addHudItem, declareTouchButtons } from '../../runtime-modules/hudLayout'
+import { addHudItem, declareTouchButtons, hudSpace } from '../../runtime-modules/hudLayout'
 
 interface Touch { touchInputs: Array<{ inputAction: number; hide: boolean; icon?: { tex: { $case: string; texture: { src: string } } } }>; mainAction?: number; hideJoystick: boolean }
 
@@ -7,12 +7,13 @@ const host = vi.hoisted(() => ({
   systems: [] as Array<() => void>,
   touch: [] as Touch[],
   preview: null as { modal: number } | null,
-  renderer: null as null | (() => unknown)
+  renderers: [] as Array<{ ui: () => unknown; options: { screenInset?: string; zIndex?: number } }>
 }))
 vi.mock('@dcl/sdk/react-ecs', () => ({
   default: { createElement: (component: unknown, props: unknown, ...children: unknown[]) => ({ component, props, children }) },
   UiEntity: 'entity',
-  ReactEcsRenderer: { addUiRenderer: (_entity: unknown, ui: () => unknown) => { host.renderer = ui } }
+  InteractableArea: 'interactable-area',
+  ReactEcsRenderer: { addUiRenderer: (_entity: unknown, ui: () => unknown, options: { screenInset?: string; zIndex?: number }) => { host.renderers.push({ ui, options }) } }
 }))
 vi.mock('@dcl/sdk/ecs', () => ({
   engine: {
@@ -49,8 +50,40 @@ function elementIds(node: unknown, out: string[] = []): string[] {
   return out
 }
 function render(): string[] {
-  if (host.renderer === null) throw new Error('nothing mounted')
-  return elementIds(host.renderer())
+  if (host.renderers.length === 0) throw new Error('nothing mounted')
+  return host.renderers.flatMap((renderer) => elementIds(renderer.ui()))
+}
+
+// the props of the first element carrying this elementId
+function find(node: unknown, id: string): Record<string, unknown> | null {
+  if (node === null || typeof node !== 'object') return null
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = find(child, id)
+      if (hit !== null) return hit
+    }
+    return null
+  }
+  const element = node as { component?: unknown; type?: unknown; props?: Record<string, unknown> | null; children?: unknown[] }
+  const kind = element.component ?? element.type
+  if (typeof kind === 'function') return find((kind as (props: unknown) => unknown)({ ...element.props, children: element.children }), id)
+  if ((element.props?.uiTransform as { elementId?: unknown } | undefined)?.elementId === id) return element.props ?? null
+  return find(element.props?.children, id) ?? find(element.children, id)
+}
+
+// the right column's stack: the element whose children hold hud:right:0
+function rightColumn(): { position?: { bottom?: number }; overflow?: string; height?: unknown } | null {
+  for (const renderer of host.renderers) {
+    const tree = renderer.ui() as { children?: unknown[]; props?: { children?: unknown } }
+    for (const child of [tree.children ?? [], tree.props?.children ?? []].flat(3)) {
+      const stack = child as { component?: unknown; type?: unknown; props?: Record<string, unknown> }
+      const kind = stack.component ?? stack.type
+      if (typeof kind !== 'function' || stack.props?.slot !== 'right') continue
+      const drawn = (kind as (props: unknown) => { props?: { uiTransform?: Record<string, unknown> } } | null)(stack.props)
+      return (drawn?.props?.uiTransform ?? null) as ReturnType<typeof rightColumn>
+    }
+  }
+  return null
 }
 
 let removers: Array<() => void> = []
@@ -122,10 +155,67 @@ it('names every item for the mobile check and opens the modal the editor preview
   )
   expect(render()).toEqual(['hud:left:0', 'hud:modals:1'])
   host.preview = { modal: 0 }
-  expect(render()).toEqual(['hud:left:0', 'hud:modal:0', 'hud:modals:1'])
+  expect(render()).toEqual(['hud:left:0', 'hud:modals:1', 'hud:modal:0'])
   tick()
   expect(host.touch.at(-1)?.hideJoystick).toBe(true)
   host.preview = { modal: -1 }
   open = true
-  expect(render()).toEqual(['hud:left:0', 'hud:modal:0', 'hud:modals:1'])
+  expect(render()).toEqual(['hud:left:0', 'hud:modals:1', 'hud:modal:0'])
+})
+
+it('draws windows in their own full-screen layer in front of the HUD', () => {
+  removers.push(addHudItem('modal', () => ({ component: 'dialog', props: {}, children: [] }) as never, { open: () => true }))
+  expect(host.renderers.map((renderer) => renderer.options)).toEqual([
+    { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'interactable' },
+    { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'none', zIndex: 10 }
+  ])
+})
+
+it('closes every window for the HUD measurement, keeping the declared touch buttons, but not a modal that never closes', () => {
+  removers.push(
+    declareTouchButtons([1], { main: 1 }),
+    addHudItem('modal', () => ({ component: 'tutorial', props: {}, children: [] }) as never, { open: () => true }),
+    addHudItem('modal', () => ({ component: 'stuck', props: {}, children: [] }) as never)
+  )
+  host.preview = { modal: -2 }
+  expect(render()).toEqual(['hud:modals:2', 'hud:modal:1'])
+  tick()
+  expect(hidden(host.touch.at(-1))).toEqual([0, 2, 8, 10, 11, 12, 13])
+  expect(host.touch.at(-1)?.hideJoystick).toBe(false)
+  host.preview = null
+  expect(render()).toEqual(['hud:modals:2', 'hud:modal:0', 'hud:modal:1'])
+})
+
+it('dims the screen behind a window with close() and closes it on a tap there', () => {
+  let open = true
+  const close = vi.fn(() => { open = false })
+  removers.push(
+    addHudItem('modal', () => ({ component: 'shop', props: {}, children: [] }) as never, { open: () => open, close }),
+    addHudItem('modal', () => ({ component: 'notice', props: {}, children: [] }) as never, { open: () => true })
+  )
+  const tree = host.renderers.map((renderer) => renderer.ui())
+  const backdrop = find(tree, 'hud:modal:0')
+  expect(backdrop?.uiBackground).toBeDefined()
+  expect((backdrop?.uiTransform as { pointerFilter?: string }).pointerFilter).toBe('block')
+  ;(backdrop?.onMouseDown as () => void)()
+  expect(close).toHaveBeenCalledOnce()
+  const plain = find(tree, 'hud:modal:1')
+  expect(plain?.uiBackground).toBeUndefined()
+  expect((plain?.uiTransform as { pointerFilter?: string }).pointerFilter).toBe('none')
+})
+
+it('ends the phone right column above the action buttons the scene declares', () => {
+  removers.push(addHudItem('right', () => ({ component: 'orders', props: {}, children: [] }) as never))
+  expect(rightColumn()).toMatchObject({ position: { bottom: 293 }, overflow: 'hidden' })
+  expect(hudSpace('right')).toBe(643 - 20 - 293)
+  const one = declareTouchButtons([1])
+  expect(rightColumn()).toMatchObject({ position: { bottom: 168 } })
+  const two = declareTouchButtons([2, 8])
+  expect(rightColumn()).toMatchObject({ position: { bottom: 248 } })
+  expect(hudSpace('right')).toBe(643 - 20 - 248)
+  const four = declareTouchButtons([10])
+  expect(rightColumn()).toMatchObject({ position: { bottom: 293 } })
+  removers.push(one, two, four)
+  expect(hudSpace('left')).toBe(108)
+  expect(rightColumn()?.height).toBeUndefined()
 })

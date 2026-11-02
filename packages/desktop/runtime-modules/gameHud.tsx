@@ -83,10 +83,10 @@ function PhoneRunPanel(props: { run: RunHudProps; theme: UiTheme }) {
   const { run, theme } = props
   const goals = runGoals(run)
   const health = run.respawnSeconds > 0 ? `Respawning in ${Math.ceil(run.respawnSeconds)}…` : run.health !== null ? `Health ${run.health} / ${run.maxHealth}` : ''
-  return <UiPanel theme={theme} uiTransform={{ width: HUD_COLUMN_WIDTH, height: 24 + 30 + (goals === '' ? 0 : 24) + (health === '' ? 0 : 24), padding: 12 }}>
-    <UiText value={run.phase === 'ready' ? 'Cross the start to begin' : run.title} color={theme.text} size={20} height={30} />
-    {goals !== '' && <UiText value={goals} color={theme.muted} size={16} height={24} />}
-    {health !== '' && <UiText value={health} color={run.respawnSeconds > 0 ? theme.danger : theme.text} size={16} height={24} />}
+  return <UiPanel theme={theme} uiTransform={{ width: HUD_COLUMN_WIDTH, height: 16 + 30 + (goals === '' ? 0 : 26) + (health === '' ? 0 : 26), padding: 8 }}>
+    <UiText value={run.phase === 'ready' ? 'Cross the start to begin' : run.title} color={theme.text} size={22} height={30} />
+    {goals !== '' && <UiText value={goals} color={theme.muted} size={20} height={26} />}
+    {health !== '' && <UiText value={health} color={run.respawnSeconds > 0 ? theme.danger : theme.text} size={20} height={26} />}
   </UiPanel>
 }
 
