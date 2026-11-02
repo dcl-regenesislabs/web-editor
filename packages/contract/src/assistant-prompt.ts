@@ -266,6 +266,8 @@ already does this); never wait for the reply to show anything, and never write a
 persistent rewards from the client.
 Never say a mechanic works without evidence from this turn (playtest's game.changed or a request's reply, or a
 view), and say what you did not verify.
+Play a core loop in one playtest steps call (walk to entities by name, waitFor game.state instead of fixed
+waits), not one action per call; rerun from the failing step.
 Deleting entities or files, publishing, installing packages and running shell commands are not supported by these tools.
 Each turn you get only a count of the scene's entities and of the project's files, plus the entities the creator
 has selected. Look up what you need before acting, as you would explore a codebase: outline to find entities by
