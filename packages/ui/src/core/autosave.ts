@@ -78,6 +78,19 @@ export async function initAutoSave(): Promise<void> {
 
 const PLAY_WARN_KEY = 'eui:play-edit-warned'
 
+// The play-edit warning asks a person whether they meant to edit a running scene. The
+// assistant is not asked: it stops Play before it writes, and nobody is there to answer.
+let assistantWrites = 0
+
+export async function asAssistant<T>(work: () => Promise<T>): Promise<T> {
+  assistantWrites++
+  try {
+    return await work()
+  } finally {
+    assistantWrites--
+  }
+}
+
 export function markDirty(): void {
   // Edit/author mode only. While the scene is playing (unfrozen) edits are
   // RUNTIME state — they live in the CRDT and revert on Stop (the scene reloads
@@ -85,7 +98,7 @@ export function markDirty(): void {
   // bake transient state into the authored scene, so don't even schedule a save.
   if (!state.frozen) {
     // first such edit: warn once (unless the user opted out) that it won't persist
-    if (!state.playEditWarn && readKey(PLAY_WARN_KEY) !== '1') {
+    if (!state.playEditWarn && assistantWrites === 0 && readKey(PLAY_WARN_KEY) !== '1') {
       state.playEditWarn = true
     }
     return

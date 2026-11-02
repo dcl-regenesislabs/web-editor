@@ -1,6 +1,6 @@
 # Thumbs and dialogs
 
-Rules: **D1–D6, L3, L4, L7**.
+Rules: **D1–D6, W2–W4, L3, L4, L7**.
 
 A phone in Decentraland is held sideways in two hands. The left thumb lives on the joystick. The right
 thumb is the only free finger, and it rests bottom-right. Everything here follows from that.
@@ -23,15 +23,32 @@ corner. Being a stretch is the point: nobody leaves a run by grazing a button.
 
 ## Sizes
 
-**L3 — Touch targets.** The short side of anything pressable is ≥ 80 virtual units (about 7 mm on a
-phone); the main action ≥ 96. Spacing between two targets ≥ 16. Desktop is fine with these sizes too, so
-use one size for both. *(Proposed numbers, from 1 unit ≈ 0.09 mm; confirm on a device.)*
+One size set, per surface (HUD or window) and platform: the table in `SKILL.md`, which `uiSizes(surface,
+{ dense })` from `./runtime/uiComponents` answers for the player's device.
 
-**L4 — Text.** On the mobile canvas: ≥ 24 for anything the player must read, ≥ 20 only for secondary
-text, ≥ 28 for anything read while moving. No label clipped by its box: size the box for the text, or wrap.
-*(Proposed.)*
+**L3 — Touch targets.** On a phone the short side of anything pressable is ≥ 80 virtual units (about 7 mm);
+a window's main action ≥ 96. Spacing between two targets ≥ 16. On desktop ≥ 48.
 
-## Dialogs
+**L4 — Text.** On the mobile canvas nothing under 20. A window's body text is 24 (20 when dense), its title
+32; a HUD value, read while moving, is 28. On desktop nothing under 16. No label clipped by its box: size the
+box for the text, or wrap.
+
+## Windows
+
+A window (shop, recipe or upgrade choice, dialog, results) is where the player interacts for a moment, and
+while it is open it may take the whole screen. `UiWindow`, `UiChoiceGrid` and `UiWindowActions` from
+`./runtime/uiWindow` follow these rules; `mountWindow` places one.
+
+**W2 — On a phone, fill the interactable area with content.** The window is the whole 1056 × 643 box: no
+outer margin, a padding of about 12, choices as a grid of tiles that fill the width (two columns), images
+and text instead of empty space. When a lot has to fit, step down to the dense sizes (text 20, buttons 80)
+before scrolling, never below them.
+
+**W3 — Closing.** The screen behind it dims, and a tap there closes it when closing loses nothing; a close
+button in its title row does the same. Both call the one close function (C7).
+
+**W4 — On desktop**, a window is centred, at most about 960 wide, as tall as its content, with ordinary
+padding.
 
 **D3 — A dialog that needs a decision:**
 - Centred in the area (L7): on a phone the interactable area, whose centre is right of the screen's
@@ -40,7 +57,7 @@ text, ≥ 28 for anything read while moving. No label clipped by its box: size t
 - The primary choice on the **right** (nearest the right thumb), the cancel/back choice on the left.
 - A destructive choice (leave, delete, spend) is confirmed by a second dialog or names its consequence on
   the button ("LEAVE RUN"), never by a second tap on the same spot.
-- Buttons ≥ 96 tall in a dialog.
+- Buttons ≥ 80 tall on a phone, the primary ≥ 96.
 - A tap outside closes it only when closing loses nothing.
 - Hides the touch controls while open, restores them on close, through one close function (C7).
 - No text input unless the dialog cannot work without it: the phone keyboard covers half the screen.

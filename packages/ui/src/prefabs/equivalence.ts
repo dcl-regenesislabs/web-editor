@@ -49,6 +49,11 @@ function unset(value: unknown): boolean {
   return value === null || value === undefined || (Array.isArray(value) && value.length === 0)
 }
 
+// A protobuf oneof: composites write `{ $case: 'box', box: {} }`, the engine echoes `{ box: {} }`.
+function oneofArm(value: Record<string, unknown>): Record<string, unknown> {
+  return typeof value.$case === 'string' ? { [value.$case]: value[value.$case] } : value
+}
+
 /**
  * Structural equality across the authored-minimal / engine-normalized divide:
  * null == undefined == absent == empty list, numbers modulo f32.
@@ -62,8 +67,8 @@ export function valueEquivalent(a: unknown, b: unknown): boolean {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
     return a.every((v, i) => valueEquivalent(v, b[i]))
   }
-  const ao = a as Record<string, unknown>
-  const bo = b as Record<string, unknown>
+  const ao = oneofArm(a as Record<string, unknown>)
+  const bo = oneofArm(b as Record<string, unknown>)
   const keys = new Set([...Object.keys(ao), ...Object.keys(bo)])
   for (const key of keys) {
     if (!valueEquivalent(ao[key], bo[key])) return false

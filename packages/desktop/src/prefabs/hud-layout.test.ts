@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { addHudItem, declareTouchButtons } from '../../runtime-modules/hudLayout'
+import { addHudItem, declareTouchButtons, hudSpace } from '../../runtime-modules/hudLayout'
 
 interface Touch { touchInputs: Array<{ inputAction: number; hide: boolean; icon?: { tex: { $case: string; texture: { src: string } } } }>; mainAction?: number; hideJoystick: boolean }
 
@@ -7,12 +7,14 @@ const host = vi.hoisted(() => ({
   systems: [] as Array<() => void>,
   touch: [] as Touch[],
   preview: null as { modal: number } | null,
-  renderer: null as null | (() => unknown)
+  mobile: true,
+  renderers: [] as Array<{ ui: () => unknown; options: { screenInset?: string; zIndex?: number } }>
 }))
 vi.mock('@dcl/sdk/react-ecs', () => ({
   default: { createElement: (component: unknown, props: unknown, ...children: unknown[]) => ({ component, props, children }) },
   UiEntity: 'entity',
-  ReactEcsRenderer: { addUiRenderer: (_entity: unknown, ui: () => unknown) => { host.renderer = ui } }
+  InteractableArea: 'interactable-area',
+  ReactEcsRenderer: { addUiRenderer: (_entity: unknown, ui: () => unknown, options: { screenInset?: string; zIndex?: number }) => { host.renderers.push({ ui, options }) } }
 }))
 vi.mock('@dcl/sdk/ecs', () => ({
   engine: {
@@ -26,7 +28,7 @@ vi.mock('@dcl/sdk/ecs', () => ({
   InputAction: { IA_POINTER: 0, IA_PRIMARY: 1, IA_SECONDARY: 2, IA_JUMP: 8, IA_ACTION_3: 10, IA_ACTION_4: 11, IA_ACTION_5: 12, IA_ACTION_6: 13 },
   TouchScreenControls: { createOrReplace: (_entity: unknown, value: Touch) => host.touch.push(value) }
 }))
-vi.mock('@dcl/sdk/platform', () => ({ isMobile: () => true }))
+vi.mock('@dcl/sdk/platform', () => ({ isMobile: () => host.mobile }))
 vi.mock('~runtime/uiTheme', () => ({ UI_CANVAS: { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'interactable' } }))
 
 const tick = () => { for (const system of host.systems) system() }
@@ -49,9 +51,50 @@ function elementIds(node: unknown, out: string[] = []): string[] {
   return out
 }
 function render(): string[] {
-  if (host.renderer === null) throw new Error('nothing mounted')
-  return elementIds(host.renderer())
+  if (host.renderers.length === 0) throw new Error('nothing mounted')
+  return host.renderers.flatMap((renderer) => elementIds(renderer.ui()))
 }
+
+// the props of the first element carrying this elementId
+function find(node: unknown, id: string): Record<string, unknown> | null {
+  if (node === null || typeof node !== 'object') return null
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = find(child, id)
+      if (hit !== null) return hit
+    }
+    return null
+  }
+  const element = node as { component?: unknown; type?: unknown; props?: Record<string, unknown> | null; children?: unknown[] }
+  const kind = element.component ?? element.type
+  if (typeof kind === 'function') return find((kind as (props: unknown) => unknown)({ ...element.props, children: element.children }), id)
+  if ((element.props?.uiTransform as { elementId?: unknown } | undefined)?.elementId === id) return element.props ?? null
+  return find(element.props?.children, id) ?? find(element.children, id)
+}
+
+interface ColumnTransform { position?: { left?: unknown; right?: unknown; top?: unknown; bottom?: unknown }; overflow?: string; height?: unknown }
+
+// a slot's stack, and the screen inset of the renderer that draws it
+function column(slot: string): { transform: ColumnTransform; screenInset?: string } | null {
+  for (const renderer of host.renderers) {
+    const root = renderer.ui() as { component?: unknown; type?: unknown; props?: Record<string, unknown> | null; children?: unknown[] } | null
+    if (root === null) continue
+    const kind = root.component ?? root.type
+    const candidates = typeof kind === 'function' && root.props?.slot !== undefined ? [root] : [root.children ?? [], root.props?.children ?? []].flat(3)
+    for (const child of candidates) {
+      const stack = child as { component?: unknown; type?: unknown; props?: Record<string, unknown> } | null
+      if (stack === null) continue
+      const stackKind = stack.component ?? stack.type
+      if (typeof stackKind !== 'function' || stack.props?.slot !== slot) continue
+      const drawn = (stackKind as (props: unknown) => { props?: { uiTransform?: Record<string, unknown> } } | null)(stack.props)
+      if (drawn?.props?.uiTransform === undefined) continue
+      return { transform: drawn.props.uiTransform as ColumnTransform, screenInset: renderer.options.screenInset }
+    }
+  }
+  return null
+}
+
+const rightColumn = () => column('right')?.transform ?? null
 
 let removers: Array<() => void> = []
 beforeEach(() => {
@@ -59,6 +102,7 @@ beforeEach(() => {
   removers = []
   host.touch = []
   host.preview = null
+  host.mobile = true
   tick()
   host.touch = []
 })
@@ -120,12 +164,83 @@ it('names every item for the mobile check and opens the modal the editor preview
     addHudItem('left', () => ({ component: 'panel', props: {}, children: [] }) as never),
     addHudItem('modal', () => ({ component: 'dialog', props: {}, children: [] }) as never, { open: () => open })
   )
-  expect(render()).toEqual(['hud:left:0', 'hud:modals:1'])
+  expect(render()).toEqual(['hud:modals:1', 'hud:left:0'])
   host.preview = { modal: 0 }
-  expect(render()).toEqual(['hud:left:0', 'hud:modal:0', 'hud:modals:1'])
+  expect(render()).toEqual(['hud:modals:1', 'hud:left:0', 'hud:modal:0'])
   tick()
   expect(host.touch.at(-1)?.hideJoystick).toBe(true)
   host.preview = { modal: -1 }
   open = true
-  expect(render()).toEqual(['hud:left:0', 'hud:modal:0', 'hud:modals:1'])
+  expect(render()).toEqual(['hud:modals:1', 'hud:left:0', 'hud:modal:0'])
+})
+
+it('draws windows in their own full-screen layer in front of the HUD', () => {
+  removers.push(addHudItem('modal', () => ({ component: 'dialog', props: {}, children: [] }) as never, { open: () => true }))
+  expect(host.renderers.map((renderer) => renderer.options)).toEqual([
+    { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'interactable' },
+    { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'none' },
+    { virtualWidth: 1920, virtualHeight: 1080, screenInset: 'none', zIndex: 10 }
+  ])
+})
+
+it('draws the phone left column against the screen edge, below the explorer buttons and above the joystick', () => {
+  removers.push(addHudItem('left', () => ({ component: 'lives', props: {}, children: [] }) as never))
+  // 1600x720: x 108, from y 129 to y 432
+  expect(column('left')).toEqual({ screenInset: 'none', transform: expect.objectContaining({
+    position: { left: '6.75%', top: '17.92%', bottom: '40%' }, overflow: 'hidden' }) })
+  expect(hudSpace('left')).toBe(303)
+  expect(render()).toEqual(['hud:modals:0', 'hud:left:0'])
+
+  host.mobile = false
+  expect(column('left')).toEqual({ screenInset: 'interactable', transform: expect.objectContaining({ position: { left: 20, top: 20 }, height: '100%' }) })
+  expect(hudSpace('left')).toBe(1040)
+  expect(render()).toEqual(['hud:left:0', 'hud:modals:0'])
+})
+
+it('closes every window for the HUD measurement, keeping the declared touch buttons, but not a modal that never closes', () => {
+  removers.push(
+    declareTouchButtons([1], { main: 1 }),
+    addHudItem('modal', () => ({ component: 'tutorial', props: {}, children: [] }) as never, { open: () => true }),
+    addHudItem('modal', () => ({ component: 'stuck', props: {}, children: [] }) as never)
+  )
+  host.preview = { modal: -2 }
+  expect(render()).toEqual(['hud:modals:2', 'hud:modal:1'])
+  tick()
+  expect(hidden(host.touch.at(-1))).toEqual([0, 2, 8, 10, 11, 12, 13])
+  expect(host.touch.at(-1)?.hideJoystick).toBe(false)
+  host.preview = null
+  expect(render()).toEqual(['hud:modals:2', 'hud:modal:0', 'hud:modal:1'])
+})
+
+it('dims the screen behind a window with close() and closes it on a tap there', () => {
+  let open = true
+  const close = vi.fn(() => { open = false })
+  removers.push(
+    addHudItem('modal', () => ({ component: 'shop', props: {}, children: [] }) as never, { open: () => open, close }),
+    addHudItem('modal', () => ({ component: 'notice', props: {}, children: [] }) as never, { open: () => true })
+  )
+  const tree = host.renderers.map((renderer) => renderer.ui())
+  const backdrop = find(tree, 'hud:modal:0')
+  expect(backdrop?.uiBackground).toBeDefined()
+  expect((backdrop?.uiTransform as { pointerFilter?: string }).pointerFilter).toBe('block')
+  ;(backdrop?.onMouseDown as () => void)()
+  expect(close).toHaveBeenCalledOnce()
+  const plain = find(tree, 'hud:modal:1')
+  expect(plain?.uiBackground).toBeUndefined()
+  expect((plain?.uiTransform as { pointerFilter?: string }).pointerFilter).toBe('none')
+})
+
+it('ends the phone right column above the action buttons the scene declares', () => {
+  removers.push(addHudItem('right', () => ({ component: 'orders', props: {}, children: [] }) as never))
+  expect(rightColumn()).toMatchObject({ position: { bottom: 293 }, overflow: 'hidden' })
+  expect(hudSpace('right')).toBe(643 - 20 - 293)
+  const one = declareTouchButtons([1])
+  expect(rightColumn()).toMatchObject({ position: { bottom: 168 } })
+  const two = declareTouchButtons([2, 8])
+  expect(rightColumn()).toMatchObject({ position: { bottom: 248 } })
+  expect(hudSpace('right')).toBe(643 - 20 - 248)
+  const four = declareTouchButtons([10])
+  expect(rightColumn()).toMatchObject({ position: { bottom: 293 } })
+  removers.push(one, two, four)
+  expect(rightColumn()?.height).toBeUndefined()
 })

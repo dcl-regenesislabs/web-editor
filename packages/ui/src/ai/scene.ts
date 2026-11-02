@@ -1,6 +1,6 @@
 import { isReservedEntity, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
-import { buildFromSchema, getSchema, type ComponentSchema } from '@scene/schema'
+import { buildFromSchema, getSchema, toEngineValue, type ComponentSchema } from '@scene/schema'
 import { cmd } from '../engine/cmd'
 import { entityName, NAME_COMPONENT } from '@scene/custom-components'
 import { isAllowedComponent } from '@scene/allowed-components'
@@ -8,7 +8,7 @@ import { uiAddEntity } from '../actions/entities'
 import { uiDeleteComponent, uiSetComponentValue } from '../actions/components'
 import { createPrefabFrom } from '../actions/prefabs'
 import { uiSetSpawnedOnly } from '../actions/spawned-only'
-import { flushPendingSave } from '../core/autosave'
+import { asAssistant, flushPendingSave } from '../core/autosave'
 import { prefabStore, refreshPrefabs } from '../panels/prefab-store'
 import { prefabAssetId } from '../prefabs/provenance'
 import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
@@ -35,14 +35,6 @@ function entity(ref: unknown): string {
   const id = resolveEntityRef(state.snapshot, ref)
   if (id === null || isReservedEntity(id) || isUiEntity(state.snapshot, id)) throw new Error('No editable entity matches that reference.')
   return id
-}
-
-// The engine reads a protobuf oneof as `{ pbr: {...} }`; models often write the SDK's `{ $case: 'pbr', pbr: {...} }`
-function toEngineValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toEngineValue)
-  if (!object(value)) return value
-  if (typeof value.$case === 'string') return { [value.$case]: toEngineValue(value[value.$case]) }
-  return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, toEngineValue(field)]))
 }
 
 const schemas = new Map<string, Promise<ComponentSchema | null>>()
@@ -207,14 +199,19 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     const assets = await loadModelCatalog()
     return { models: searchModels(assets, request.query, limit).map(describe), total: assets.length }
   }
-  if (!state.frozen) throw new Error('Stop Play before changing the scene.')
+  // edits made while it runs would be the running instance's only, gone on Stop
+  if (!state.frozen) throw new Error('The scene is playing. Run playtest stop, then make this change again.')
+  return asAssistant(() => editScene(request, signal, settings))
+}
+
+async function editScene(request: Record<string, unknown>, signal: AbortSignal, settings?: SceneSettingsEditor): Promise<unknown> {
   if (request.type === 'addSound') {
     if (!isSoundName(request.name)) throw new Error(`addSound needs name, one of: ${SOUNDS.join(', ')}.`)
     const path = soundProjectPath(request.name)
     if (!(await dataLayerListFiles()).includes(path)) await dataLayerSaveFileBytes(path, await soundBytes(request.name))
-    await ensureContentMapped(path)
+    const mapped = await ensureContentMapped(path)
     const { durationSeconds, loop } = soundInfo(request.name)
-    return { path, durationSeconds, loop }
+    return { path, durationSeconds, loop, ...(mapped ? {} : { mapped, note: 'The file is saved; the running scene plays it after the next build.' }) }
   }
   if (request.type === 'placeModel') {
     if (typeof request.id !== 'string') throw new Error('placeModel needs the id of a findModels result.')

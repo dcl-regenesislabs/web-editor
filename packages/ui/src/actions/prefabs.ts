@@ -71,6 +71,8 @@ export interface PrefabPlacement {
   position?: { x: number; y: number; z: number }
   scale?: { x: number; y: number; z: number }
   name?: string
+  // filled with what went wrong, for a caller that reports the placement (the status bar is not read there)
+  problems?: string[]
 }
 
 // Size and name overrides land as ordinary component writes on the placed root,
@@ -115,7 +117,10 @@ const placePrefab = async (
     const { folder, notes } = await resolve()
     // a server-aware prefab in a scene without the auth-server SDK bundles fine
     // and throws at runtime — offer the install instead (prefabs/sdk-gate.ts)
-    if (await blockedBySdk(folder)) return null
+    if (await blockedBySdk(folder)) {
+      placement?.problems?.push('the scene needs the auth-server SDK first; the creator was offered the install')
+      return null
+    }
     const asked = placement?.position
     const drop =
       asked === undefined ? await dropPosition() : (rootLocalForWorld(state.snapshot, asked) ?? asked)
@@ -138,6 +143,7 @@ const placePrefab = async (
     }
     focusPlaced()
     notes.push(...placed.warnings)
+    placement?.problems?.push(...placed.warnings)
     if (placed.permissionsAdded.length > 0) {
       notes.push(`added scene permissions: ${placed.permissionsAdded.join(', ')}`)
     }
@@ -152,6 +158,7 @@ const placePrefab = async (
     }
   } catch (e) {
     state.saveStatus = `place failed: ${String(e)}`
+    placement?.problems?.push(e instanceof Error ? e.message : String(e))
   } finally {
     state.assetBusy = false
     void sendToScene({ type: 'resync' })

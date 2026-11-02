@@ -9,13 +9,37 @@ import type { AssistantServerMessage } from '../../../contract/src/assistant.ts'
 import type { AiSendParams } from '../../../contract/src/shell.ts'
 import { createConnection, parsePrompt } from './connection.ts'
 import { createAssistantMemory } from './memory.ts'
-import { createSessionLog } from './session-log.ts'
+import { createSessionLog, type TurnRecord } from './session-log.ts'
 import { createUsageMeter } from './usage.ts'
 import type { AgentFactory } from './types.ts'
 
 const params = { provider: 'claude' as const, model: 'test', text: 'Edit the door' }
 
 describe('assistant tool bridge', () => {
+  it('counts a build that did not compile as a failed build, not a failed call', async () => {
+    const events: AssistantServerMessage[] = []
+    const record = vi.fn(async (_turn: TurnRecord, _transcript: unknown[] | undefined) => {})
+    const factory: AgentFactory = {
+      providers: async () => [],
+      create: async (_params, call) => ({
+        prompt: async () => { await call('build', {}) },
+        abort: async () => {}, dispose: () => {}, snapshot: () => [], takeUsage: () => ({ cost: 0 })
+      })
+    }
+    const connection = createConnection({
+      factory, logger: { error: vi.fn(), info: vi.fn() }, send: (e) => events.push(e), allowTurn: () => true, sessions: { record }
+    })
+    connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params })
+    await vi.waitFor(() => expect(events.some((e) => e.kind === 'call')).toBe(true))
+    const call = events.find((e) => e.kind === 'call')
+    if (call?.kind !== 'call') throw new Error('No call')
+    const text = JSON.stringify({ ok: false, diagnostics: [{ severity: 'error', message: 'Could not resolve "./src/scripts/Game.ts"' }] })
+    connection.receive({ kind: 'result', turnId: 'one', callId: call.callId, ok: true, text })
+    await vi.waitFor(() => expect(record).toHaveBeenCalled())
+    expect(record.mock.calls[0][0]).toMatchObject({ builds: 1, failedBuilds: 1, toolCalls: 1, failedToolCalls: 0 })
+    await connection.close()
+  })
+
   it('waits for the matching browser result and retains the agent for the next turn', async () => {
     const events: AssistantServerMessage[] = []
     const results: string[] = []
@@ -83,6 +107,8 @@ describe('assistant tool bridge', () => {
     connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params })
     await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: false } }))
     expect(toolError).toContain('browser did not answer')
+    // paused, so Continue carries the same conversation on from the failed call
+    expect(events).toContainEqual({ kind: 'event', event: { kind: 'error', turnId: 'one', message: 'Building the scene timed out. Check the scene, then continue.', resumable: true } })
     expect(events.filter((event) => event.kind === 'call')).toHaveLength(1)
     expect(JSON.stringify(events)).not.toContain('credential must not appear')
     connection.close()

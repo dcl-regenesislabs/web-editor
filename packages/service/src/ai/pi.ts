@@ -228,6 +228,18 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
         if (until !== null) throw new ProviderLimited(Number.isFinite(until) ? new Date(until).toISOString() : null)
       }
       const label = Type.Optional(Type.String({ description: 'What you are doing now, for the creator, at most six words' }))
+      const playtestAction = {
+        platform: Type.Optional(Type.Union([Type.Literal('desktop'), Type.Literal('mobile')])),
+        keys: Type.Optional(Type.Array(Type.String(), { maxItems: 2 })),
+        durationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+        waitFor: Type.Optional(Type.String()),
+        to: Type.Optional(Type.Object({ x: Type.Number(), y: Type.Number(), z: Type.Number() })),
+        entity: Type.Optional(Type.String()),
+        within: Type.Optional(Type.Number({ minimum: 0.5, maximum: 10 })),
+        timeoutMs: Type.Optional(Type.Number({ minimum: 0, maximum: 60000 })),
+        x: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+        y: Type.Optional(Type.Number({ minimum: 0, maximum: 1 }))
+      }
       const schema = {
         list_files: Type.Object({
           kind: Type.Optional(Type.Union([...ASSET_KINDS].map((kind) => Type.Literal(kind)))),
@@ -249,14 +261,15 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
         scene_request: Type.Object({ request: Type.Object({ type: Type.String() }, { additionalProperties: true }), label }),
         build: Type.Object({ label }),
         playtest: Type.Object({
-          action: Type.Union(['start', 'stop', 'status', 'input', 'wait', 'walk', 'click'].map((value) => Type.Literal(value))),
-          platform: Type.Optional(Type.Union([Type.Literal('desktop'), Type.Literal('mobile')])),
-          keys: Type.Optional(Type.Array(Type.String(), { maxItems: 2 })),
-          durationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
-          waitFor: Type.Optional(Type.String()),
-          to: Type.Optional(Type.Object({ x: Type.Number(), y: Type.Number(), z: Type.Number() })),
-          x: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-          y: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })), label
+          action: Type.Union(['start', 'stop', 'status', 'input', 'wait', 'walk', 'click', 'steps'].map((value) => Type.Literal(value))),
+          ...playtestAction,
+          steps: Type.Optional(Type.Array(Type.Object({
+            action: Type.Union(['start', 'stop', 'input', 'wait', 'walk', 'click', 'waitFor'].map((value) => Type.Literal(value))),
+            ...playtestAction,
+            hud: Type.Optional(Type.String()), path: Type.Optional(Type.String()), equals: Type.Optional(Type.Unknown()),
+            changes: Type.Optional(Type.Boolean()), exists: Type.Optional(Type.Boolean()), observe: Type.Optional(Type.Boolean())
+          }), { maxItems: 20 })),
+          view: Type.Optional(Type.Boolean()), label
         }),
         ui_layout: Type.Object({ label }),
         mobile_check: Type.Object({ label }),

@@ -149,6 +149,16 @@ export async function loadSchema(name: string): Promise<void> {
   }
 }
 
+// The engine reads a protobuf oneof as `{ pbr: {...} }`; the SDK, composites and models write
+// `{ $case: 'pbr', pbr: {...} }`, which /set_component refuses as an unknown variant.
+export function toEngineValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toEngineValue)
+  if (typeof value !== 'object' || value === null) return value
+  const obj = value as Record<string, unknown>
+  if (typeof obj.$case === 'string') return { [obj.$case]: toEngineValue(obj[obj.$case]) }
+  return Object.fromEntries(Object.entries(obj).map(([key, field]) => [key, toEngineValue(field)]))
+}
+
 // Convert an engine-form component value into the SDK form the composite loader expects. The
 // engine's snapshot JSON encodes a protobuf `oneof` as `{ caseName: value }` (no discriminator),
 // but the SDK/composite needs `{ $case: caseName, caseName: value }` — without it, the instancer

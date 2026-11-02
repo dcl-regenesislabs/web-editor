@@ -157,9 +157,13 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
     })
   }, [])
 
+  // Again when the account or project arrives: hosted, the panel can mount before the wallet does,
+  // and a list asked for then says "unavailable" for good.
   useEffect(() => {
     if (shell?.aiProviders === undefined) return
+    let live = true
     void shell.aiProviders().then((list) => {
+      if (!live) return
       setProviders(list)
       const first = list.find((p) => p.available) ?? list[0]
       if (first !== undefined) {
@@ -167,7 +171,10 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
         setModel(first.defaultModel)
       }
     })
-  }, [])
+    return () => {
+      live = false
+    }
+  }, [owner])
 
   useEffect(() => {
     kept.current = null

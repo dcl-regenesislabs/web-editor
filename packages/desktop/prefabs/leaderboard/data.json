@@ -13,8 +13,12 @@
     "board"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "changelog": [
+    {
+      "version": "1.7.0",
+      "notes": "On phones the on-screen board is a compact card of the top 3 with text no smaller than 20, so it fits the right column above the touch buttons and stays readable."
+    },
     {
       "version": "1.6.0",
       "notes": "The on-screen board takes its place in the shared HUD layout, so it no longer overlaps other HUDs, and shows the top 5 on phones, whose screen is a third shorter."

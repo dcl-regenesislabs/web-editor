@@ -3,6 +3,7 @@ import type { AiEvent, AiProviderInfo } from '@dcl-editor/contract'
 import { AiPanel } from './AiPanel'
 import { shadowedRuntimeProblem } from '../prefabs/generate'
 import { mount, run } from '../test/render'
+import { notify } from '@scene/reactive'
 
 const { ensureScriptRuntime } = vi.hoisted(() => ({
   ensureScriptRuntime: vi.fn(async () => ({ vendored: [] as string[], shadowed: [] as string[] }))
@@ -101,6 +102,28 @@ describe('AiPanel new chat', () => {
     expect(save).toHaveBeenLastCalledWith([])
     expect(forget).toHaveBeenCalledTimes(hosted ? 1 : 0)
     expect(stop).toHaveBeenCalledTimes(hosted ? 0 : 1)
+    view.unmount()
+  })
+})
+
+describe('AiPanel providers', () => {
+  it('asks again when the account arrives after the panel mounted', async () => {
+    const claude: AiProviderInfo = { id: 'claude', label: 'Claude', available: true, defaultModel: 'default', models: ['default'], transport: 'service' }
+    let owner: string | null = null
+    const aiProviders = vi.fn(async (): Promise<AiProviderInfo[]> =>
+      owner === null ? [{ ...claude, available: false, reason: 'Sign in to Decentraland to use the assistant.' }] : [claude])
+    const aiTranscript = () => (owner === null ? null : { owner, load: async () => [], save: async () => {} })
+    Object.assign(shellHost.editorShell ?? {}, { aiProviders, aiTranscript })
+    const view = mount(<AiPanel shown fill={false} height={300} />)
+    await view.settle()
+    expect(aiProviders).toHaveBeenCalledTimes(1)
+    expect(view.text()).toContain('Sign in to Decentraland')
+
+    owner = 'p1@0xabc'
+    run(() => notify())
+    await view.settle()
+    expect(aiProviders).toHaveBeenCalledTimes(2)
+    expect(view.text()).not.toContain('Sign in to Decentraland')
     view.unmount()
   })
 })
