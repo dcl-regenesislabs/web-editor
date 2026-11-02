@@ -9,6 +9,7 @@ vi.mock('@dcl/sdk/ecs', () => ({
   VisibilityComponent: { createOrReplace: () => {} }
 }))
 vi.mock('@dcl/sdk/network', () => ({ isServer: () => false }))
+vi.mock('@dcl/sdk/platform', () => ({ isMobile: () => false }))
 vi.mock('~runtime/timeSync', () => ({ initTimeSync: () => {}, getServerTime: () => Date.UTC(2026, 0, 1, 12), isTimeSyncReady: () => true }))
 vi.mock('~runtime/uiTheme', () => ({ UI_CANVAS: { virtualWidth: 1920, virtualHeight: 1080 }, sceneUiTheme: () => createUiTheme() }))
 vi.mock('@dcl/sdk/react-ecs', () => ({

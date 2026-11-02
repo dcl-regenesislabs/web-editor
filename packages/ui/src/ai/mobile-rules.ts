@@ -1,6 +1,10 @@
 // The phone layout rules the mobile check applies in code, so a result does not depend on the model
-// reading a picture: the scene-ui skill's L and H rules (references/layout-check.md) and its C2 and C3 touch
+// reading a picture: the scene-ui skill's L, H and W rules (references/layout-check.md) and its C2 and C3 touch
 // rules, on the layout the engine measured. Rects are canvas units, [x, y, width, height] from the top left.
+// The HUD state is the screen during play, every window closed; each window is then measured open on its own.
+import {
+  PHONE_ACTION_CLUSTER, PHONE_CHAT_COLUMN, PHONE_EXPLORER_BUTTONS, PHONE_JOYSTICK, PHONE_JOYSTICK_ZONE, PHONE_SCREEN, PHONE_SCREEN_INSET
+} from '../../../desktop/runtime-modules/pure/phoneControls'
 
 export type Rect = [number, number, number, number]
 
@@ -24,21 +28,20 @@ export interface Canvas {
 
 export interface Issue { rule: string; state: string; node?: string; detail: string }
 
-// The explorer's own controls on a 1600x720 phone, scaled to other canvases. Nothing reports their real rects:
-// bevy-explorer draws none (its /mobile_ui only reshapes the canvas) and the mobile client that does, godot-explorer,
-// exposes no layout. So they are computed the way that client lays them out: the top-left buttons row is measured
-// from the mobile preview, the rest is layout-check.md's table, and the action buttons follow joypad.gd/joypad_arc.gd.
-const PHONE = { width: 1600, height: 720 }
+// The explorer's own controls on a 1600x720 phone (runtime-modules/pure/phoneControls.ts, which the HUD layout places
+// itself by), scaled to other canvases: bevy-explorer draws none (its /mobile_ui only reshapes the canvas).
+// A `touch` zone only clashes with what takes presses: the chat opens over its column on a tap, and the HUD's left
+// column is drawn there during play.
+const PHONE = PHONE_SCREEN
 const EXPLORER: Array<{ id: string; rect: Rect; touch?: boolean }> = [
-  { id: 'explorer buttons (profile, chat, camera, reload)', rect: [108, 32, 360, 85] },
-  { id: 'chat column', rect: [108, 117, 328, 558] }
+  { id: 'explorer buttons (profile, chat, camera, reload)', rect: PHONE_EXPLORER_BUTTONS },
+  { id: 'chat column', rect: PHONE_CHAT_COLUMN, touch: true }
 ]
 const JOYSTICK: Array<{ id: string; rect: Rect; touch?: boolean }> = [
-  { id: 'joystick', rect: [177, 444, 170, 170] },
-  { id: 'joystick touch zone', rect: [0, 240, 640, 480], touch: true }
+  { id: 'joystick', rect: PHONE_JOYSTICK },
+  { id: 'joystick touch zone', rect: PHONE_JOYSTICK_ZONE, touch: true }
 ]
-// the right and bottom screen insets the action buttons sit against, the large button, the arc discs and their orbit
-const CLUSTER = { right: 108, bottom: 45, large: 156, small: 80, orbit: 167 }
+const CLUSTER = PHONE_ACTION_CLUSTER
 // the order the buttons fill the cluster in; hidden ones drop out and the rest move up
 const PRIORITY = ['IA_JUMP', 'IA_POINTER', 'IA_PRIMARY', 'IA_SECONDARY', 'IA_ACTION_3', 'IA_ACTION_4', 'IA_ACTION_5', 'IA_ACTION_6']
 const GLYPH: Record<string, string> = { IA_JUMP: 'jump', IA_POINTER: 'pointer', IA_PRIMARY: 'E', IA_SECONDARY: 'F', IA_ACTION_3: '1', IA_ACTION_4: '2', IA_ACTION_5: '3', IA_ACTION_6: '4' }
@@ -91,10 +94,11 @@ export const HUD_COVERAGE_BUDGET = 0.25
 // one HUD item may cover: a status panel may clip its edge, a score box may not sit in it
 export const CENTRE_SHARE_LIMIT = 0.15
 
-// the floor the assistant prompt states, not the skill's L4 (24, still proposed): the editor's own HUD
-// modules and the UI skill's examples draw 16–20, so 24 would fail almost every scene
-export const MIN_TEXT = 16
-export const MIN_TARGET = 48
+// the phone floors of the one size set (uiSizes in runtime-modules/uiComponents.tsx), in the scene's virtual units
+export const MIN_TEXT = 20
+export const MIN_TARGET = 80
+// a node that takes presses over more of the screen than this, during play, is a window left open
+export const WINDOW_SHARE = 0.5
 
 function scaled(rect: Rect, canvas: Canvas): Rect {
   const sx = canvas.width / PHONE.width
@@ -127,6 +131,18 @@ function hudItem(node: MeasuredNode): boolean {
 
 function marker(node: MeasuredNode): boolean {
   return /^hud:(modals:\d+|modal:\d+)$/.test(node.elementId ?? '')
+}
+
+function windowBox(node: MeasuredNode): boolean {
+  return /^hud:modal:\d+$/.test(node.elementId ?? '')
+}
+
+// The edge a HUD panel keeps on a phone: within the screen inset and this much more (two HUD margins and slack)
+const EDGE_REACH = 48
+
+// virtual units per canvas unit: rects are the canvas's, sizes the scene's 1600x720 phone canvas
+function unit(canvas: Canvas): number {
+  return Math.min(canvas.width / PHONE.width, canvas.height / PHONE.height)
 }
 
 function ancestor(nodes: Map<number, MeasuredNode>, of: MeasuredNode, candidate: MeasuredNode): boolean {
@@ -195,10 +211,39 @@ export function coverageIssues(state: string, canvas: Canvas, nodes: MeasuredNod
     if (share <= CENTRE_SHARE_LIMIT) continue
     const above = Math.floor(centre[1] - rect[1])
     const fit = above >= 48 ? `keep it at most ${Math.round(rect[2])}x${above} so it ends above y=${Math.round(centre[1])}` : 'make it smaller'
-    const move = node.elementId?.startsWith('hud:left:') === true ? ", or move it to the 'right' column, which stays clear of the centre" : ''
+    const move = node.elementId?.startsWith('hud:left:') === true ? ", or move it to the 'right' column, which stays clear of the centre and ends above the action buttons (hudSpace('right') is its height)" : ''
     issues.push({
       rule: 'H3-centre', state, node: label(node),
       detail: `${numbers(rect)} covers ${percent(share)} of the screen centre ${numbers(centre)}, where the player and the game are: ${fit}${move}`
+    })
+  }
+  return issues
+}
+
+/** H5-edge: the HUD frames the game from the screen's edges. A slot's stack counts as one panel, so the second card
+ * of a column is anchored by the first; a panel no edge holds floats in the band where the game is played. */
+export function edgeIssues(state: string, canvas: Canvas, nodes: MeasuredNode[]): Issue[] {
+  const sx = canvas.width / PHONE.width
+  const sy = canvas.height / PHONE.height
+  const reach = {
+    left: (PHONE_SCREEN_INSET.left + EDGE_REACH) * sx, right: (PHONE_SCREEN_INSET.right + EDGE_REACH) * sx,
+    top: (PHONE_SCREEN_INSET.top + EDGE_REACH) * sy, bottom: (PHONE_SCREEN_INSET.bottom + EDGE_REACH) * sy
+  }
+  const slots = new Map<string, MeasuredNode[]>()
+  for (const node of nodes.filter(hudItem)) {
+    const slot = /^hud:(\w+):/.exec(node.elementId ?? '')?.[1] ?? ''
+    slots.set(slot, [...(slots.get(slot) ?? []), node])
+  }
+  const issues: Issue[] = []
+  for (const [slot, items] of slots) {
+    const left = Math.min(...items.map((node) => node.rect[0]))
+    const top = Math.min(...items.map((node) => node.rect[1]))
+    const right = Math.max(...items.map((node) => node.rect[0] + node.rect[2]))
+    const bottom = Math.max(...items.map((node) => node.rect[1] + node.rect[3]))
+    if (left <= reach.left || top <= reach.top || canvas.width - right <= reach.right || canvas.height - bottom <= reach.bottom) continue
+    issues.push({
+      rule: 'H5-edge', state, node: label(items[0]),
+      detail: `the '${slot}' HUD ${numbers([left, top, right - left, bottom - top])} sits away from every screen edge, floating over the game where the player looks${slot === 'left' ? ' (beside the top-centre status, near the avatar)' : ''}. The layout's slots keep to the edges (the phone's left column at the left screen edge, below the explorer's buttons), so the scene's ./runtime/hudLayout is out of date: reopen the project in the editor to refresh it, and drop any position or margin the panel gives itself`
     })
   }
   return issues
@@ -211,12 +256,19 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
     canvas.width - canvas.interactable.left - canvas.interactable.right,
     canvas.height - canvas.interactable.top - canvas.interactable.bottom]
   const screen: Rect = [0, 0, canvas.width, canvas.height]
+  // the HUD's left column is drawn left of the interactable area, inside the screen inset
+  const sx = canvas.width / PHONE.width
+  const sy = canvas.height / PHONE.height
+  const safe: Rect = [PHONE_SCREEN_INSET.left * sx, PHONE_SCREEN_INSET.top * sy,
+    canvas.width - (PHONE_SCREEN_INSET.left + PHONE_SCREEN_INSET.right) * sx, canvas.height - (PHONE_SCREEN_INSET.top + PHONE_SCREEN_INSET.bottom) * sy]
   const byEntity = new Map(nodes.map((node) => [node.entity, node]))
   const measured = nodes.filter((node) => !marker(node))
   for (const node of measured) {
     const pressable = (node.pointer?.length ?? 0) > 0
-    if ((pressable || hudItem(node)) && !inside(node.rect, area)) {
-      issues.push({ rule: 'L1', state, node: label(node), detail: `${numbers(node.rect)} leaves the interactable area ${numbers(area)}` })
+    const leftColumn = !pressable && node.elementId?.startsWith('hud:left:') === true
+    if ((pressable || hudItem(node)) && !inside(node.rect, leftColumn ? safe : area)) {
+      const underChat = pressable && node.rect[0] < area[0]
+      issues.push({ rule: 'L1', state, node: label(node), detail: `${numbers(node.rect)} leaves the ${leftColumn ? 'screen inset area' : 'interactable area'} ${numbers(leftColumn ? safe : area)}${underChat ? '. That strip is where the explorer\'s chat opens, which covers it: it can only show info, so move what takes presses to the \'right\' column or a window' : ''}` })
     }
     if (!inside(node.rect, screen)) {
       issues.push({ rule: 'L8', state, node: label(node), detail: `${numbers(node.rect)} falls off the ${canvas.width}x${canvas.height} canvas` })
@@ -225,14 +277,20 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
       const hits = nativeControls(controls).filter((native) => native.touch !== true || pressable)
         .map((native) => ({ id: native.id, rect: scaled(native.rect, canvas) })).filter((native) => intersects(node.rect, native.rect))
       if (hits.length > 0) {
-        issues.push({ rule: 'L2', state, node: label(node), detail: `${numbers(node.rect)} overlaps the ${hits.map((hit) => `${hit.id} ${numbers(hit.rect)}`).join(', the ')}` })
+        const onButtons = hits.some((hit) => hit.id.endsWith('button') && !hit.id.startsWith('explorer'))
+        const top = Math.min(...actionButtons(controls).map((button) => scaled(button.rect, canvas)[1]))
+        const fix = hudItem(node) && onButtons
+          ? `. The HUD never sits on the touch buttons: end it above y=${Math.round(top)} (size a list that grows to hudSpace('${/^hud:(\w+):/.exec(node.elementId ?? '')?.[1] ?? 'right'}') from './runtime/hudLayout', and show fewer rows) or move detail into a window`
+          : ''
+        issues.push({ rule: 'L2', state, node: label(node), detail: `${numbers(node.rect)} overlaps the ${hits.map((hit) => `${hit.id} ${numbers(hit.rect)}`).join(', the ')}${fix}` })
       }
     }
-    if (pressable && Math.min(node.rect[2], node.rect[3]) < MIN_TARGET) {
-      issues.push({ rule: 'L3', state, node: label(node), detail: `${Math.round(node.rect[2])}x${Math.round(node.rect[3])}, under ${MIN_TARGET} on its short side` })
+    const scale = unit(canvas)
+    if (pressable && Math.min(node.rect[2], node.rect[3]) < MIN_TARGET * scale - 0.5) {
+      issues.push({ rule: 'L3', state, node: label(node), detail: `${Math.round(node.rect[2] / scale)}x${Math.round(node.rect[3] / scale)}, under ${MIN_TARGET} on its short side (uiSizes(...).button)` })
     }
     if (node.fontSize !== undefined && node.fontSize < MIN_TEXT) {
-      issues.push({ rule: 'L4', state, node: label(node), detail: `text size ${node.fontSize}, under ${MIN_TEXT}` })
+      issues.push({ rule: 'L4', state, node: label(node), detail: `text size ${node.fontSize}, under ${MIN_TEXT} (uiSizes(...).small)` })
     }
     if (node.clipped === true && node.text !== undefined) {
       issues.push({ rule: 'L4', state, node: label(node), detail: 'its text is clipped by its box' })
@@ -254,7 +312,33 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
       if (intersects(a.rect, b.rect)) issues.push({ rule: 'H1', state, node: label(a), detail: `overlaps ${label(b)}` })
     }
   })
-  if (controls !== null) issues.push(...coverageIssues(state, canvas, measured))
+  if (controls !== null) {
+    issues.push(...coverageIssues(state, canvas, measured))
+    issues.push(...edgeIssues(state, canvas, measured))
+    issues.push(...windowIssues(state, canvas, nodes))
+  }
+  return issues
+}
+
+/** W1: during play no window covers the screen; a window shows only while it is open. */
+export function windowIssues(state: string, canvas: Canvas, nodes: MeasuredNode[]): Issue[] {
+  const issues: Issue[] = []
+  for (const node of nodes.filter(windowBox)) {
+    issues.push({
+      rule: 'W1-window-open', state, node: label(node),
+      detail: "a modal is drawn while the game plays with every window closed: it has no open(), so it never closes. Give addHudItem('modal', render, { open, close }) an open() that answers false during play"
+    })
+  }
+  const screen = canvas.width * canvas.height
+  for (const node of nodes) {
+    if (marker(node) || hudItem(node) || (node.pointer?.length ?? 0) === 0) continue
+    const share = area(node.rect) / screen
+    if (share <= WINDOW_SHARE) continue
+    issues.push({
+      rule: 'W1-window-open', state, node: label(node),
+      detail: `${numbers(node.rect)} takes presses over ${percent(share)} of the screen during play. A window covers the screen only while it is open: put it in the modal slot (mountWindow from './runtime/uiWindow') with an open() that answers false during play`
+    })
+  }
   return issues
 }
 
