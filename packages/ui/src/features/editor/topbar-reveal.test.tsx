@@ -1,12 +1,20 @@
-import { useRef } from 'react'
+import { act, useRef, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { mount } from '../../test/render'
-import { usePointerNearBar } from './topbar-reveal'
+import { useRevealNearPointer } from './topbar-reveal'
+
+let rerender: () => void = () => {}
 
 function Bar(): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
-  const near = usePointerNearBar(ref)
-  return <div ref={ref} className={`bar${near ? ' near' : ''}`} />
+  const [, setTick] = useState(0)
+  rerender = () => setTick((n) => n + 1)
+  useRevealNearPointer(ref)
+  return <div ref={ref} className="bar" />
+}
+
+const move = (clientY: number): void => {
+  window.dispatchEvent(new PointerEvent('pointermove', { clientY }))
 }
 
 describe('the hidden top bar', () => {
@@ -20,13 +28,23 @@ describe('the hidden top bar', () => {
     const before = env.IS_REACT_ACT_ENVIRONMENT
     env.IS_REACT_ACT_ENVIRONMENT = false
     try {
-      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 20 }))
+      move(60)
+      expect(bar.classList.contains('near')).toBe(false)
+      move(20)
       expect(bar.classList.contains('near')).toBe(true)
-      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 300 }))
+      // just past the edge it stays up, so a pointer resting there doesn't flicker it
+      move(54)
+      expect(bar.classList.contains('near')).toBe(true)
+      move(300)
+      expect(bar.classList.contains('near')).toBe(false)
+      move(54)
       expect(bar.classList.contains('near')).toBe(false)
     } finally {
       env.IS_REACT_ACT_ENVIRONMENT = before
     }
+    move(20)
+    act(() => rerender())
+    expect(bar.classList.contains('near')).toBe(true)
     view.unmount()
   })
 })

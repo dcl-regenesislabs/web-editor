@@ -17,7 +17,7 @@ import { openCodeEditor } from '../../panels/ai-store'
 import { IconCode } from '../../icons'
 import { SyncChip } from '../sync/SyncChip'
 import { getHost } from '../../engine/hosted'
-import { usePointerNearBar } from './topbar-reveal'
+import { useRevealNearPointer } from './topbar-reveal'
 
 const TerminalIcon = (): JSX.Element => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -98,9 +98,9 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
     })
   }, [project, publishing])
   const barRef = useRef<HTMLDivElement>(null)
-  const near = usePointerNearBar(barRef)
+  useRevealNearPointer(barRef)
   return (
-    <div className={`eui-topbar${near ? ' near' : ''}`} ref={barRef}>
+    <div className="eui-topbar" ref={barRef}>
       <button className="eui-topbar-home" {...labelTip(leaving ? 'Saving…' : backLabel())} onClick={home} disabled={leaving} aria-busy={leaving}>
         {leaving ? <Spinner size="xs" /> : <ArrowLeftIcon />}
       </button>
