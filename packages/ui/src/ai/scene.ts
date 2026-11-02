@@ -8,7 +8,7 @@ import { uiAddEntity } from '../actions/entities'
 import { uiDeleteComponent, uiSetComponentValue } from '../actions/components'
 import { createPrefabFrom } from '../actions/prefabs'
 import { uiSetSpawnedOnly } from '../actions/spawned-only'
-import { flushPendingSave } from '../core/autosave'
+import { asAssistant, flushPendingSave } from '../core/autosave'
 import { prefabStore, refreshPrefabs } from '../panels/prefab-store'
 import { prefabAssetId } from '../prefabs/provenance'
 import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
@@ -199,7 +199,12 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     const assets = await loadModelCatalog()
     return { models: searchModels(assets, request.query, limit).map(describe), total: assets.length }
   }
-  if (!state.frozen) throw new Error('Stop Play before changing the scene.')
+  // edits made while it runs would be the running instance's only, gone on Stop
+  if (!state.frozen) throw new Error('The scene is playing. Run playtest stop, then make this change again.')
+  return asAssistant(() => editScene(request, signal, settings))
+}
+
+async function editScene(request: Record<string, unknown>, signal: AbortSignal, settings?: SceneSettingsEditor): Promise<unknown> {
   if (request.type === 'addSound') {
     if (!isSoundName(request.name)) throw new Error(`addSound needs name, one of: ${SOUNDS.join(', ')}.`)
     const path = soundProjectPath(request.name)

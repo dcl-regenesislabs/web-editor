@@ -38,7 +38,7 @@ vi.mock('./code-model', () => ({ buildCodeModel: vi.fn(async () => { throw new E
 vi.mock('./requests', () => ({ runRequestText: vi.fn() }))
 vi.mock('../actions/prefabs', () => ({ createPrefabFrom: vi.fn(async (_: string[], name: string) => ({ id: 'p-bot', folder: 'custom/bot', name, warnings: [] })) }))
 vi.mock('../actions/spawned-only', () => ({ uiSetSpawnedOnly: vi.fn() }))
-vi.mock('../core/autosave', () => ({ flushPendingSave: vi.fn(async () => ({ pending: true, ok: true })) }))
+vi.mock('../core/autosave', () => ({ asAssistant: <T>(work: () => Promise<T>) => work(), flushPendingSave: vi.fn(async () => ({ pending: true, ok: true })) }))
 vi.mock('../panels/prefab-store', () => ({ prefabStore: { items: [] }, refreshPrefabs: vi.fn(async () => [{ folder: 'custom/zombie', data: { id: 'p-zombie', name: 'Zombie' } }]) }))
 vi.mock('../model-info', async (real) => ({ ...(await real<object>()), inspectModel: vi.fn() }))
 vi.mock('../scene-budget', async (real) => ({ ...(await real<object>()), sceneTextures: vi.fn() }))
