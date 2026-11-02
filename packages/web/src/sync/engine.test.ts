@@ -195,6 +195,28 @@ describe('project sync', () => {
     expect(service.log).toEqual(['GET /projects 200'])
   })
 
+  it('says the scenes are loading until the account’s list has been read, not that they are synced', async () => {
+    const a = device(service)
+    const { id } = await a.store.create('Scene', [['src/index.ts', text('v1')]])
+    await a.engine.refresh(true)
+    await after(0, a.engine)
+
+    const b = device(service)
+    expect(b.engine.status()).toMatchObject({ loading: true, state: 'synced' })
+    expect(b.engine.remoteOnly()).toEqual([])
+    await b.engine.refresh(true)
+    expect(b.engine.status().loading).toBeUndefined()
+    expect(b.engine.remoteOnly().map((project) => project.id)).toEqual([id])
+
+    const offline = device(service)
+    offline.net.down = true
+    await offline.engine.refresh(true)
+    expect(offline.engine.status()).toMatchObject({ state: 'offline' })
+    expect(offline.engine.status().loading).toBeUndefined()
+
+    expect(device(service, null).engine.status().loading).toBeUndefined()
+  })
+
   it('a second device lists the project, downloads it, and follows when the first moves on', async () => {
     const a = device(service)
     const b = device(service)

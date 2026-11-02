@@ -28,6 +28,8 @@ export interface SyncStatus {
   projects: Record<string, ProjectSync>
   // goes up when the list of scenes itself changed: one arrived, left or was replaced
   revision: number
+  // the account's list of scenes has not been read yet, so the scenes only on it are not known
+  loading?: boolean
   // what the account stores against its limit, trashed scenes included
   usage?: StorageUsage
 }
