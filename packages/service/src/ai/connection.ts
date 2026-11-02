@@ -124,7 +124,8 @@ export function createConnection(options: {
         const timer = setTimeout(() => {
           tally(live, tool, false)
           finish(false, 'The browser did not answer the tool request.')
-          abort(`${label ?? TOOL_LABELS[tool]} timed out. The turn stopped; check the scene before retrying.`, false, 'timed_out')
+          // paused, not ended: the conversation keeps the failed call, so Continue picks up from it
+          abort(`${label ?? TOOL_LABELS[tool]} timed out. Check the scene, then continue.`, true, 'timed_out')
         }, options.toolTimeoutMs ?? (tool === 'read_file' || tool === 'list_files' || tool === 'search_files' ? 60_000 : 15 * 60_000))
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return

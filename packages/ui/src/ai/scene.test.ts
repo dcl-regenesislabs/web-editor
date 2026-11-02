@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { browserSceneRequest } from './scene'
 import { state } from '@scene/state'
-import { importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
+import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
 import { inspectModel } from '../model-info'
 import { sceneTextures } from '../scene-budget'
 import { buildCodeModel } from './code-model'
@@ -30,7 +30,7 @@ vi.mock('../engine/cmd', () => ({ cmd: { componentSchema: () => Promise.reject(n
 vi.mock('@scene/allowed-components', () => ({ isAllowedComponent: () => true }))
 vi.mock('../actions/entities', () => ({ uiAddEntity: vi.fn() }))
 vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiDeleteComponent: deleteValue }))
-vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn() }))
+vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn(async () => true) }))
 vi.mock('../engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
 vi.mock('./library-bytes', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() }))
 vi.mock('../engine/bus', () => ({ sendToScene: vi.fn() }))
@@ -154,6 +154,13 @@ describe('assistant scene requests', () => {
     expect(dataLayerSaveFileBytes).toHaveBeenCalledTimes(1)
     expect(dataLayerSaveFileBytes).toHaveBeenCalledWith(path, mp3)
     await expect(browserSceneRequest({ type: 'addSound', name: 'banjo' }, new AbortController().signal)).rejects.toThrow('one of: coin, gem,')
+  })
+
+  it('says when the running scene cannot play a sound yet, instead of waiting for it', async () => {
+    vi.mocked(dataLayerListFiles).mockResolvedValueOnce(['assets/audio/library/coin.mp3'])
+    vi.mocked(ensureContentMapped).mockResolvedValueOnce(false)
+    await expect(browserSceneRequest({ type: 'addSound', name: 'coin' }, new AbortController().signal))
+      .resolves.toMatchObject({ path: 'assets/audio/library/coin.mp3', mapped: false, note: expect.stringContaining('next build') })
   })
 
   it('places a catalog model that takes the scene past its texture limit, and says so, counting a file the scene has once', async () => {

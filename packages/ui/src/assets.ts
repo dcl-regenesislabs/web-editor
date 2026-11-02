@@ -9,7 +9,7 @@
 //      auto-saves like any other edit
 import { cmd } from './engine/cmd'
 import { sceneRpc } from './engine/bus'
-import { CONTENT_POLL_ATTEMPTS, CONTENT_POLL_INTERVAL_MS } from './config'
+import { CONTENT_MAP_TIMEOUT_MS, CONTENT_POLL_INTERVAL_MS } from './config'
 import { createEntities } from '@scene/inspector'
 import { state, setSelected } from '@scene/state'
 import { revealInTree } from './panels/reveal'
@@ -19,6 +19,7 @@ import { IGNORED_DIRS } from './script/project-files'
 import { referencedNames } from './script/references'
 import { gltfExternalUris } from './gltf-refs'
 import { launchParam } from './boot/launch-params'
+import { log } from './log'
 
 const OPENDCL_ORIGIN = 'https://models.dclregenesislabs.xyz'
 const CATALOG_URL = `${OPENDCL_ORIGIN}/catalog/asset-catalog.json`
@@ -143,18 +144,31 @@ export function modelRelPath(a: ModelAsset): string {
 // (picking up files written outside the editor) and returns the file list. Poll
 // it until our file appears: that both forces the refresh (so GltfContainer.src
 // resolves) and confirms the dev server is serving it before the engine's single
-// load attempt. Bounded by config; a miss just means the model may need a reload.
-export async function ensureContentMapped(rel: string): Promise<void> {
+// load attempt. False when the budget ran out: the running scene loads the file
+// after its next reload instead.
+export async function ensureContentMapped(rel: string): Promise<boolean> {
   const target = rel.toLowerCase()
-  for (let i = 0; i < CONTENT_POLL_ATTEMPTS; i++) {
+  const deadline = Date.now() + CONTENT_MAP_TIMEOUT_MS
+  let lastError: unknown = null
+  while (Date.now() < deadline) {
     try {
-      const files = await cmd.sceneContent()
-      if (files.some((f) => f.toLowerCase() === target)) return
-    } catch {
-      /* engine briefly busy — retry */
+      const files = await withDeadline(cmd.sceneContent(), deadline)
+      if (files.some((f) => f.toLowerCase() === target)) return true
+    } catch (e) {
+      lastError = e
     }
     await new Promise((r) => setTimeout(r, CONTENT_POLL_INTERVAL_MS))
   }
+  log.warn(`${rel} is not in the scene's content map yet`, lastError ?? '')
+  return false
+}
+
+function withDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('scene_content did not answer in time')), Math.max(0, deadline - Date.now()))
+  })
+  return Promise.race([work, late]).finally(() => clearTimeout(timer))
 }
 
 const MAX_MODEL_BYTES = 50 * 1024 * 1024

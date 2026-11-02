@@ -204,9 +204,9 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     if (!isSoundName(request.name)) throw new Error(`addSound needs name, one of: ${SOUNDS.join(', ')}.`)
     const path = soundProjectPath(request.name)
     if (!(await dataLayerListFiles()).includes(path)) await dataLayerSaveFileBytes(path, await soundBytes(request.name))
-    await ensureContentMapped(path)
+    const mapped = await ensureContentMapped(path)
     const { durationSeconds, loop } = soundInfo(request.name)
-    return { path, durationSeconds, loop }
+    return { path, durationSeconds, loop, ...(mapped ? {} : { mapped, note: 'The file is saved; the running scene plays it after the next build.' }) }
   }
   if (request.type === 'placeModel') {
     if (typeof request.id !== 'string') throw new Error('placeModel needs the id of a findModels result.')

@@ -83,6 +83,8 @@ describe('assistant tool bridge', () => {
     connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params })
     await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: false } }))
     expect(toolError).toContain('browser did not answer')
+    // paused, so Continue carries the same conversation on from the failed call
+    expect(events).toContainEqual({ kind: 'event', event: { kind: 'error', turnId: 'one', message: 'Building the scene timed out. Check the scene, then continue.', resumable: true } })
     expect(events.filter((event) => event.kind === 'call')).toHaveLength(1)
     expect(JSON.stringify(events)).not.toContain('credential must not appear')
     connection.close()
