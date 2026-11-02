@@ -13,8 +13,12 @@
     "multiplayer"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "changelog": [
+    {
+      "version": "1.0.1",
+      "notes": "The assistant's guide says how the phone buttons the item declares combine with the ones a game's own scripts declare."
+    },
     {
       "version": "1.0.0",
       "notes": "Initial release: one holder at a time decided by the Multiplayer Server, held in the right hand and shown at once, a floating prompt with the device's own control, drop, optional throw, endless supply crates, and a script API to read, give and take what players carry."

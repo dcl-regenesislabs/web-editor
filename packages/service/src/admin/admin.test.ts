@@ -143,7 +143,7 @@ describe('recorded sessions', () => {
     const sessions = createSessionLog(dir)
     await sessions.forWallet(wallet).record({
       turnId: 't1', projectId: 'kitchen', conversation, startedAt: '2026-10-30T18:00:00.000Z', endedAt: '2026-10-30T18:20:00.000Z',
-      ms: 1_200_000, outcome: 'completed', prompt: 'arma un juego', steps: [], toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0,
+      ms: 1_200_000, outcome: 'completed', prompt: 'build a game', steps: [], toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0,
       usage: { cost: 5.1, tokens: { input: 160, output: 103_948, cacheRead: 9_905_492, cacheWrite: 207_216 }, calls: 78 }
     }, [{ type: 'session' }])
     const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'OFF' }) })
@@ -159,7 +159,7 @@ describe('recorded sessions', () => {
   it('lists sessions, returns a conversation\'s turns and downloads its transcript to a signed-in admin only', async () => {
     const get = await withSessions(true)
     const list = await get('')
-    expect(await list?.json()).toMatchObject({ enabled: true, sessions: [{ wallet, conversation, turns: 1, cost: 5.1, firstPrompt: 'arma un juego' }] })
+    expect(await list?.json()).toMatchObject({ enabled: true, sessions: [{ wallet, conversation, turns: 1, cost: 5.1, firstPrompt: 'build a game' }] })
     expect(await (await get(`/${wallet}/${conversation}`))?.json()).toMatchObject({ turns: [{ turnId: 't1', usage: { calls: 78 } }] })
     const download = await get(`/${wallet}/${conversation}/session.jsonl`)
     expect(download?.status).toBe(200)

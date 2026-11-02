@@ -137,15 +137,15 @@ The phone floors, text 20 and presses 80 on the short side, are L3 and L4: `mobi
 
 ## Closing message (mandatory)
 
-Whenever you finish work that adds or changes screen UI or touch controls, end your reply with this line,
-in the creator's language:
+Whenever you finish work that adds or changes screen UI or touch controls, the closing block of your reply
+(its order is in the system prompt) carries this line, in the creator's language:
 
 > Many Decentraland players come from mobile devices — try it there too! (Preview → Show QR Code for Mobile)
 
 Before it, list the rules you could not verify (any L or H you checked only by reading code, every D, P1),
-so the creator knows what to look at on the phone. Spanish:
+so the creator knows what to look at on the phone.
 
-> Muchos usuarios de Decentraland vienen de dispositivos móviles, ¡hacé una prueba ahí! (Preview → Show QR Code for Mobile)
+In another language, translate the line in the creator's own register (formal or informal, as they write) and keep the menu path in English.
 
 ## Starting point
 
@@ -238,4 +238,4 @@ These come from a real mobile pass (one HUD, three phone tests):
 ## Report
 
 Say what you built, which rules you checked and how (dump, code, screenshot), which ones you broke on
-purpose and why, and end with the closing message.
+purpose and why, and then the closing message.

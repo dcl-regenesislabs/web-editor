@@ -34,6 +34,7 @@ import { materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
 import { setLibraryBytes } from '@ui/ai/library-bytes'
 import { runFreshBuild, saveBeforeBuild } from '@ui/actions/verify-build'
 import { flushPendingSave } from '@ui/core/autosave'
+import { ensureScriptRuntime } from '@ui/prefabs/generate'
 import { updateSpawnPoints } from '@ui/spawn-points'
 import { leavePhone, playtest } from '@ui/ai/playtest'
 import { uiLayout } from '@ui/ai/ui-layout'
@@ -237,6 +238,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
           build: createBuildTool({
             saveScene: saveBeforeBuild,
             fileWrites: () => fileWrites,
+            vendorRuntime: ensureScriptRuntime,
             compile: () => previews.build(open.id, new Map(open.files)),
             run: runFreshBuild,
             mobilePreview: phone.status

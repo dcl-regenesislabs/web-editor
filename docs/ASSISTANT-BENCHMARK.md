@@ -8,7 +8,7 @@ judged on **3 to 5 runs of the same prompt**, against the previous release's run
 
 | Name | Prompt | Why |
 |---|---|---|
-| co-op-kitchen | `arma un juego cooperativo de cocina: los jugadores agarran ingredientes, los cortan y cocinan en estaciones y entregan pedidos antes de que se acabe el tiempo, en ingles y en español` | Names a genre and leaves the rest open: camera, carrying, stations, a HUD on a phone, two languages. |
+| co-op-kitchen | `build a co-op cooking game: players grab ingredients, chop and cook them at stations and deliver orders before time runs out, in English and Spanish` | Names a genre and leaves the rest open: camera, carrying, stations, a HUD on a phone, two languages. |
 
 Add a prompt when a run shows a class of failure the existing ones do not reach. Keep the wording fixed
 once it is in the table: a changed prompt starts a new series.
@@ -18,7 +18,7 @@ once it is in the table: a changed prompt starts a new series.
 1. Use a development deployment with `ASSISTANT_SESSION_LOG=1` (`packages/service/README.md`, "Recorded
    sessions"), so every turn is recorded with its steps, tokens and cost.
 2. For each run: a new Blank 2x2 scene, the prompt as the first message, and when the assistant asks for a
-   plan, answer `dale, armalo así` (the same reply every time). Do not help it further.
+   plan, answer `go ahead, build it that way` (the same reply every time). Do not help it further.
 3. When the turn ends, download the session from `/admin/` (Recorded sessions, the conversation's link) and
    save the JSON as `<folder>/<release>/<run>.json`, e.g. `bench/v0.3.22/co-op-kitchen-1.json`.
 4. Score the run with the rubric below, on a phone and on a desktop, and write the scores next to the JSON

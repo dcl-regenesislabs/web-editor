@@ -68,12 +68,12 @@
     "digest": "90fc9953c2c3c085854c9ba2d547208155b3ecfd5c8fdde80558dd644511ffad"
   },
   "pickup-item": {
-    "version": "1.0.0",
-    "digest": "cab732dbde946b39e8d35b1323997e032f615c056decdab09c72fd140af23585"
+    "version": "1.0.1",
+    "digest": "e7d4f47118004bac59e2712a3cc577cdc6f1bf19e87a9f660b4cd796bf5a1954"
   },
   "run-progress": {
-    "version": "1.4.0",
-    "digest": "97efc8aa3b98d384ac1e2772359d82cac24ed211031c95b6b07709b3d4811376"
+    "version": "1.4.1",
+    "digest": "9b395ac6df5c94b309cfe3d955758665308a67e646dc5af33722f45ec86bdbcc"
   },
   "rustic-bench": {
     "version": "1.1.0",
@@ -108,8 +108,8 @@
     "digest": "c746762057aa33b54ef9582d282c59c9c4f2238d789298fa261d51afbc6297b6"
   },
   "spawner": {
-    "version": "1.0.0",
-    "digest": "dcf15f0012469329143f8ee7c1e2be576c034968fc35959934a4f69f74fae2e7"
+    "version": "1.0.1",
+    "digest": "5d216f23c6dba96172aaebf2fbfd723929ae3bbb6375d059c29f94270bb6633b"
   },
   "steampunk-bench": {
     "version": "1.1.0",

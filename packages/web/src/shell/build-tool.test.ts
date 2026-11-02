@@ -22,6 +22,7 @@ describe('the assistant build tool', () => {
       // the debounced save, flushed: it queues the composite write
       saveScene: async () => write(COMPOSITE, 'after the edit'),
       fileWrites: writes,
+      vendorRuntime: async () => {},
       compile: async () => {
         built = files.get(COMPOSITE) ?? ''
         return { ok: true, diagnostics: [] }
@@ -38,11 +39,27 @@ describe('the assistant build tool', () => {
     const build = createBuildTool({
       saveScene: async () => { throw new Error('The scene could not be saved') },
       fileWrites: async () => {},
+      vendorRuntime: async () => {},
       compile,
       run: async () => run,
       mobilePreview: () => 'closed'
     })
     await expect(build(new AbortController().signal)).rejects.toThrow('could not be saved')
     expect(compile).not.toHaveBeenCalled()
+  })
+
+  it('copies in the runtime modules after the queued writes and before compiling', async () => {
+    const { write, writes } = project()
+    const order: string[] = []
+    const build = createBuildTool({
+      saveScene: async () => write(COMPOSITE, 'after the edit'),
+      fileWrites: async () => { await writes(); order.push('writes') },
+      vendorRuntime: async () => { order.push('runtime') },
+      compile: async () => { order.push('compile'); return { ok: true, diagnostics: [] } },
+      run: async () => run,
+      mobilePreview: () => 'closed'
+    })
+    await build(new AbortController().signal)
+    expect(order).toEqual(['writes', 'runtime', 'compile'])
   })
 })
