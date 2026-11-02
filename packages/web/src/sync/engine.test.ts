@@ -17,8 +17,9 @@ function bytesOf(body: BodyInit | null | undefined): Uint8Array | undefined {
 }
 
 // One browser: its own store, talking to the shared service as `wallet` (null: a guest).
-function device(service: FakeService, wallet: string | null = WALLET, store = new ProjectStore(memoryProfile())) {
+function device(service: FakeService, signer: string | null = WALLET, store = new ProjectStore(memoryProfile())) {
   const net = { down: false, requests: 0 }
+  const who = { wallet: signer }
   const send = async (signer: string | null, url: string, init?: Parameters<SignedFetch>[1]): Promise<Response> => {
     net.requests++
     if (net.down) throw new TypeError('Failed to fetch')
@@ -32,13 +33,13 @@ function device(service: FakeService, wallet: string | null = WALLET, store = ne
   }
   const api = createProjectsApi(
     BASE,
-    (url, init) => (wallet === null ? Promise.reject(new Error('not-signed-in')) : send(wallet, url, init)),
+    (url, init) => (who.wallet === null ? Promise.reject(new Error('not-signed-in')) : send(who.wallet, url, init)),
     (url, init) => send(null, String(url), { method: init?.method, body: init?.body })
   )
   const engine = createSyncEngine({
     store,
-    session: () => (wallet === null ? null : { api, wallet }),
-    account: () => (wallet === null ? 'guest' : 'on'),
+    session: () => (who.wallet === null ? null : { api, wallet: who.wallet }),
+    account: () => (who.wallet === null ? 'guest' : 'on'),
     hash: contentCid,
     title: async (id) => id,
     duplicate: async (id) => (await store.duplicate(id, `${id} copy`)).id
@@ -48,7 +49,7 @@ function device(service: FakeService, wallet: string | null = WALLET, store = ne
     engine.touched(id, path)
   }
   const read = async (id: string, path: string): Promise<string> => new TextDecoder().decode(await store.read(id, path))
-  return { store, engine, net, edit, read }
+  return { store, engine, net, who, edit, read }
 }
 
 async function after(ms: number, ...engines: SyncEngine[]): Promise<void> {
@@ -215,6 +216,27 @@ describe('project sync', () => {
     expect(offline.engine.status().loading).toBeUndefined()
 
     expect(device(service, null).engine.status().loading).toBeUndefined()
+  })
+
+  it('says the scenes are loading again after signing out and back in as the same account', async () => {
+    const a = device(service)
+    const { id } = await a.store.create('Scene', [['src/index.ts', text('v1')]])
+    await a.engine.refresh(true)
+    await after(0, a.engine)
+
+    const b = device(service)
+    await b.engine.refresh(true)
+    expect(b.engine.remoteOnly().map((project) => project.id)).toEqual([id])
+
+    b.who.wallet = null
+    await b.engine.refresh(true)
+    expect(b.engine.remoteOnly()).toEqual([])
+
+    b.who.wallet = WALLET
+    expect(b.engine.status().loading).toBe(true)
+    await b.engine.refresh(true)
+    expect(b.engine.status().loading).toBeUndefined()
+    expect(b.engine.remoteOnly().map((project) => project.id)).toEqual([id])
   })
 
   it('a second device lists the project, downloads it, and follows when the first moves on', async () => {

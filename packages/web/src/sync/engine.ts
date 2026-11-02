@@ -390,6 +390,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     if (signedIn !== lastWallet) {
       // what was true of the previous account says nothing about this one
       lastWallet = signedIn
+      listedFor = null
       offline = false
       listError = null
       for (const t of tracked.values()) {
@@ -418,6 +419,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const session = options.session()
     if (session === null) {
       remote = []
+      listedFor = null
       emit()
       return
     }
