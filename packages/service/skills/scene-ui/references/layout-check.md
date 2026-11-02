@@ -1,6 +1,6 @@
 # Checking the layout
 
-Rules: **L1–L8, H1–H4, W1**. The point: a layout bug found by measuring costs a minute; found on a phone it costs a
+Rules: **L1–L8, H1–H5, W1**. The point: a layout bug found by measuring costs a minute; found on a phone it costs a
 build, a QR scan and a play-through. Measure first, then send the creator to the phone for what only a
 hand can judge.
 
@@ -73,13 +73,14 @@ closed and the touch buttons the scene declares on screen. A window is meant to 
 | **H2** | the HUD panels together (overlaps counted once) cover more than **25%** of the canvas |
 | **H3** | one HUD panel covers more than **15%** of the screen centre, the middle third both ways (`[533, 240, 533, 240]` on 1600 × 720) |
 | **H4** | a HUD panel intersects a touch button the scene declares (reported as L2), measured mid-game: lists at their longest |
+| **H5** | a slot's panels together sit away from every screen edge (further than the screen inset plus 48): the HUD floats over the game (reported as `H5-edge`) |
 | **W1** | in the HUD state a window is still drawn (a `modal` with no `open()`), or a node that takes presses covers more than half the screen |
 
 Why these numbers: a compact game HUD — a score, a timer, a hint — takes 15–20% of a phone screen, and one compact
 panel in each of the four slots comes to about 15%; 25% leaves room for that and still fails a HUD that hides the
 game. The centre is where the avatar, the crosshair and what the player acts on are. On a phone the left column
-starts at x = 456, right of the chat column, so a left panel taller than about 108 (ending below y = 240) reaches
-into the centre: keep left panels short, or use the right column, which never does. On a phone the right
+is drawn against the screen's left edge, outside the interactable area: x = 108, from y = 129 (below the explorer's
+buttons row) to y = 432 (above the joystick), `hudSpace('left')` tall; keep buttons out of it. On a phone the right
 column ends above the action buttons (y ≈ 394 with four or more buttons, 439 with two or three, 519 with one):
 `hudSpace('right')` from `./runtime/hudLayout` is its height, so size a growing list to it. Fix H2 by showing less
 (D5): one line of score instead of a table, detail in a modal the player opens.

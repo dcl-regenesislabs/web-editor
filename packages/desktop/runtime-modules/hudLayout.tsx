@@ -6,8 +6,9 @@
 //
 // addHudItem(slot, render, { order, open, close }) adds a panel and returns a function that removes it:
 // - 'left' / 'right': columns stacked from the top, at most HUD_COLUMN_WIDTH wide. On a phone the right column
-//   ends above the action buttons the scene declares and cuts off what does not fit; the left column sits
-//   beside the avatar, so keep it to one short card;
+//   ends above the action buttons the scene declares, and the left column is drawn against the screen's left edge,
+//   below the explorer's top-left buttons and above the joystick (outside the interactable area: keep buttons in
+//   the right column); both cut off what does not fit;
 // - 'top': status and notifications at the top centre, at most HUD_COLUMN_WIDTH wide;
 // - 'bottom': short hints and notices above the bottom centre, at most HUD_NOTICE_WIDTH wide, never interactive;
 // - 'modal': a window, drawn only while its `open()` answers true, centred in the interactable area over the
@@ -36,6 +37,7 @@ import ReactEcs, { InteractableArea, ReactEcsRenderer, UiEntity } from '@dcl/sdk
 import { engine, InputAction, Schemas, TouchScreenControls, type LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
 import { UI_CANVAS } from './uiTheme'
+import { PHONE_LEFT_COLUMN, PHONE_SCREEN, phoneShare } from './pure/phoneControls'
 
 export type HudSlot = 'left' | 'top' | 'right' | 'bottom' | 'modal'
 export const HUD_COLUMN_WIDTH = 340
@@ -44,9 +46,6 @@ export const HUD_GAP = 12
 export const HUD_NOTICE_WIDTH = 440
 // clear of the explorer's own edge controls inside the interactable area
 const HUD_MARGIN = 20
-// on phones the explorer's profile, chat, camera and reload buttons run along the top left, partly inside
-// the interactable area: the left column starts below them
-const HUD_PHONE_LEFT_TOP = 100
 // a phone's interactable area, and where its middle third (the avatar, what the player acts on) begins and ends
 const PHONE_AREA = { top: 32, height: 643, centreTop: 240, centreBottom: 480 }
 const DESKTOP_AREA = { height: 1080, centreTop: 360 }
@@ -98,6 +97,7 @@ function mount(state: HudLayoutState): void {
   if (state.mounted) return
   state.mounted = true
   ReactEcsRenderer.addUiRenderer(engine.addEntity(), HudLayout, UI_CANVAS)
+  ReactEcsRenderer.addUiRenderer(engine.addEntity(), PhoneLeftColumn, { ...UI_CANVAS, screenInset: 'none' })
   ReactEcsRenderer.addUiRenderer(engine.addEntity(), WindowLayer, { ...UI_CANVAS, screenInset: 'none', zIndex: 10 })
   engine.addSystem(syncTouchControls)
 }
@@ -151,7 +151,7 @@ function actionButtonsReach(): number {
 export function hudSpace(slot: Exclude<HudSlot, 'modal'>): number {
   if (!isMobile()) return slot === 'left' || slot === 'right' ? DESKTOP_AREA.height - 2 * HUD_MARGIN : DESKTOP_AREA.centreTop - 2 * HUD_MARGIN
   if (slot === 'right') return PHONE_AREA.height - HUD_MARGIN - actionButtonsReach()
-  if (slot === 'left') return PHONE_AREA.centreTop - PHONE_AREA.top - HUD_PHONE_LEFT_TOP
+  if (slot === 'left') return PHONE_LEFT_COLUMN.bottom - PHONE_LEFT_COLUMN.top
   if (slot === 'top') return PHONE_AREA.centreTop - PHONE_AREA.top - HUD_MARGIN
   return PHONE_AREA.top + PHONE_AREA.height - HUD_MARGIN - PHONE_AREA.centreBottom
 }
@@ -200,7 +200,9 @@ function drawn(slot: Exclude<HudSlot, 'modal'>): ReactEcs.JSX.Element[] {
   return out
 }
 
-function Stack(props: { slot: Exclude<HudSlot, 'modal'>; align: 'flex-start' | 'center' | 'flex-end'; side: { left?: number; right?: number }; top?: number; bottom?: number }) {
+type Offset = number | `${number}%`
+
+function Stack(props: { slot: Exclude<HudSlot, 'modal'>; align: 'flex-start' | 'center' | 'flex-end'; side: { left?: Offset; right?: Offset }; top?: Offset; bottom?: Offset }) {
   const items = drawn(props.slot)
   if (items.length === 0) return null
   const fromBottom = props.slot === 'bottom'
@@ -218,11 +220,20 @@ function HudLayout() {
   return <UiEntity uiTransform={{ positionType: 'absolute', width: '100%', height: '100%', pointerFilter: 'none' }}>
     <Stack slot="top" align="center" side={{ left: 0 }} />
     <Stack slot="bottom" align="center" side={{ left: 0 }} />
-    <Stack slot="left" align="flex-start" side={{ left: HUD_MARGIN }} top={phone ? HUD_PHONE_LEFT_TOP : HUD_MARGIN} />
+    {phone ? null : <Stack slot="left" align="flex-start" side={{ left: HUD_MARGIN }} />}
     <Stack slot="right" align="flex-end" side={{ right: HUD_MARGIN }} bottom={phone ? actionButtonsReach() : undefined} />
     {/* how many modals the mobile check can open, one by one */}
     <UiEntity uiTransform={{ elementId: `hud:modals:${itemsIn('modal').length}`, positionType: 'absolute', width: 1, height: 1, pointerFilter: 'none' }} />
   </UiEntity>
+}
+
+// The phone's interactable area starts right of the explorer's chat column, about a quarter across: drawn there the
+// left column would float beside the top centre. It is placed on the whole screen instead, in shares of it, so it
+// follows the explorer's controls on any phone.
+function PhoneLeftColumn() {
+  if (!isMobile()) return null
+  return <Stack slot="left" align="flex-start" side={{ left: phoneShare(PHONE_LEFT_COLUMN.left, 'width') }}
+    top={phoneShare(PHONE_LEFT_COLUMN.top, 'height')} bottom={phoneShare(PHONE_SCREEN.height - PHONE_LEFT_COLUMN.bottom, 'height')} />
 }
 
 // Windows draw over the whole screen so a backdrop can dim all of it; the window itself stays in the interactable area.

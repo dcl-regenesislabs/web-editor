@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ALL_CONTROLS, actionButtons, keyHintIssues, layoutIssues, touchIssues, touchLayout, unionArea, usedActions, visibleButtons, windowIssues,
+  ALL_CONTROLS, actionButtons, edgeIssues, keyHintIssues, layoutIssues, touchIssues, touchLayout, unionArea, usedActions, visibleButtons, windowIssues,
   type Canvas, type MeasuredNode, type TouchLayout
 } from './mobile-rules'
 
@@ -9,12 +9,17 @@ const rules = (nodes: MeasuredNode[], controls: TouchLayout | null = ALL_CONTROL
 const rounded = (rect: number[]) => rect.map((n) => Math.round(n))
 
 describe('layoutIssues', () => {
-  it('passes a status panel below the explorer buttons, inside the interactable area', () => {
-    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [456, 132, 300, 176] }])).toEqual([])
+  it('passes the left column where the layout draws it: the left screen edge, below the explorer buttons, above the joystick', () => {
+    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [108, 129, 340, 303], text: 'Lives 3', fontSize: 24 }])).toEqual([])
   })
 
   it('flags a panel under the explorer buttons row, as the Faro HUD sat', () => {
-    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [456, 52, 300, 176] }])).toEqual(['L2'])
+    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [108, 52, 300, 176] }])).toEqual(['L2'])
+  })
+
+  it('keeps presses out of the left column, which is outside the interactable area, and the column on the screen', () => {
+    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [108, 129, 300, 100], pointer: ['pointer_events'] }])).toEqual(['L1', 'L2'])
+    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [40, 129, 300, 100] }])).toEqual(['L1'])
   })
 
   it('flags a HUD item outside the interactable area and over the action buttons', () => {
@@ -147,7 +152,7 @@ describe('HUD coverage', () => {
 
   it('passes a compact HUD clear of the centre', () => {
     expect(rules([
-      { entity: 1, elementId: 'hud:left:0', rect: [456, 132, 300, 100] },
+      { entity: 1, elementId: 'hud:left:0', rect: [108, 129, 300, 100] },
       { entity: 2, elementId: 'hud:right:0', rect: [1172, 52, 300, 120] },
       { entity: 3, elementId: 'hud:top:0', rect: [800, 52, 300, 80] }
     ], none)).toEqual([])
@@ -165,16 +170,42 @@ describe('HUD coverage', () => {
   })
 
   it('fails a score box over the screen centre, and says how to clear it', () => {
-    const issues = layoutIssues('hud', PHONE, [{ entity: 1, elementId: 'hud:left:0', rect: [456, 132, 340, 420] }], none)
+    const issues = layoutIssues('hud', PHONE, [{ entity: 1, elementId: 'hud:top:0', rect: [630, 52, 340, 420] }], none)
     expect(issues.map((issue) => issue.rule)).toEqual(['H3-centre'])
-    expect(issues[0].detail).toContain('at most 340x108')
-    expect(issues[0].detail).toContain("'right' column")
-    expect(issues[0].detail).toContain("hudSpace('right')")
+    expect(issues[0].detail).toContain('at most 340x188')
   })
 
   it('lets a status panel clip the centre edge, and a dialog cover the screen', () => {
-    expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [456, 132, 300, 176] }], none)).toEqual([])
+    expect(rules([{ entity: 1, elementId: 'hud:top:0', rect: [630, 52, 340, 240] }], none)).toEqual([])
     expect(rules([{ entity: 1, elementId: 'hud:top:0', rect: [436, 32, 1056, 643] }], null)).toEqual([])
+  })
+})
+
+describe('HUD at the edges', () => {
+  const none: TouchLayout = { visible: [], joystick: true }
+
+  it('warns about a left column drawn inside the interactable area, beside the top centre', () => {
+    const issues = layoutIssues('hud', PHONE, [{ entity: 1, elementId: 'hud:left:0', rect: [456, 132, 300, 100] }], none)
+    expect(issues.map((issue) => issue.rule)).toEqual(['H5-edge'])
+    expect(issues[0].detail).toContain('[456, 132, 300, 100]')
+    expect(issues[0].detail).toContain('out of date')
+  })
+
+  it('passes every slot at its edge, a column whose later cards sit lower, and a scaled canvas', () => {
+    expect(rules([
+      { entity: 1, elementId: 'hud:left:0', rect: [108, 129, 300, 80] },
+      { entity: 2, elementId: 'hud:top:0', rect: [630, 52, 340, 60] },
+      { entity: 3, elementId: 'hud:top:1', rect: [630, 124, 340, 60] },
+      { entity: 4, elementId: 'hud:right:0', rect: [1172, 52, 300, 120] },
+      { entity: 5, elementId: 'hud:bottom:0', rect: [580, 595, 440, 60] }
+    ], none)).toEqual([])
+    const preview: Canvas = { width: 1460, height: 657, interactable: { left: 398, top: 29, right: 99, bottom: 41 } }
+    expect(edgeIssues('hud', preview, [{ entity: 1, elementId: 'hud:left:0', rect: [99, 118, 274, 90] }])).toEqual([])
+    expect(edgeIssues('hud', preview, [{ entity: 1, elementId: 'hud:left:0', rect: [416, 120, 274, 90] }]).map((issue) => issue.rule)).toEqual(['H5-edge'])
+  })
+
+  it('leaves windows alone: they are meant to sit in the middle', () => {
+    expect(rules([{ entity: 1, elementId: 'shop', rect: [600, 200, 400, 300] }], none)).toEqual([])
   })
 })
 
