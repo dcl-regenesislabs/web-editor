@@ -1,11 +1,12 @@
 // Fixture lines are verbatim from a real session (a scene with a deliberate
 // `congoel.log()` in src/index.ts), ANSI escapes included.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   applyBuildEvent,
   buildInFlight,
   compositeAwaitingBuild,
   errorLocation,
+  flushServerRestart,
   healthForTest,
   noteCompositeWritten,
   noteSceneStale,
@@ -16,6 +17,9 @@ import {
   sceneNeedsReload,
   type SceneHealth
 } from './scene-health'
+
+const { previewChanged } = vi.hoisted(() => ({ previewChanged: vi.fn() }))
+vi.mock('../../engine/hosted', () => ({ hostV1: () => ({ previewChanged }) }))
 
 const ESC = ''
 const TS_ERROR = `${ESC}[96msrc/index.ts${ESC}[0m:${ESC}[93m64${ESC}[0m:${ESC}[93m1${ESC}[0m - ${ESC}[91merror${ESC}[0m${ESC}[90m TS2304: ${ESC}[0mCannot find name 'congoel'.`
@@ -390,5 +394,61 @@ describe('build events in place of log lines', () => {
 
     applyBuildEvent({ type: 'sessionStarted' })
     expect(sceneNeedsReload()).toBe(false)
+  })
+})
+
+// The host restarts the scene server on previewChanged, and every autosave rebuilds the bundle.
+describe('restarting the scene server', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetForTest()
+    previewChanged.mockClear()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const saveAndBuild = (): void => {
+    noteCompositeWritten()
+    applyBuildEvent({ type: 'buildStarted', changed: ['assets/scene/main.composite'] })
+    applyBuildEvent({ type: 'bundleSaved' })
+  }
+
+  it('restarts once after a burst of saves, not once per bundle', async () => {
+    for (let i = 0; i < 5; i++) {
+      saveAndBuild()
+      await vi.advanceTimersByTimeAsync(900)
+    }
+    expect(previewChanged).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(previewChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits while another save is on its way to a bundle', async () => {
+    saveAndBuild()
+    noteCompositeWritten()
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(previewChanged).not.toHaveBeenCalled()
+    applyBuildEvent({ type: 'buildStarted', changed: ['assets/scene/main.composite'] })
+    applyBuildEvent({ type: 'bundleSaved' })
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(previewChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('restarts at once when Play asks, and only when a bundle is waiting', async () => {
+    flushServerRestart()
+    expect(previewChanged).not.toHaveBeenCalled()
+    saveAndBuild()
+    flushServerRestart()
+    expect(previewChanged).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(previewChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it("drops a restart owed to the previous project's server", async () => {
+    saveAndBuild()
+    applyBuildEvent({ type: 'sessionStarted' })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(previewChanged).not.toHaveBeenCalled()
   })
 })

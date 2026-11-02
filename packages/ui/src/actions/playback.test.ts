@@ -13,7 +13,7 @@ vi.mock('../engine/scene-ui', () => ({ autoHideSceneUi: () => host.hide(), relea
 vi.mock('../engine/cmd', () => ({ cmd: {} }))
 vi.mock('../engine/bus', () => ({ sendToScene: vi.fn() }))
 vi.mock('../core/autosave', () => ({ flushPendingSave: vi.fn() }))
-vi.mock('../features/editor/scene-health', () => ({ awaitFreshBundle: vi.fn(), noteSceneUpToDate: vi.fn(), sceneNeedsReload: vi.fn(), wireSceneHealth: vi.fn() }))
+vi.mock('../features/editor/scene-health', () => ({ awaitFreshBundle: vi.fn(), flushServerRestart: vi.fn(), noteSceneUpToDate: vi.fn(), sceneNeedsReload: vi.fn(), wireSceneHealth: vi.fn() }))
 vi.mock('../features/editor/scene-checks', () => ({ consumePlayOverride: vi.fn(), playBlockingFindings: vi.fn(), revealSceneChecks: vi.fn() }))
 vi.mock('../panels/authored-ids', () => ({ refreshAuthoredIds: vi.fn() }))
 vi.mock('./selection', () => ({ uiSetCamera: vi.fn() }))

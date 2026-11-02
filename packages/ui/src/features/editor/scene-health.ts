@@ -148,6 +148,45 @@ export function noteSceneUpToDate(): void {
   sceneStale = false
 }
 
+// --- the scene server (the host's headless instance) ---
+// The host restarts it on previewChanged. Every autosave rebuilds the bundle, and an
+// assistant batch saves every second or two: a restart per bundle kept the server
+// booting, and players connecting to it waiting. The restart waits until the bundles
+// stop coming, and Play or a build's run takes it at once.
+const SERVER_RESTART_QUIET_MS = 3_000
+// a save whose build never starts must not hold the restart back for good
+const SERVER_RESTART_MAX_DEFER_MS = 30_000
+let restartTimer: ReturnType<typeof setTimeout> | null = null
+let restartOwedSince = 0
+
+function scheduleServerRestart(): void {
+  if (restartTimer === null) restartOwedSince = Date.now()
+  else clearTimeout(restartTimer)
+  restartTimer = setTimeout(restartWhenQuiet, SERVER_RESTART_QUIET_MS)
+}
+
+function restartWhenQuiet(): void {
+  // another save is on its way to a bundle: restart on that one
+  if ((building || compositeUnbuilt) && Date.now() - restartOwedSince < SERVER_RESTART_MAX_DEFER_MS) {
+    restartTimer = setTimeout(restartWhenQuiet, SERVER_RESTART_QUIET_MS)
+    return
+  }
+  restartTimer = null
+  hostV1()?.previewChanged?.()
+}
+
+function cancelServerRestart(): void {
+  if (restartTimer !== null) clearTimeout(restartTimer)
+  restartTimer = null
+}
+
+// Restart the scene server now if a bundle is waiting for it.
+export function flushServerRestart(): void {
+  if (restartTimer === null) return
+  cancelServerRestart()
+  hostV1()?.previewChanged?.()
+}
+
 // the build error or runtime crash on show now, for the assistant's build tool
 export function currentSceneHealth(): SceneHealth | null {
   return health
@@ -163,6 +202,7 @@ export function resetForTest(): void {
   building = false
   sceneStale = false
   compositeUnbuilt = false
+  cancelServerRestart()
 }
 
 function startSession(): void {
@@ -173,6 +213,8 @@ function startSession(): void {
   // a rebuild that belonged to a scene that is no longer open
   sceneStale = false
   compositeUnbuilt = false
+  // the next project's server starts on its own bundle
+  cancelServerRestart()
   if (health !== null) set(null)
 }
 
@@ -199,7 +241,7 @@ export function applyBuildEvent(event: SceneBuildEvent): void {
       return
     case 'bundleSaved':
       building = false
-      hostV1()?.previewChanged?.()
+      scheduleServerRestart()
       if (health?.kind === 'build') set(null)
       return
     case 'failed':

@@ -5,7 +5,7 @@ import { cmd } from '../engine/cmd'
 import { hostV1 } from '../engine/hosted'
 import { pauseScene, reloadSnapshot, syncFrozenState } from '@scene/inspector'
 import { errorLines, isServerError } from '../features/editor/log-roles'
-import { noteSceneUpToDate, sceneNeedsReload } from '../features/editor/scene-health'
+import { flushServerRestart, noteSceneUpToDate, sceneNeedsReload } from '../features/editor/scene-health'
 import { flushPendingSave } from '../core/autosave'
 import { log } from '../log'
 
@@ -88,6 +88,8 @@ export async function runFreshBuild(): Promise<BuildRun> {
         `(${e instanceof Error ? e.message : String(e)}). Run playtest stop to reattach the editor, then build again.`
     }
   }
+  // the server errors below are the new bundle's only if the server restarted on it
+  flushServerRestart()
   if (serverLogs !== undefined) await sleep(SERVER_SETTLE_MS)
   const errors = errorLines(await cmd.sceneLogs(300).catch(() => ''))
   const serverErrors = serverLogs === undefined ? [] : serverLogs(serverSince).filter(isServerError).map((line) => line.msg)

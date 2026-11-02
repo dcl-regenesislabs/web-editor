@@ -11,7 +11,7 @@ vi.mock('../engine/cmd', () => ({ cmd }))
 vi.mock('../engine/hosted', () => ({ hostV1: () => null }))
 vi.mock('@scene/inspector', () => ({ pauseScene, reloadSnapshot, syncFrozenState: async () => {} }))
 vi.mock('../features/editor/log-roles', () => ({ errorLines: () => [], isServerError: () => false }))
-vi.mock('../features/editor/scene-health', () => ({ noteSceneUpToDate: () => {}, sceneNeedsReload: () => true }))
+vi.mock('../features/editor/scene-health', () => ({ flushServerRestart: () => {}, noteSceneUpToDate: () => {}, sceneNeedsReload: () => true }))
 vi.mock('../core/autosave', () => ({ flushPendingSave: async () => ({ pending: false, ok: true }) }))
 vi.mock('../log', () => ({ log: { warn: () => {}, debug: () => {}, error: () => {} } }))
 
