@@ -17,7 +17,8 @@ import { ENGINE_BOOT_WATCHDOG_MS, INSPECTOR_STALL_MS, SLOW_BOOT_HINT_MS } from '
 import { forwardEngineKeys } from '../../embed'
 import { Button, LinkButton, Spinner, labelTip } from '../../ds'
 import { isTyping } from '../../shortcuts'
-import { backLabel, backToProjects, reloadEditor } from './nav'
+import { reloadEditor } from './nav'
+import { BackButton } from './BackButton'
 import { SceneTopbar } from './SceneTopbar'
 import { PublishOutcomeToast } from '../publish/PublishOutcomeToast'
 import { SyncConflictGate } from '../sync/SyncChip'
@@ -385,9 +386,7 @@ function EngineInitOverlay(): JSX.Element {
         )}
         {/* This overlay covers the topbar, so without its own exit a scene that
             never finishes loading can only be escaped by quitting the app. */}
-        <Button variant="ghost" size="lg" onClick={backToProjects}>
-          {backLabel()}
-        </Button>
+        <BackButton />
       </div>
     </div>
   )
@@ -417,9 +416,7 @@ function SceneCodeErrorOverlay(props: { health: SceneHealth; project: string | n
             Try again
           </Button>
         )}
-        <Button variant="ghost" size="lg" onClick={backToProjects}>
-          {backLabel()}
-        </Button>
+        <BackButton />
       </div>
     </div>
   )
