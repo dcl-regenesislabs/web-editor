@@ -206,8 +206,9 @@ behind Cloudflare. It stores projects and runs the assistant on the team's Claud
 - **The app runs in a frame without `localStorage`** (bevy-explorer's web shell): reading it
   throws. The identity comes from the shell (`getLogin()`), which also signs. The editor keeps its
   preferences in IndexedDB `dcl-editor-prefs`; `dcl-editor` belongs to the engine's `web_save.js`.
-- **The scene server restarts on every build:** the editor calls `previewChanged()` after saving a
-  bundle and the host coalesces restarts. It boots on the client's backends (`__bevyBootConfig`).
+- **The scene server restarts after builds:** the editor calls `previewChanged()` once the bundles
+  stop coming for 3 s (an assistant batch saves every second or two), and at once on Play or a
+  build's run (`features/editor/scene-health.ts`). It boots on the client's backends (`__bevyBootConfig`).
 - **Services follow the session's base domain,** not the page's host; `?worldsServer=` is ignored
   for deployments so a link can't redirect them (bevy-explorer #1441).
 - **A published link needs `&position=<base>`:** a World holds several scenes and otherwise

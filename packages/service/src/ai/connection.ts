@@ -57,6 +57,16 @@ export function parsePrompt(value: unknown): AiSendParams | null {
   return value as unknown as AiSendParams
 }
 
+// A build that did not compile is a tool call that worked: the browser answers it ok, with ok:false in its text.
+function compileFailed(text: string): boolean {
+  try {
+    const result: unknown = JSON.parse(text)
+    return object(result) && result.ok === false
+  } catch {
+    return false
+  }
+}
+
 // null: none sent; undefined: one that isn't valid
 function parseMemory(value: unknown): MemoryRef | null | undefined {
   if (value === undefined) return null
@@ -124,7 +134,8 @@ export function createConnection(options: {
         const timer = setTimeout(() => {
           tally(live, tool, false)
           finish(false, 'The browser did not answer the tool request.')
-          abort(`${label ?? TOOL_LABELS[tool]} timed out. The turn stopped; check the scene before retrying.`, false, 'timed_out')
+          // paused, not ended: the conversation keeps the failed call, so Continue picks up from it
+          abort(`${label ?? TOOL_LABELS[tool]} timed out. Check the scene, then continue.`, true, 'timed_out')
         }, options.toolTimeoutMs ?? (tool === 'read_file' || tool === 'list_files' || tool === 'search_files' ? 60_000 : 15 * 60_000))
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return
@@ -166,12 +177,12 @@ export function createConnection(options: {
     live.lastStepAt = Date.now()
   }
 
-  function tally(turn: ActiveTurn, tool: BrowserToolName, ok: boolean): void {
+  function tally(turn: ActiveTurn, tool: BrowserToolName, ok: boolean, text = ''): void {
     turn.tools.toolCalls++
     if (!ok) turn.tools.failedToolCalls++
     if (tool === 'build') {
       turn.tools.builds++
-      if (!ok) turn.tools.failedBuilds++
+      if (!ok || compileFailed(text)) turn.tools.failedBuilds++
     }
   }
 
@@ -289,7 +300,7 @@ export function createConnection(options: {
         const request = pending.get(message.callId)
         if (request?.turnId !== message.turnId || active?.id !== message.turnId) return
         active.chars += message.text.length
-        tally(active, request.tool, active.chars <= MAX_TURN_RESULT_CHARS && message.ok)
+        tally(active, request.tool, active.chars <= MAX_TURN_RESULT_CHARS && message.ok, message.text)
         if (active.chars > MAX_TURN_RESULT_CHARS) {
           request.finish(false, 'The tool results for this turn are too large.')
           abort('The turn read as much as one turn can hold.', true, 'failed')

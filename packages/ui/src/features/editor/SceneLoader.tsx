@@ -7,7 +7,7 @@ import { folderName } from '../../lib/format'
 import { useStore } from '../../core/store'
 import { AiPanel } from '../../panels/AiPanel'
 import { aiStore, openCodeAt } from '../../panels/ai-store'
-import { backLabel, backToProjects } from './nav'
+import { BackButton } from './BackButton'
 import { Editor } from './Editor'
 import { errorLocation, stripAnsi, useSceneHealth } from './scene-health'
 
@@ -121,9 +121,7 @@ export function SceneLoader(props: { project: string }): JSX.Element {
             Try again
           </Button>
         )}
-        <Button variant="ghost" size="lg" onClick={backToProjects}>
-          {backLabel()}
-        </Button>
+        <BackButton />
       </div>
     </div>
   )

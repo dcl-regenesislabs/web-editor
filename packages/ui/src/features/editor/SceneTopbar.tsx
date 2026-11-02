@@ -12,7 +12,7 @@ import { canPublish } from '../publish/publish-preflight'
 import { restartToUpdate, useUpdateStatus } from '../update/update'
 import { SceneSettingsModal } from '../scene-settings/SceneSettingsModal'
 import { MobilePreviewModal } from '../preview/MobilePreviewModal'
-import { backLabel, backToProjects, reloadEditor } from './nav'
+import { backLabel, backToProjects, reloadEditor, useLeaving } from './nav'
 import { openCodeEditor } from '../../panels/ai-store'
 import { IconCode } from '../../icons'
 import { SyncChip } from '../sync/SyncChip'
@@ -83,6 +83,7 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
   }
   const title = scene?.title ?? scene?.hash ?? 'Loading scene…'
   const home = backToProjects
+  const leaving = useLeaving()
   const host = getHost()
   const project = props.project ?? null
   const auth = useAuth()
@@ -121,8 +122,8 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
   }, [])
   return (
     <div className={`eui-topbar${near ? ' near' : ''}`} ref={barRef}>
-      <button className="eui-topbar-home" {...labelTip(backLabel())} onClick={home}>
-        <ArrowLeftIcon />
+      <button className="eui-topbar-home" {...labelTip(leaving ? 'Saving…' : backLabel())} onClick={home} disabled={leaving} aria-busy={leaving}>
+        {leaving ? <Spinner size="xs" /> : <ArrowLeftIcon />}
       </button>
       <div className="eui-topbar-title">
         <span className="eui-title">{title}</span>

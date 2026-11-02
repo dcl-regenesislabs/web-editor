@@ -81,16 +81,19 @@ async function runPlace(
   const placement: PrefabPlacement = {
     position: request.position,
     scale: request.scale,
-    name: request.name
+    name: request.name,
+    problems: []
   }
   const rootId =
     source.kind === 'library'
       ? await uiPlaceLibraryPrefab(source.ref, 'assistant', placement)
       : await uiPlacePrefab(source.folder, 'assistant', placement)
+  const problems = placement.problems ?? []
   if (rootId === null) {
-    out.problems.push(`"${request.slug}" could not be placed`)
+    out.problems.push(`"${request.slug}" could not be placed${problems.length > 0 ? `: ${problems.join('; ')}` : ''}`)
     return
   }
+  for (const problem of problems) out.problems.push(`"${request.slug}" was placed, but ${problem}`)
   out.outcomes.push({ tool: 'Placed', detail: labelOf(rootId) })
   // Read AFTER the placement: a library prefab copies itself into the project on
   // the way in, so an earlier request this turn may have added the very prefab a

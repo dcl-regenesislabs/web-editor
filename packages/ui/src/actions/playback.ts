@@ -5,7 +5,7 @@ import { pauseScene, playScene, stepScene, saveCompositeDirect, reloadSnapshot }
 import { type CameraMode } from '@scene/bridge-protocol'
 import { cmd } from '../engine/cmd'
 import { flushPendingSave } from '../core/autosave'
-import { awaitFreshBundle, noteSceneUpToDate, sceneNeedsReload, wireSceneHealth } from '../features/editor/scene-health'
+import { awaitFreshBundle, flushServerRestart, noteSceneUpToDate, sceneNeedsReload, wireSceneHealth } from '../features/editor/scene-health'
 import { consumePlayOverride, playBlockingFindings, revealSceneChecks } from '../features/editor/scene-checks'
 import { refreshAuthoredIds } from '../panels/authored-ids'
 import { autoHideSceneUi, releaseAutoHiddenSceneUi } from '../engine/scene-ui'
@@ -109,6 +109,8 @@ async function play(gen: number): Promise<void> {
   }
   await waitForFreshBuild()
   if (superseded(gen)) return
+  // players join the server as the scene starts: it must run the bundle just built
+  flushServerRestart()
   if (state.camMode !== 'none') {
     prePlayCam = state.camMode === 'free' ? 'free' : 'target'
     uiSetCamera('off')

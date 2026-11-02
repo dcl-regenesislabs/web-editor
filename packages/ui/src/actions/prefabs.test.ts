@@ -102,14 +102,12 @@ vi.mock('@scene/world-pos', () => ({ rootLocalForWorld: () => null }))
 vi.mock('../engine/bus', () => ({ sendToScene: async () => {} }))
 vi.mock('../analytics', () => ({ trackCreator }))
 vi.mock('../assets', () => ({ dropPosition: async () => ({ x: 0, y: 0, z: 0 }), uniqueEntityName: (n: string) => n }))
+const instantiated = vi.hoisted(() => ({ warnings: [] as string[], error: null as Error | null }))
 vi.mock('../prefabs/instantiate', () => ({
-  instantiatePrefab: async () => ({
-    rootId: '600',
-    data: { id: 'sp1', name: 'Spawner' },
-    warnings: [],
-    permissionsAdded: [],
-    hasScripts: true
-  })
+  instantiatePrefab: async () => {
+    if (instantiated.error !== null) throw instantiated.error
+    return { rootId: '600', data: { id: 'sp1', name: 'Spawner' }, warnings: instantiated.warnings, permissionsAdded: [], hasScripts: true }
+  }
 }))
 vi.mock('../prefabs/update', () => ({ updatePrefabCopy: async () => ({ updated: false }) }))
 vi.mock('../prefabs/sdk-gate', () => ({ blockedBySdk: async () => false }))
@@ -176,6 +174,8 @@ vi.mock('./selection', () => ({
 }))
 
 beforeEach(() => {
+  instantiated.warnings = []
+  instantiated.error = null
   state.assetBusy = false
   state.saveStatus = ''
   roots.ids = ['512']
@@ -415,5 +415,22 @@ describe('prefab placement analytics', () => {
       ['asset_added', { source: 'user', kind: 'prefab', via: 'prefabs_panel' }],
       ['asset_added', { source: 'project', kind: 'prefab', via: 'assistant' }]
     ])
+  })
+})
+
+// The assistant reads the placement's result, not the status bar.
+describe('what a placement tells its caller', () => {
+  it('passes on the components that could not be written', async () => {
+    instantiated.warnings = ['2 components could not be written: unknown variant `$case`']
+    const placement = { problems: [] as string[] }
+    expect(await uiPlacePrefab('custom/work_station', 'assistant', placement)).toBe('600')
+    expect(placement.problems).toEqual(['2 components could not be written: unknown variant `$case`'])
+  })
+
+  it('passes on why nothing was placed', async () => {
+    instantiated.error = new Error('active inspection scene no longer exists')
+    const placement = { problems: [] as string[] }
+    expect(await uiPlacePrefab('custom/work_station', 'assistant', placement)).toBeNull()
+    expect(placement.problems).toEqual(['active inspection scene no longer exists'])
   })
 })

@@ -4,7 +4,8 @@
 // come for free.
 import { allocateNamedEntities, reloadSnapshot, writeComponent } from '@scene/inspector'
 import { snapshotComponentName } from '@scene/composite'
-import { NAME_COMPONENT } from '@scene/custom-components'
+import { NAME_COMPONENT, isCustomComponent } from '@scene/custom-components'
+import { toEngineValue } from '@scene/schema'
 import { state, setSelected } from '@scene/state'
 import { revealInTree } from '../panels/reveal'
 import { ensureContentMapped } from '../assets'
@@ -279,7 +280,9 @@ export async function instantiatePrefab(
         resolveScriptLayouts(value, idMap, warnings)
       }
       resolveVideoRefs(value, entityId, idMap, warnings)
-      writes.push(writeComponent(String(entityId), snapshotName, JSON.stringify(value)))
+      // built-in composites keep primitives' meshes and materials in the SDK's oneof form
+      const written = isCustomComponent(snapshotName) ? value : toEngineValue(value)
+      writes.push(writeComponent(String(entityId), snapshotName, JSON.stringify(written)))
     }
   }
 
@@ -317,11 +320,11 @@ export async function instantiatePrefab(
     )
   }
 
-  try {
-    await Promise.all(writes)
-  } catch (e) {
-    warnings.push(`some components could not be written: ${String(e)}`)
-    log.error('prefab instantiation write failed', e)
+  // each failure, not the first: one refused component says nothing about the others
+  const failed = (await Promise.allSettled(writes)).filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+  if (failed.length > 0) {
+    warnings.push(`${failed.length} component${failed.length === 1 ? '' : 's'} could not be written: ${String(failed[0].reason)}`)
+    log.error('prefab instantiation write failed', ...failed.map((r) => r.reason))
   }
 
   let permissionsAdded: string[] = []

@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const write = vi.fn<() => Promise<void>>(() => Promise.resolve())
 
-vi.mock('@scene/state', () => ({ state: { frozen: true, playEditWarn: false } }))
+const scene = vi.hoisted(() => ({ frozen: true, playEditWarn: false }))
+vi.mock('@scene/state', () => ({ state: scene }))
 vi.mock('@scene/reactive', () => ({ notify: () => {} }))
 vi.mock('../engine/hosted', () => ({ hostedRoute: { project: null } }))
 vi.mock('@scene/inspector', () => ({
@@ -35,7 +36,7 @@ const gameConfig = vi.fn<() => Promise<{ written: boolean }>>(async () => ({ wri
 vi.mock('../prefabs/generate', () => ({ regenerateSpawnables: () => spawnables() }))
 vi.mock('../gameconfig/generate', () => ({ regenerateGameConfig: () => gameConfig() }))
 
-import { markDirty, flushPendingSave, clearDirty, hasPendingSave } from './autosave'
+import { asAssistant, markDirty, flushPendingSave, clearDirty, hasPendingSave } from './autosave'
 
 function deferred(): { promise: Promise<void>; resolve: () => void; reject: (e: Error) => void } {
   let resolve = (): void => {}
@@ -224,5 +225,32 @@ describe('autosave flush contract', () => {
     expect(hasPendingSave()).toBe(false)
     await expect(flushPendingSave()).resolves.toEqual({ pending: false, ok: true })
     expect(write).not.toHaveBeenCalled()
+  })
+})
+
+// "Editing while playing" asks a person whether they meant it; the assistant cannot answer it.
+describe('the play-edit warning', () => {
+  beforeEach(() => {
+    scene.frozen = false
+    scene.playEditWarn = false
+  })
+  afterEach(() => {
+    scene.frozen = true
+    scene.playEditWarn = false
+  })
+
+  it('is raised by a write while the scene plays', () => {
+    markDirty()
+    expect(scene.playEditWarn).toBe(true)
+  })
+
+  it('is not raised by the assistant’s own writes', async () => {
+    await asAssistant(async () => {
+      await Promise.resolve()
+      markDirty()
+    })
+    expect(scene.playEditWarn).toBe(false)
+    markDirty()
+    expect(scene.playEditWarn).toBe(true)
   })
 })

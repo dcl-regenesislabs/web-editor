@@ -10,10 +10,10 @@
 // rejecting. Generous because a busy engine frame can delay the poll.
 export const RPC_TIMEOUT_MS = 10_000
 
-// After registering imported content, the dev server may briefly 404 the file
-// before serving it; we HEAD-poll until it's available. attempts × interval is
-// the max wait before giving up (and surfacing an import error).
-export const CONTENT_POLL_ATTEMPTS = 40
+// After writing content, the engine's content map is polled until it lists the
+// file. A wall-clock budget, not a count: each poll refreshes the map from the
+// preview, and a slow preview made 40 polls cost minutes per file.
+export const CONTENT_MAP_TIMEOUT_MS = 10_000
 export const CONTENT_POLL_INTERVAL_MS = 250
 
 // After a scene restart, wait for the editor scene to re-announce (re-pin) over
