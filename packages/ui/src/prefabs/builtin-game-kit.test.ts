@@ -23,6 +23,8 @@ import {
   advanceFlow,
   asFlowFact,
   configFromSeconds,
+  DEFAULT_LABELS,
+  flowLabels,
   intermissionState,
   lobbyState,
   panelText,
@@ -82,7 +84,16 @@ describe('the game flow', () => {
       'endsWhen',
       'boardKey',
       'display',
-      'position'
+      'position',
+      'gameTitle',
+      'lobbyLabel',
+      'waitingLabel',
+      'playersLabel',
+      'startingLabel',
+      'roundLabel',
+      'roundOverLabel',
+      'winnersLabel',
+      'noWinnersLabel'
     ])
     expect(params.endsWhen.options).toEqual(['timer', 'script'])
     expect(params.boardKey.value).toBe('leaderboard')
@@ -174,11 +185,54 @@ describe('the game flow', () => {
 
   it('paints the phase the game published, and hides a clock a script owns', () => {
     const lobby = { phase: 'lobby' as const, endsAtMs: 0, round: 0, present: 1 }
-    expect(panelText(lobby, 0, true, 2)).toBe('LOBBY\n--:--\n1/2 players')
+    expect(panelText(lobby, 0, true, 2)).toBe('LOBBY\n--:--\nWaiting for players 1/2')
     const round = { phase: 'round' as const, endsAtMs: 95_000, round: 2, present: 2 }
     expect(panelText(round, 5000, true, 2)).toBe('ROUND 2\n1:30')
     expect(panelText(round, 5000, false, 2)).toBe('ROUND 2')
-    expect(panelText(null, 0, true, 2)).toContain('--:--')
+    // before the server answers, a player reads the game, not the machinery behind it
+    expect(panelText(null, 0, true, 2)).toBe('LOBBY\n--:--\nWaiting for players')
+  })
+
+  // The params are what a creator writes in the game's language; the inspector shows the
+  // script's own defaults, so they must be the ones the panel falls back to.
+  it('paints every line in the labels the creator set, English by default', () => {
+    const { params } = getScriptParams(read(`${FOLDER}/scripts/game-flow.ts`))
+    expect(params.gameTitle.value).toBe(DEFAULT_LABELS.gameTitle)
+    expect(params.lobbyLabel.value).toBe(DEFAULT_LABELS.lobby)
+    expect(params.waitingLabel.value).toBe(DEFAULT_LABELS.waiting)
+    expect(params.playersLabel.value).toBe(DEFAULT_LABELS.players)
+    expect(params.startingLabel.value).toBe(DEFAULT_LABELS.starting)
+    expect(params.roundLabel.value).toBe(DEFAULT_LABELS.round)
+    expect(params.roundOverLabel.value).toBe(DEFAULT_LABELS.roundOver)
+    expect(params.winnersLabel.value).toBe(DEFAULT_LABELS.winners)
+    expect(params.noWinnersLabel.value).toBe(DEFAULT_LABELS.noWinners)
+
+    const es = flowLabels({
+      gameTitle: 'Mi juego',
+      waiting: 'Esperando jugadores',
+      players: '{present} de {needed}',
+      starting: 'Empieza',
+      round: 'RONDA {round}',
+      roundOver: 'FIN DE LA RONDA {round}',
+      winners: 'Ganadores: {winners}',
+      noWinners: 'Nadie sumó puntos.'
+    })
+    const parked = { phase: 'lobby' as const, endsAtMs: 0, round: 0, present: 1 }
+    expect(panelText(null, 0, true, 2, es)).toBe('Mi juego\n--:--\nEsperando jugadores')
+    expect(panelText(parked, 0, true, 2, es)).toBe('Mi juego\n--:--\nEsperando jugadores 1 de 2')
+    expect(panelText({ ...parked, endsAtMs: 9000 }, 0, true, 2, es)).toBe('Mi juego\n0:09\nEmpieza')
+    const round = { phase: 'round' as const, endsAtMs: 95_000, round: 2, present: 2 }
+    expect(panelText(round, 5000, true, 2, es)).toBe('RONDA 2\n1:30')
+    expect(panelText({ ...round, phase: 'intermission' }, 5000, true, 2, es)).toBe('FIN DE LA RONDA 2\n1:30')
+    expect(podiumLine([{ player: 'ana', score: 3 }], 3, es)).toBe('Ganadores: 1. ana')
+    expect(podiumLine([], 3, es)).toBe('Nadie sumó puntos.')
+  })
+
+  it('falls back to English for a cleared label and keeps a label on one line', () => {
+    const labels = flowLabels({ lobby: '  ', round: 'RONDA\n{round}', starting: 42 })
+    expect(labels.lobby).toBe(DEFAULT_LABELS.lobby)
+    expect(labels.round).toBe('RONDA {round}')
+    expect(labels.starting).toBe(DEFAULT_LABELS.starting)
   })
 })
 

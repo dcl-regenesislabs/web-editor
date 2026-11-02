@@ -58,6 +58,13 @@ Params of the prefab's script — set them in the placePrefab request:
 - `display`: `3D text` or `2D UI`. The screen timer uses UI Theme and includes
   the lobby countdown, current round and intermission. No custom HUD is needed.
 - `position`: top, top left, top right or bottom, for the screen timer.
+- Words players read, English by default — set them in the game's language:
+  `gameTitle` (shown while players gather; empty shows `lobbyLabel`),
+  `lobbyLabel` (`LOBBY`), `waitingLabel` (`Waiting for players`), `playersLabel`
+  (`{present}/{needed}`, after the waiting label), `startingLabel` (`Starting`),
+  `roundLabel` (`ROUND {round}`), `roundOverLabel` (`ROUND {round} OVER`),
+  `winnersLabel` (`Round over — {winners}`), `noWinnersLabel`. Keep the
+  `{…}` placeholders; an empty label falls back to English.
 
 For an individual obstacle-course timer use Run Progress. Game Flow owns shared
 rounds and restarts everyone on a new round; do not add it merely to show a stopwatch.
