@@ -7,8 +7,10 @@
 // addHudItem(slot, render, { order, open, close }) adds a panel and returns a function that removes it:
 // - 'left' / 'right': columns stacked from the top, at most HUD_COLUMN_WIDTH wide. On a phone the right column
 //   ends above the action buttons the scene declares, and the left column is drawn against the screen's left edge,
-//   below the explorer's top-left buttons and above the joystick (outside the interactable area: keep buttons in
-//   the right column); both cut off what does not fit;
+//   below the explorer's top-left buttons and above the joystick, in the space the explorer's chat opens over: only
+//   glanceable, non-interactive info (score, lives, a status line) the game can live without while the chat is
+//   open, and never for a game that needs the chat open; buttons and anything essential go right, top or in a
+//   window. Both columns cut off what does not fit;
 // - 'top': status and notifications at the top centre, at most HUD_COLUMN_WIDTH wide;
 // - 'bottom': short hints and notices above the bottom centre, at most HUD_NOTICE_WIDTH wide, never interactive;
 // - 'modal': a window, drawn only while its `open()` answers true, centred in the interactable area over the

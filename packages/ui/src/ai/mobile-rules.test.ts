@@ -22,6 +22,12 @@ describe('layoutIssues', () => {
     expect(rules([{ entity: 1, elementId: 'hud:left:0', rect: [40, 129, 300, 100] }])).toEqual(['L1'])
   })
 
+  it('says a press in the left column sits where the explorer chat opens', () => {
+    const issue = layoutIssues('hud', PHONE, [{ entity: 1, elementId: 'hud:left:0', rect: [108, 129, 300, 100], pointer: ['pointer_events'] }], ALL_CONTROLS)
+      .find((found) => found.rule === 'L1')
+    expect(issue?.detail).toContain("explorer's chat opens")
+  })
+
   it('flags a HUD item outside the interactable area and over the action buttons', () => {
     expect(rules([{ entity: 1, elementId: 'hud:right:0', rect: [1300, 400, 340, 200] }])).toEqual(['L1', 'L8', 'L2'])
   })

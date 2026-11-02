@@ -80,7 +80,9 @@ Why these numbers: a compact game HUD — a score, a timer, a hint — takes 15�
 panel in each of the four slots comes to about 15%; 25% leaves room for that and still fails a HUD that hides the
 game. The centre is where the avatar, the crosshair and what the player acts on are. On a phone the left column
 is drawn against the screen's left edge, outside the interactable area: x = 108, from y = 129 (below the explorer's
-buttons row) to y = 432 (above the joystick), `hudSpace('left')` tall; keep buttons out of it. On a phone the right
+buttons row) to y = 432 (above the joystick), `hudSpace('left')` tall. That is the space the explorer's chat opens over, so it holds only glanceable,
+non-interactive info the player can lose sight of while chatting (score, lives, a status line), and nothing when
+the game needs the chat open; buttons and anything essential go right, top or in a window. On a phone the right
 column ends above the action buttons (y ≈ 394 with four or more buttons, 439 with two or three, 519 with one):
 `hudSpace('right')` from `./runtime/hudLayout` is its height, so size a growing list to it. Fix H2 by showing less
 (D5): one line of score instead of a table, detail in a modal the player opens.

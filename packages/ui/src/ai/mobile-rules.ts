@@ -267,7 +267,8 @@ export function layoutIssues(state: string, canvas: Canvas, nodes: MeasuredNode[
     const pressable = (node.pointer?.length ?? 0) > 0
     const leftColumn = !pressable && node.elementId?.startsWith('hud:left:') === true
     if ((pressable || hudItem(node)) && !inside(node.rect, leftColumn ? safe : area)) {
-      issues.push({ rule: 'L1', state, node: label(node), detail: `${numbers(node.rect)} leaves the ${leftColumn ? 'screen inset area' : 'interactable area'} ${numbers(leftColumn ? safe : area)}` })
+      const underChat = pressable && node.rect[0] < area[0]
+      issues.push({ rule: 'L1', state, node: label(node), detail: `${numbers(node.rect)} leaves the ${leftColumn ? 'screen inset area' : 'interactable area'} ${numbers(leftColumn ? safe : area)}${underChat ? '. That strip is where the explorer\'s chat opens, which covers it: it can only show info, so move what takes presses to the \'right\' column or a window' : ''}` })
     }
     if (!inside(node.rect, screen)) {
       issues.push({ rule: 'L8', state, node: label(node), detail: `${numbers(node.rect)} falls off the ${canvas.width}x${canvas.height} canvas` })
