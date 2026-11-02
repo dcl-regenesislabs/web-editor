@@ -1,6 +1,6 @@
 import { isReservedEntity, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
-import { buildFromSchema, getSchema, type ComponentSchema } from '@scene/schema'
+import { buildFromSchema, getSchema, toEngineValue, type ComponentSchema } from '@scene/schema'
 import { cmd } from '../engine/cmd'
 import { entityName, NAME_COMPONENT } from '@scene/custom-components'
 import { isAllowedComponent } from '@scene/allowed-components'
@@ -35,14 +35,6 @@ function entity(ref: unknown): string {
   const id = resolveEntityRef(state.snapshot, ref)
   if (id === null || isReservedEntity(id) || isUiEntity(state.snapshot, id)) throw new Error('No editable entity matches that reference.')
   return id
-}
-
-// The engine reads a protobuf oneof as `{ pbr: {...} }`; models often write the SDK's `{ $case: 'pbr', pbr: {...} }`
-function toEngineValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toEngineValue)
-  if (!object(value)) return value
-  if (typeof value.$case === 'string') return { [value.$case]: toEngineValue(value[value.$case]) }
-  return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, toEngineValue(field)]))
 }
 
 const schemas = new Map<string, Promise<ComponentSchema | null>>()
