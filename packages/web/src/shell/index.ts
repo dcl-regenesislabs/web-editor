@@ -236,8 +236,8 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
           playtest, uiLayout, turnEnded: leavePhone,
           build: async (signal) => {
             signal.throwIfAborted()
-            await ensureScriptRuntime() // otherwise a ./runtime/ import is copied in only at turn end
             await fileWrites
+            await ensureScriptRuntime() // after the writes, so it sees the script this build compiles
             const result = await previews.build(open.id, new Map(open.files))
             signal.throwIfAborted()
             if (!result.ok) return { ok: false, diagnostics: result.diagnostics, mobilePreview: phone.status() }

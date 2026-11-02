@@ -50,7 +50,8 @@ const BUILD_NOTICE_MS = 1500
 // Desktop builds on save: wait for the rebuild the assistant's last edits started, then run the new
 // bundle once the way the web build does.
 async function desktopBuild(signal: AbortSignal): Promise<unknown> {
-  // the runtime modules a script imports are otherwise only copied in when the turn ends or the composite changes
+  // the runtime modules a script imports are otherwise only copied in when the turn ends or the composite changes.
+  // Before the wait: these writes start the rebuild awaitFreshBundle waits for.
   await ensureScriptRuntime()
   await new Promise((resolve) => setTimeout(resolve, BUILD_NOTICE_MS))
   await awaitFreshBundle()
