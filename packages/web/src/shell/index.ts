@@ -32,7 +32,7 @@ import { captureView } from '@ui/ai/view'
 import { createAssetRequests } from '@ui/ai/assets'
 import { materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
 import { setLibraryBytes } from '@ui/ai/library-bytes'
-import { runFreshBuild } from '@ui/actions/verify-build'
+import { runFreshBuild, saveBeforeBuild } from '@ui/actions/verify-build'
 import { flushPendingSave } from '@ui/core/autosave'
 import { updateSpawnPoints } from '@ui/spawn-points'
 import { leavePhone, playtest } from '@ui/ai/playtest'
@@ -46,6 +46,7 @@ import { BIDI, type ProjectRecord, ProjectStore } from '../store/project-store'
 import { createPrefabsApi, createProjectsApi } from '../sync/api'
 import { createSyncEngine } from '../sync/engine'
 import { canPickFolder, downloadZip, importProject, pickFile } from './archive'
+import { createBuildTool } from './build-tool'
 import { createBuiltinPrefabs } from './builtin-prefabs'
 import { runtimeTypes, sceneTemplates, templateFiles } from './bundled'
 import { type ProjectFiles, createPrefabLibrary, parseRef } from './prefab-library'
@@ -233,17 +234,13 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
           written: refreshWrittenScript,
           view: (request, signal) => captureView(request, signal),
           playtest, uiLayout, turnEnded: leavePhone,
-          build: async (signal) => {
-            signal.throwIfAborted()
-            await fileWrites
-            const result = await previews.build(open.id, new Map(open.files))
-            signal.throwIfAborted()
-            if (!result.ok) return { ok: false, diagnostics: result.diagnostics, mobilePreview: phone.status() }
-            // compiled is not working: run it once and report what it printed
-            const run = await runFreshBuild()
-            signal.throwIfAborted()
-            return { ok: true, diagnostics: result.diagnostics, run, mobilePreview: phone.status() }
-          }
+          build: createBuildTool({
+            saveScene: saveBeforeBuild,
+            fileWrites: () => fileWrites,
+            compile: () => previews.build(open.id, new Map(open.files)),
+            run: runFreshBuild,
+            mobilePreview: phone.status
+          })
         }
       }
     }

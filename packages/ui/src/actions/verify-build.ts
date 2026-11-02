@@ -6,6 +6,7 @@ import { hostV1 } from '../engine/hosted'
 import { pauseScene, reloadSnapshot, syncFrozenState } from '@scene/inspector'
 import { errorLines, isServerError } from '../features/editor/log-roles'
 import { noteSceneUpToDate, sceneNeedsReload } from '../features/editor/scene-health'
+import { flushPendingSave } from '../core/autosave'
 import { log } from '../log'
 
 // a reloaded scene spawns, runs main() and is frozen by the editor within this
@@ -22,6 +23,14 @@ export interface BuildRun {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+// An edit still in the autosave's debounce is not in main.composite yet: a build that reads the
+// project now compiles the scene without it, and the reload then drops it from the running scene.
+export async function saveBeforeBuild(): Promise<void> {
+  if (!(await flushPendingSave()).ok) {
+    throw new Error('The scene could not be saved, so a build now would leave out the latest edits. Retry the build.')
+  }
+}
 
 export async function runFreshBuild(): Promise<BuildRun> {
   const hash = state.scene?.hash

@@ -2,7 +2,7 @@
 // process forwards each call here. The web assistant runs the same modules through its browser
 // tools (packages/web/src/ai/tools.ts), with the browser project as the files.
 import type { EditorToolCall, EditorToolName } from '@dcl-editor/contract'
-import { runFreshBuild } from '../actions/verify-build'
+import { runFreshBuild, saveBeforeBuild } from '../actions/verify-build'
 import { dataLayerListFiles, dataLayerReadFileBytes, dataLayerSaveFileBytes } from '../engine/datalayer'
 import { awaitFreshBundle, currentSceneHealth } from '../features/editor/scene-health'
 import { log } from '../log'
@@ -49,6 +49,7 @@ const BUILD_NOTICE_MS = 1500
 // Desktop builds on save: wait for the rebuild the assistant's last edits started, then run the new
 // bundle once the way the web build does.
 async function desktopBuild(signal: AbortSignal): Promise<unknown> {
+  await saveBeforeBuild()
   await new Promise((resolve) => setTimeout(resolve, BUILD_NOTICE_MS))
   await awaitFreshBundle()
   signal.throwIfAborted()
