@@ -125,3 +125,31 @@ export function gameView(answer: ProbeAnswer, before: ProbeAnswer | null, since:
     ...(notes.length > 0 ? { notes } : {})
   }
 }
+
+/** The value at `path` (`kitchen.boards.0.item`, optionally led by `game.state.`) in state, or undefined. */
+export function statePath(state: Record<string, unknown>, path: string): unknown {
+  let value: unknown = state
+  for (const key of path.replace(/^(game\.)?state\./, '').split('.')) {
+    if (Array.isArray(value)) value = value[Number(key)]
+    else if (object(value)) value = value[key]
+    else return undefined
+  }
+  return value
+}
+
+export type StateCondition = { equals: unknown } | { changes: true } | { exists: boolean }
+
+export function holds(condition: StateCondition, value: unknown, start: unknown): boolean {
+  if ('equals' in condition) return same(value, condition.equals)
+  if ('changes' in condition) return !same(value, start)
+  return condition.exists === (value !== undefined && value !== null)
+}
+
+const MAX_REQUESTS = 20
+
+/** Every request either answer listed, once each: a later answer carries the reply an earlier one was still waiting for. */
+export function mergeRequests(earlier: ProbeRequest[], later: ProbeRequest[]): ProbeRequest[] {
+  const all = new Map<string, ProbeRequest>()
+  for (const request of [...earlier, ...later]) all.set(`${request.name}@${request.at}`, request)
+  return [...all.values()].sort((a, b) => a.at - b.at).slice(-MAX_REQUESTS)
+}
