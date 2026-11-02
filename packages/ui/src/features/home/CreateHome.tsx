@@ -97,9 +97,9 @@ export function CreateHome(): JSX.Element | null {
     })
   }
   const scenes = [...(cfg?.projects ?? [])].sort((a, b) => (b.lastOpened ?? 0) - (a.lastOpened ?? 0))
-  // nothing may read as synced while the list is still arriving
+  // nothing may read as synced while the list is still arriving; a guest's line says no such thing
   const loading = cfg === null || sync?.loading === true
-  const line = loading ? LOADING_LINE : sync === null ? null : syncLine(sync)
+  const line = sync !== null && sync.account !== 'on' ? syncLine(sync) : loading ? LOADING_LINE : sync === null ? null : syncLine(sync)
 
   return (
     <div className="eui-create">

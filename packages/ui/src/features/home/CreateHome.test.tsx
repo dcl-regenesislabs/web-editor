@@ -56,4 +56,28 @@ describe('the Create page', () => {
     expect(view.all('.eui-create-card.skeleton')).toHaveLength(0)
     view.unmount()
   })
+
+  it('tells a guest where the scenes are kept while the local list loads, as the picker does', async () => {
+    let answer: (state: HostState) => void = () => {}
+    const shell: EditorShell = {
+      pickProject: async () => {},
+      openProject: async () => {},
+      getState: () => new Promise<HostState>((resolve) => (answer = resolve)),
+      onStackLog: () => {},
+      syncStatus: async () => ({ account: 'guest', state: 'synced', projects: {}, revision: 0 })
+    }
+    window.editorShell = shell
+    const view = mount(<CreateHome />)
+    await view.settle()
+    expect(view.text()).toContain('Scenes stay on this device until you sign in.')
+    expect(view.text()).not.toContain('Loading your scenes…')
+    expect(view.all('.eui-create-card.skeleton').length).toBeGreaterThan(0)
+
+    run(() => answer(hostState([{ ...scene, remoteOnly: false }])))
+    await view.settle()
+    expect(view.text()).toContain('Scenes stay on this device until you sign in.')
+    expect(view.text()).toContain('My scene')
+    expect(view.all('.eui-create-card.skeleton')).toHaveLength(0)
+    view.unmount()
+  })
 })
