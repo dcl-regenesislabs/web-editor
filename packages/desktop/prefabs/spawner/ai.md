@@ -13,7 +13,10 @@ copy is custom/spawner_2/.
 
 ## When to use
 
-Anything that shows up DURING play: an enemy, a pickup, a crate, a vehicle.
+Anything that shows up DURING play for the player who set it off: an enemy, a
+crate, a target, a vehicle. Copies exist only on that player's client, so a thing
+players share or carry (a coin they race for, an item to pick up) is never one:
+that is a Pickup Item or a placed entity.
 By default a copy is built at the Spawner's own spot, so place it where the
 thing belongs — the `where` param below covers the other landings.
 

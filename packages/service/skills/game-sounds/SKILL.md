@@ -20,7 +20,7 @@ from the library below, wire them, and say which sound each event got.
 3. **Wire it** (code below), next to the code that makes the event happen.
 4. **Pair it with something to see**: a scale pop (`Tween`), a flash, a number. Sound and sight
    land on the same frame.
-5. **Report** the events and their sounds in one line each.
+5. **Report** the events and their sounds in one line.
 
 ## The library
 
@@ -111,6 +111,6 @@ play('coin', 0.95 + Math.random() * 0.1) // repeated sounds vary their pitch a l
 
 ## Report
 
-One line per event: `coin pickup → coin (pitch varied) · gold coin → gem · last 5 s → countdown-tick ·
+One line for all events: `coin pickup → coin (pitch varied) · gold coin → gem · last 5 s → countdown-tick ·
 time up → time-up · button → click`. Then what could only be judged by ear: the mix and whether a sound
 fits. That is for the creator to try in Preview.

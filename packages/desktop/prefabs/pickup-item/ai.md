@@ -46,8 +46,15 @@ the item id. Every round start empties all hands and sends items home.
 Controls: E / the phone's main button picks up; with nothing near it drops.
 One floating label sits over the nearest usable thing ("[E] Pick up Tomato" on
 desktop, "Pick up Tomato" on a phone). The player sees the pick at once; if the
-server refuses (someone was faster) it rolls back with a short notice. The
-prefab declares its touch buttons (E, jump, and F when throwable).
+server refuses (someone was faster) it rolls back with a short notice.
+
+Phone buttons: each copy declares its own from its client start(), E with the
+pick-up icon and jump, plus F with the throw icon when `throwable` ("look only"
+declares none). Once anything is declared, the phone hides every button nobody
+declared: declare each other button your scripts read with declareTouchButtons
+(declarations add up). mobile_check's `touch.used` counts only actions named in
+your own scripts; `touch.visible` is what the phone shows, and an open modal
+hides every button.
 
 No carry pose: the item rides in the right hand. No looping carry emote ships
 with the editor, and the pinned SDK cannot stop a looping emote.
@@ -63,8 +70,6 @@ takeItem…). Never restate it from memory.
 - DO call `giveItem` / `takeItem` only inside `if (isServer())`.
 - DON'T move, hide or delete the Pickup Item entity yourself; the module hides
   it and draws a copy in the hand.
-- DON'T use Spawner copies as pickups: they are client-local and nameless. Use
-  `supply` "endless".
 
 ## Example
 

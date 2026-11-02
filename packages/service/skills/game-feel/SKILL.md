@@ -8,7 +8,7 @@ description: "Make a game feel like its genre from the first build: the camera, 
 A game that compiles, passes its checks and still plays badly fails on what this skill covers. Creators
 rarely ask for these things by name: "a co-op cooking game" already says top-down camera, items carried in the
 hands, chop by holding a button, orders as small cards. Decide them yourself, before the first script, and
-write them in the plan or, when you build without one, in the first line of the reply.
+write them in the plan or, when you build without one, at the top of the reply.
 
 ## 1. Read the genre
 
@@ -62,7 +62,7 @@ write in the turn; read its ai.md before wiring it.
 - An item that changes (raw to chopped, clean to dirty) changes its model or its look at once, so the player
   sees the change without reading the HUD.
 
-## 5. Feedback on every action (F4)
+## 5. Feedback on every action
 
 Every action answers on the frame it happens, on the player's own client, before the server confirms:
 
@@ -80,7 +80,7 @@ Every action answers on the frame it happens, on the player's own client, before
 A failed action is feedback too: the error sound, a short shake, and the reason in a toast. A press that the
 server refuses and that the player cannot see is the worst bug a game can have.
 
-## 6. The HUD of a game (F5)
+## 6. The HUD of a game
 
 The world is the game; the HUD frames it. The HUD's layout rules (L, C) are in scene-ui and mobile_check
 measures them; this is the look:
@@ -115,6 +115,6 @@ measures them; this is the look:
 
 ## Report
 
-List the decisions F1–F6 in one line each (the camera you chose, the verbs and their buttons, what is held
-and how it shows, the feedback each action got, the HUD and its share of the screen, the first minute), what
-you verified and how, and what the creator should try first.
+List the decisions F1–F6 of section 1 in one line each (the camera you chose, the verbs and their buttons, what
+is held and how it shows, the pace, how failure shows coming, the first minute), then what you verified and
+how, and what the creator should try first. The system prompt sets the reply's length and its closing block.

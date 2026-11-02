@@ -6,11 +6,14 @@
   "tags": [
     "spawner",
     "spawn",
-    "pickup",
     "enemy"
   ],
-  "version": "1.0.0",
+  "version": "1.0.1",
   "changelog": [
+    {
+      "version": "1.0.1",
+      "notes": "The assistant's guide says copies are for one player only, so something players share or carry is never a Spawner copy, and a search for \"pickup\" no longer lists it."
+    },
     {
       "version": "1.0.0",
       "notes": "Initial release: copies of a prefab appear while playing — on a click, when a player walks in, on a timer, or when another Script asks — made on that player's own client, with a per-spot cap, a lifetime and scatter."

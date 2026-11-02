@@ -6,6 +6,7 @@ import { runFreshBuild } from '../actions/verify-build'
 import { dataLayerListFiles, dataLayerReadFileBytes, dataLayerSaveFileBytes } from '../engine/datalayer'
 import { awaitFreshBundle, currentSceneHealth } from '../features/editor/scene-health'
 import { log } from '../log'
+import { ensureScriptRuntime } from '../prefabs/generate'
 import { createAssetRequests } from './assets'
 import { refreshWrittenScript } from './attach'
 import { createFileTools, isFileTool, sameBytes, type ProjectFiles } from './file-tools'
@@ -49,6 +50,8 @@ const BUILD_NOTICE_MS = 1500
 // Desktop builds on save: wait for the rebuild the assistant's last edits started, then run the new
 // bundle once the way the web build does.
 async function desktopBuild(signal: AbortSignal): Promise<unknown> {
+  // the runtime modules a script imports are otherwise only copied in when the turn ends or the composite changes
+  await ensureScriptRuntime()
   await new Promise((resolve) => setTimeout(resolve, BUILD_NOTICE_MS))
   await awaitFreshBundle()
   signal.throwIfAborted()

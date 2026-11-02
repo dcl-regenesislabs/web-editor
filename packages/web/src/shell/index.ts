@@ -34,6 +34,7 @@ import { materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
 import { setLibraryBytes } from '@ui/ai/library-bytes'
 import { runFreshBuild } from '@ui/actions/verify-build'
 import { flushPendingSave } from '@ui/core/autosave'
+import { ensureScriptRuntime } from '@ui/prefabs/generate'
 import { updateSpawnPoints } from '@ui/spawn-points'
 import { leavePhone, playtest } from '@ui/ai/playtest'
 import { uiLayout } from '@ui/ai/ui-layout'
@@ -235,6 +236,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
           playtest, uiLayout, turnEnded: leavePhone,
           build: async (signal) => {
             signal.throwIfAborted()
+            await ensureScriptRuntime() // otherwise a ./runtime/ import is copied in only at turn end
             await fileWrites
             const result = await previews.build(open.id, new Map(open.files))
             signal.throwIfAborted()
