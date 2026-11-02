@@ -166,20 +166,76 @@ export function shortName(player: string): string {
   return player.startsWith('0x') && player.length > 10 ? `${player.slice(0, 6)}…${player.slice(-4)}` : player
 }
 
-/** The winners line broadcast to every player at the end of a round. */
-export function podiumLine(value: unknown, places: number): string {
-  const top = standingsOf(value).slice(0, Math.max(1, places))
-  if (top.length === 0) return 'Round over — nobody scored.'
-  return `Round over — ${top.map((row, i) => `${i + 1}. ${shortName(row.player)}`).join('  ')}`
+/**
+ * Every word a player reads, so a creator can write them in the game's language. `{round}`,
+ * `{present}`, `{needed}` and `{winners}` are filled in where a label names them.
+ */
+export interface FlowLabels {
+  /** The game's name while players gather; empty shows `lobby`. */
+  gameTitle: string
+  lobby: string
+  waiting: string
+  players: string
+  starting: string
+  round: string
+  roundOver: string
+  winners: string
+  noWinners: string
 }
 
-export function panelText(fact: FlowFact | null, nowMs: number, showClock: boolean, needed: number): string {
-  if (fact === null) return 'GAME FLOW\n--:--\nwaiting for the Multiplayer Server'
-  if (fact.phase === 'lobby') {
-    if (fact.endsAtMs === 0) return `LOBBY\n--:--\n${fact.present}/${needed} players`
-    return `LOBBY\n${formatCountdown(secondsLeft(fact, nowMs))}\nstarting`
+export const DEFAULT_LABELS: FlowLabels = {
+  gameTitle: '',
+  lobby: 'LOBBY',
+  waiting: 'Waiting for players',
+  players: '{present}/{needed}',
+  starting: 'Starting',
+  round: 'ROUND {round}',
+  roundOver: 'ROUND {round} OVER',
+  winners: 'Round over — {winners}',
+  noWinners: 'Round over — nobody scored.'
+}
+
+/** A cleared field falls back to English rather than a blank line; a line break would split the panel. */
+export function flowLabels(given: Partial<Record<keyof FlowLabels, unknown>>): FlowLabels {
+  const out = { ...DEFAULT_LABELS }
+  for (const key of Object.keys(DEFAULT_LABELS) as Array<keyof FlowLabels>) {
+    const value = given[key]
+    if (typeof value === 'string' && value.trim() !== '') out[key] = value.replace(/\s*\n\s*/g, ' ').trim()
   }
-  if (fact.phase === 'intermission') return `ROUND ${fact.round} OVER\n${formatCountdown(secondsLeft(fact, nowMs))}`
-  if (!showClock) return `ROUND ${fact.round}`
-  return `ROUND ${fact.round}\n${formatCountdown(secondsLeft(fact, nowMs))}`
+  return out
+}
+
+export function fillLabel(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, key: string) => (key in values ? String(values[key]) : whole))
+}
+
+/** The winners line broadcast to every player at the end of a round. */
+export function podiumLine(value: unknown, places: number, labels: FlowLabels = DEFAULT_LABELS): string {
+  const top = standingsOf(value).slice(0, Math.max(1, places))
+  if (top.length === 0) return labels.noWinners
+  return fillLabel(labels.winners, { winners: top.map((row, i) => `${i + 1}. ${shortName(row.player)}`).join('  ') })
+}
+
+export function panelText(
+  fact: FlowFact | null,
+  nowMs: number,
+  showClock: boolean,
+  needed: number,
+  labels: FlowLabels = DEFAULT_LABELS
+): string {
+  const gathering = labels.gameTitle === '' ? labels.lobby : labels.gameTitle
+  // before the server's first answer nobody knows the head count yet
+  if (fact === null) return `${gathering}\n--:--\n${labels.waiting}`
+  const round = { round: fact.round }
+  if (fact.phase === 'lobby') {
+    if (fact.endsAtMs === 0) {
+      return `${gathering}\n--:--\n${labels.waiting} ${fillLabel(labels.players, { present: fact.present, needed })}`
+    }
+    return `${gathering}\n${formatCountdown(secondsLeft(fact, nowMs))}\n${labels.starting}`
+  }
+  if (fact.phase === 'intermission') {
+    return `${fillLabel(labels.roundOver, round)}\n${formatCountdown(secondsLeft(fact, nowMs))}`
+  }
+  if (!showClock) return fillLabel(labels.round, round)
+  return `${fillLabel(labels.round, round)}\n${formatCountdown(secondsLeft(fact, nowMs))}`
 }

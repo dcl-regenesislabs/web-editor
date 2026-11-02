@@ -113,3 +113,13 @@
 }
 .eui-create-tile .plus { font-size: 40px; font-weight: 400; line-height: 1; }
 .eui-create-tile:hover { border-color: var(--text); color: var(--text); background: var(--fill-3); }
+/* the account's scenes are still on their way: placeholders where they will be */
+.eui-create-card.skeleton { cursor: default; }
+.eui-create-card.skeleton:hover { transform: none; box-shadow: none; }
+.eui-create-card.skeleton .eui-create-thumb { background: var(--fill-3); }
+.eui-create-skel-line { display: block; height: 18px; width: 60%; border-radius: var(--r-sm); background: var(--fill-4); }
+.eui-create-card.skeleton .eui-create-thumb, .eui-create-skel-line { animation: eui-create-pulse 1.4s ease-in-out infinite; }
+@keyframes eui-create-pulse { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .eui-create-card.skeleton .eui-create-thumb, .eui-create-skel-line { animation: none; }
+}

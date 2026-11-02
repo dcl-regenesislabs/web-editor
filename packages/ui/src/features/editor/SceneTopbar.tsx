@@ -17,7 +17,7 @@ import { openCodeEditor } from '../../panels/ai-store'
 import { IconCode } from '../../icons'
 import { SyncChip } from '../sync/SyncChip'
 import { getHost } from '../../engine/hosted'
-import { getEngineWindow, onEngineWindow } from '../../engine/console'
+import { useRevealNearPointer } from './topbar-reveal'
 
 const TerminalIcon = (): JSX.Element => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -97,31 +97,10 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
       setWorld(s.projects.find((p) => p.path === project)?.world ?? null)
     })
   }, [project, publishing])
-  // The hidden bar lets clicks through to the canvas, so it can't use :hover to
-  // reveal across its whole band; track the pointer instead (the engine may run in an iframe).
   const barRef = useRef<HTMLDivElement>(null)
-  const [near, setNear] = useState(false)
-  useEffect(() => {
-    const track = (win: Window): (() => void) => {
-      const onMove = (e: PointerEvent): void => {
-        const bar = barRef.current
-        if (bar === null) return
-        const top = win === window ? 0 : (win.frameElement?.getBoundingClientRect().top ?? 0)
-        setNear(e.clientY + top <= bar.offsetHeight)
-      }
-      win.addEventListener('pointermove', onMove)
-      return () => win.removeEventListener('pointermove', onMove)
-    }
-    const offHost = track(window)
-    let offEngine = getEngineWindow() === window ? () => {} : track(getEngineWindow())
-    const offSwap = onEngineWindow((win) => {
-      offEngine()
-      offEngine = win === window ? () => {} : track(win)
-    })
-    return () => { offHost(); offEngine(); offSwap() }
-  }, [])
+  useRevealNearPointer(barRef)
   return (
-    <div className={`eui-topbar${near ? ' near' : ''}`} ref={barRef}>
+    <div className="eui-topbar" ref={barRef}>
       <button className="eui-topbar-home" {...labelTip(leaving ? 'Saving…' : backLabel())} onClick={home} disabled={leaving} aria-busy={leaving}>
         {leaving ? <Spinner size="xs" /> : <ArrowLeftIcon />}
       </button>

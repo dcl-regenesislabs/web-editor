@@ -14,7 +14,7 @@ import { PublishModal } from '../publish/PublishModal'
 import { PublishOutcomeToast } from '../publish/PublishOutcomeToast'
 import { SceneSettingsModal } from '../scene-settings/SceneSettingsModal'
 import { ImportResultModal } from '../sync/ImportResultModal'
-import { syncLabel, syncLine, useSyncStatus } from '../sync/sync'
+import { LOADING_LINE, syncLabel, syncLine, useSyncStatus } from '../sync/sync'
 import { NewSceneModal } from './NewSceneModal'
 import { SceneMenu } from './SceneCard'
 import css from './create.css?inline'
@@ -97,7 +97,9 @@ export function CreateHome(): JSX.Element | null {
     })
   }
   const scenes = [...(cfg?.projects ?? [])].sort((a, b) => (b.lastOpened ?? 0) - (a.lastOpened ?? 0))
-  const line = sync === null ? null : syncLine(sync)
+  // nothing may read as synced while the list is still arriving; a guest's line says no such thing
+  const loading = cfg === null || sync?.loading === true
+  const line = sync !== null && sync.account !== 'on' ? syncLine(sync) : loading ? LOADING_LINE : sync === null ? null : syncLine(sync)
 
   return (
     <div className="eui-create">
@@ -145,9 +147,15 @@ export function CreateHome(): JSX.Element | null {
       {tab === 'scenes' ? (
         <>
           <p className="eui-create-intro">{CREATE_INTRO}</p>
-          {line !== null && <p className={`eui-create-sync ${line.tone}`}>{line.text}</p>}
+          {line !== null && <p className={`eui-create-sync ${line.tone}`} role="status">{line.text}</p>}
           {sync?.usage !== undefined && <p className="eui-create-sync quiet">{usageLine(sync.usage)}</p>}
-          <div className="eui-create-grid">
+          <div className="eui-create-grid" aria-busy={loading}>
+            {loading && scenes.length === 0 && [0, 1, 2].map((i) => (
+              <div key={i} className="eui-create-card skeleton" aria-hidden="true">
+                <div className="eui-create-thumb" />
+                <div className="eui-create-meta"><span className="eui-create-skel-line" /></div>
+              </div>
+            ))}
             {scenes.map((p) => (
               <CreateCard
                 key={p.path}

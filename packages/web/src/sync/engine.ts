@@ -51,6 +51,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   let listRetry: ReturnType<typeof setTimeout> | null = null
   let listAttempt = 0
   let listedAt = 0
+  // whose list `remote` is: until it is the signed-in wallet's, the scenes only on the account are not known
+  let listedFor: string | null = null
   let listing: Promise<void> | null = null
   let lastWallet: string | null = null
   // orders lists against agreed versions: a list asked before a version went through cannot know of it
@@ -388,6 +390,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     if (signedIn !== lastWallet) {
       // what was true of the previous account says nothing about this one
       lastWallet = signedIn
+      listedFor = null
       offline = false
       listError = null
       for (const t of tracked.values()) {
@@ -416,6 +419,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     const session = options.session()
     if (session === null) {
       remote = []
+      listedFor = null
       emit()
       return
     }
@@ -426,6 +430,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       listError = null
       listAttempt = 0
       listedAt = Date.now()
+      listedFor = session.wallet
     } catch (error) {
       const kind = failureOf(error)
       if (kind === 'retry') {
@@ -488,7 +493,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
         if (project.state !== 'local' && ATTENTION.indexOf(project.state) < ATTENTION.indexOf(state)) state = project.state
       }
       const message = states.find(([, project]) => project.state === 'error')?.[1].message ?? listError ?? undefined
-      return { account, state, message, projects, revision, usage: session?.api.usage?.() ?? undefined }
+      const loading = session !== null && listedFor !== session.wallet && listError === null && !offline
+      return { account, state, message, projects, revision, ...(loading ? { loading } : {}), usage: session?.api.usage?.() ?? undefined }
     },
     subscribe(listener) {
       listeners.add(listener)
