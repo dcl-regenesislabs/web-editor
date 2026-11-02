@@ -84,18 +84,27 @@ export class GameFlow {
     public noWinnersLabel: string = 'Round over — nobody scored.'
   ) {}
 
+  private labelsFor: readonly string[] = []
+  private labelsCache: FlowLabels | null = null
+
+  // The 2D panel reads this every frame; rebuild only when an inspector edit changes a label.
   private get labels(): FlowLabels {
-    return flowLabels({
-      gameTitle: this.gameTitle,
-      lobby: this.lobbyLabel,
-      waiting: this.waitingLabel,
-      players: this.playersLabel,
-      starting: this.startingLabel,
-      round: this.roundLabel,
-      roundOver: this.roundOverLabel,
-      winners: this.winnersLabel,
-      noWinners: this.noWinnersLabel
-    })
+    const given = [
+      this.gameTitle,
+      this.lobbyLabel,
+      this.waitingLabel,
+      this.playersLabel,
+      this.startingLabel,
+      this.roundLabel,
+      this.roundOverLabel,
+      this.winnersLabel,
+      this.noWinnersLabel
+    ]
+    if (this.labelsCache !== null && given.every((value, i) => value === this.labelsFor[i])) return this.labelsCache
+    const [gameTitle, lobby, waiting, players, starting, round, roundOver, winners, noWinners] = given
+    this.labelsFor = given
+    this.labelsCache = flowLabels({ gameTitle, lobby, waiting, players, starting, round, roundOver, winners, noWinners })
+    return this.labelsCache
   }
 
   private get config(): FlowConfig {

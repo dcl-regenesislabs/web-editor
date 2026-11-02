@@ -36,8 +36,8 @@
     "digest": "02940dd0afc30f595f215e0880ca10b5e1f9848829f0496419806d5f104d298e"
   },
   "game-flow": {
-    "version": "1.3.0",
-    "digest": "df49eb88986c53b26b333a304a3733ba6945aa414555a7a065ccc413c363cda7"
+    "version": "1.3.1",
+    "digest": "96800d750087807af446af83f3afb9f82a08b3c69169b4d801db2d8242d9298b"
   },
   "health-respawn": {
     "version": "1.3.1",
