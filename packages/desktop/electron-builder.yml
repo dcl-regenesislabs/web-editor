@@ -57,6 +57,13 @@ extraResources:
     to: materials
     filter:
       - '*.jpg'
+  # the icon catalog the assistant's findIcons searches and addIcon copies from (src/app-paths.ts)
+  - from: ../ui/src/icon-library
+    to: icons
+    filter:
+      - icons.index.json
+      - icons.pack
+      - CREDITS.md
   # the editor system scene, staged with the contract package vendored in
   - from: staging/editor-scene
     to: editor-scene

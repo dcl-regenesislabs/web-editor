@@ -210,7 +210,8 @@ windows in front over the whole screen, hiding the touch controls while one is o
 scene uses are declared with `declareTouchButtons([...], { main })` from the same module, each with the icon of what
 it does: `{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') }`, with `actionIcon` and the `ActionHint`
 that shows the same icon in a HUD hint from `./runtime/actionIcons` (C2, C3 and C7 are then the layout's job; never
-call `TouchScreenControls` yourself). A modal's render draws the dialog whenever it is
+call `TouchScreenControls` yourself). Every other icon (inventory, HUD stats, menus, gamepad and keyboard prompts) comes
+from the editor's icon catalog: `references/icons.md`. A modal's render draws the dialog whenever it is
 called, and its panel carries a `uiTransform` `elementId`. Style panels with
 `sceneUiTheme` from `./runtime/uiTheme` and the components from `./runtime/uiComponents`. In the editor,
 `mobile_check` measures the HUD on a phone as it looks during play (every window closed, the declared touch

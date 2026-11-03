@@ -539,8 +539,10 @@ export interface EditorShell {
   // the editor's MCP server here, the page runs it on the engine and answers
   onEditorToolCall?: (cb: (call: EditorToolCall) => void) => () => void
   editorToolResult?: (id: string, result: EditorToolResult) => Promise<void>
-  // a shared library file the assistant copies into a project (materials/…jpg, sounds/…mp3)
+  // a shared library file the assistant copies into a project (materials/…jpg, sounds/…mp3, icons/icons.index.json)
   libraryFile?: (file: string) => Promise<Uint8Array>
+  // `length` bytes of a library file from `offset`: one block of icons/icons.pack
+  libraryFileRange?: (file: string, offset: number, length: number) => Promise<Uint8Array>
   // ---- Prefab library ----
   // every builtin + user-library prefab, newest tree read on each call
   prefabLibraryList?: () => Promise<PrefabLibraryEntry[]>

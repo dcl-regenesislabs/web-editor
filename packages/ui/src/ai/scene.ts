@@ -22,6 +22,8 @@ import { materialBytes, soundBytes } from './library-bytes'
 import { SOUNDS, isSoundName, soundInfo, soundProjectPath } from '../sounds'
 import { modelImagePath, sceneBudget, sceneTextures } from '../scene-budget'
 import { isFlatModel, searchModels } from './model-search'
+import { ICON_DIR, iconCredit, iconCredits, iconPath, iconSvg, loadIconIndex, searchIcons } from './icon-library'
+import { ICON_SIZES, iconPng } from './icon-png'
 import { uiResyncScene } from '../actions/assets'
 import { runRequestText } from './requests'
 import { resolveEntityRef } from './request-format'
@@ -75,6 +77,7 @@ async function setComponent(id: string, name: unknown, value: unknown, expected:
 }
 
 const MAX_MODEL_MATCHES = 20
+const MAX_ICON_MATCHES = 40
 const metre = (n: number | undefined) => Math.round((n ?? 0) * 10) / 10
 const sizeOf = (a: ModelAsset) => ({ x: metre(a.width), y: metre(a.height), z: metre(a.depth) })
 const describe = (a: ModelAsset) => ({
@@ -199,12 +202,40 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     const assets = await loadModelCatalog()
     return { models: searchModels(assets, request.query, limit).map(describe), total: assets.length }
   }
+  if (request.type === 'findIcons') {
+    if (typeof request.query !== 'string') throw new Error('findIcons needs query: a few words.')
+    const limit = Math.min(MAX_ICON_MATCHES, Math.max(1, Number(request.limit ?? 12) || 12))
+    const index = await loadIconIndex()
+    const set = typeof request.set === 'string' ? request.set : undefined
+    if (set !== undefined && index.sets[set] === undefined) throw new Error(`findIcons set is one of: ${Object.keys(index.sets).join(', ')}.`)
+    return { icons: searchIcons(index, request.query, limit, set), total: index.icons.length }
+  }
   // edits made while it runs would be the running instance's only, gone on Stop
   if (!state.frozen) throw new Error('The scene is playing. Run playtest stop, then make this change again.')
   return asAssistant(() => editScene(request, signal, settings))
 }
 
 async function editScene(request: Record<string, unknown>, signal: AbortSignal, settings?: SceneSettingsEditor): Promise<unknown> {
+  if (request.type === 'addIcon') {
+    if (typeof request.id !== 'string') throw new Error('addIcon needs id, as findIcons answered it.')
+    const size = ICON_SIZES.find((s) => s === (request.size ?? 128))
+    if (size === undefined) throw new Error(`addIcon size is one of: ${ICON_SIZES.join(', ')}.`)
+    const index = await loadIconIndex()
+    const { svg, entry } = await iconSvg(index, request.id)
+    const path = iconPath(request.id)
+    if (!(await dataLayerListFiles()).includes(path)) await dataLayerSaveFileBytes(path, await iconPng(svg, size))
+    signal.throwIfAborted()
+    // listed again after the save: another addIcon running alongside may have added its icon meanwhile
+    const files = await dataLayerListFiles()
+    const credits = `${ICON_DIR}/CREDITS.md`
+    await dataLayerSaveFile(credits, iconCredits(index, files.includes(path) ? files : [...files, path]))
+    const mapped = await ensureContentMapped(path)
+    const credit = iconCredit(index, entry)
+    return {
+      path, size, credits, ...(credit === undefined ? {} : { credit }),
+      ...(mapped ? {} : { mapped, note: 'The file is saved; the running scene shows it after the next build.' })
+    }
+  }
   if (request.type === 'addSound') {
     if (!isSoundName(request.name)) throw new Error(`addSound needs name, one of: ${SOUNDS.join(', ')}.`)
     const path = soundProjectPath(request.name)

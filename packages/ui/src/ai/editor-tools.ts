@@ -107,7 +107,9 @@ export function installEditorToolBridge(): void {
   const answer = shell.editorToolResult
   setLibraryBytes({
     material: async (name, map) => library(await shell.libraryFile?.(materialFile(name, map))),
-    sound: async (name) => library(await shell.libraryFile?.(soundFile(name)))
+    sound: async (name) => library(await shell.libraryFile?.(soundFile(name))),
+    iconIndex: async () => library(await shell.libraryFile?.('icons/icons.index.json')),
+    iconBlock: async (offset, length) => library(await shell.libraryFileRange?.('icons/icons.pack', offset, length))
   })
   const running = new Map<string, AbortController>()
   shell.onEditorToolCall((call: EditorToolCall) => {

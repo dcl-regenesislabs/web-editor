@@ -48,9 +48,16 @@ export function materialLibraryDir(): string {
   return app.isPackaged ? path.join(process.resourcesPath, 'materials') : path.resolve(__dirname, '..', '..', 'ui', 'src', 'three', 'materials')
 }
 
-// A library file by the path the editor names it (materials/T_Stone_D.jpg, sounds/coin.mp3), or null
-// for anything else: the page can ask for these and nothing more.
+// The icon catalog findIcons searches and addIcon copies from (icons.index.json + icons.pack).
+export function iconLibraryDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'icons') : path.resolve(__dirname, '..', '..', 'ui', 'src', 'icon-library')
+}
+
+// A library file by the path the editor names it (materials/T_Stone_D.jpg, sounds/coin.mp3,
+// icons/icons.pack), or null for anything else: the page can ask for these and nothing more.
 export function libraryFilePath(file: string): string | null {
+  const icons = /^icons\/(icons\.index\.json|icons\.pack)$/.exec(file)
+  if (icons !== null) return path.join(iconLibraryDir(), icons[1])
   const material = /^materials\/(T_[A-Za-z]+_[DN]\.jpg)$/.exec(file)
   if (material !== null) return path.join(materialLibraryDir(), material[1])
   const sound = /^sounds\/([a-z-]+\.mp3)$/.exec(file)
