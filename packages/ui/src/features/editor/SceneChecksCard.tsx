@@ -6,7 +6,7 @@ import { useUnusedFiles } from '../../unused-files'
 import { REVIEW_UNUSED_ACTION, reviewUnusedFiles, unusedFilesFinding } from './unused-finding'
 import { useStore } from '../../core/store'
 import { revealPrefab } from '../../panels/prefab-store'
-import { prefillAssistant } from '../../panels/ai-store'
+import { askAssistant, canAskAssistant, prefillAssistant } from '../../panels/ai-store'
 import { THUMBNAIL_FIX_ACTION } from './scene-check-thumbnail'
 import { uiFocusEntity, uiSelectEntity } from '../../actions/selection'
 import { uiPlay } from '../../actions/playback'
@@ -52,6 +52,18 @@ function findingKey(finding: SceneFinding, index: number): string {
 // What "dismiss until this changes" compares. It has to be the same identity the
 // list renders by: two findings of one rule on two entities share an id and can
 // share a detail, and folding them together dismissed both at once.
+// Findings the assistant can fix by editing the scene: the thumbnail already goes to it with
+// a style for the creator to fill in, and which unused files to delete is the creator's call.
+function assistantFixable(finding: SceneFinding): boolean {
+  const action = finding.fix?.action
+  return action !== THUMBNAIL_FIX_ACTION && action !== REVIEW_UNUSED_ACTION
+}
+
+export function fixRequest(findings: SceneFinding[]): string {
+  if (findings.length === 1) return `Fix this problem the scene check found: ${findings[0].title}. ${findings[0].detail}`
+  return `Fix these problems the scene check found:\n${findings.map((f) => `- ${f.title}. ${f.detail}`).join('\n')}`
+}
+
 function signatureOf(findings: SceneFinding[]): string {
   return findings.map((finding, index) => findingKey(finding, index)).join('&')
 }
@@ -99,6 +111,7 @@ export function SceneChecksCard(): JSX.Element | null {
   if (findings.length === 0 || signature === dismissed) return null
 
   const summary = findingsSummary(findings)
+  const fixable = canAskAssistant() ? findings.filter(assistantFixable) : []
 
   const runFix = (finding: SceneFinding): void => {
     const action = finding.fix?.action
@@ -123,6 +136,17 @@ export function SceneChecksCard(): JSX.Element | null {
             {open ? '▾' : '▸'}
           </span>
         </button>
+        {fixable.length > 0 && (
+          <Button
+            variant="primary"
+            size="xs"
+            tip={fixable.length > 1 ? 'Ask the assistant to fix all of these' : 'Ask the assistant to fix it'}
+            onClick={() => askAssistant(fixRequest(fixable))}
+          >
+            <IconBot />
+            {fixable.length > 1 ? 'Fix all' : 'Fix'}
+          </Button>
+        )}
         {summary.blocking > 0 && (
           <button
             className="eui-link"
@@ -153,12 +177,20 @@ export function SceneChecksCard(): JSX.Element | null {
                   {LEVEL_LABEL[finding.level]}
                 </Chip>
                 <b>{finding.title}</b>
-                {finding.fix !== undefined && (
+                {(finding.fix !== undefined || fixable.includes(finding)) && (
                   <span className="act">
-                    <Button variant="primary" size="xs" onClick={() => runFix(finding)}>
-                      {FIX_ICON[finding.fix.action]}
-                      {finding.fix.label}
-                    </Button>
+                    {finding.fix !== undefined && (
+                      <Button variant={fixable.includes(finding) ? 'secondary' : 'primary'} size="xs" onClick={() => runFix(finding)}>
+                        {FIX_ICON[finding.fix.action]}
+                        {finding.fix.label}
+                      </Button>
+                    )}
+                    {fixable.includes(finding) && (
+                      <Button variant="primary" size="xs" tip="Ask the assistant to fix it" onClick={() => askAssistant(fixRequest([finding]))}>
+                        <IconBot />
+                        Fix
+                      </Button>
+                    )}
                   </span>
                 )}
               </div>

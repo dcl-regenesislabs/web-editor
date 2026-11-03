@@ -9,6 +9,7 @@ import { cmd } from '../engine/cmd'
 import { chrome, setRightOpen } from '../core/chrome'
 import { run } from './run'
 import { uiSetTool } from './selection'
+import { showAdvanced } from '../features/editor/entry-mode'
 
 // every collision layer except the editor's own pick overlay
 const ALL_LAYERS_BUT_PICK = ~PICK_LAYER >>> 0
@@ -59,6 +60,7 @@ export const uiSetPlayInspect = (on: boolean): void => {
   state.playInspect = on
   void sendToScene({ type: 'set-flags', playInspect: on })
   if (!on) return
+  showAdvanced()
   if (!chrome.rightOpen) setRightOpen(true)
   if (state.activeAction === 'select') uiSetTool(state.lastTool)
 }

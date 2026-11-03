@@ -18,6 +18,8 @@ import { IconCode } from '../../icons'
 import { SyncChip } from '../sync/SyncChip'
 import { getHost } from '../../engine/hosted'
 import { useRevealNearPointer } from './topbar-reveal'
+import { setAdvanced } from '../../core/chrome'
+import { canAskAssistant } from '../../panels/ai-store'
 
 const TerminalIcon = (): JSX.Element => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -61,8 +63,11 @@ const GearIcon = (): JSX.Element => (
 )
 
 // Slim top bar over the viewport: scene name on the left, settings + back-to-
-// home on the right. Replaces the old floating ⌂ button.
-export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void; project?: string | null }): JSX.Element {
+// home on the right. Replaces the old floating ⌂ button. In entry mode it keeps only what a
+// creator building by asking needs: back, Publish, the phone preview and the way to the
+// whole editor, always shown and with no band of its own over the world.
+export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void; project?: string | null; entry?: boolean }): JSX.Element {
+  const entry = props.entry === true
   const scene = useStore(() => state.scene)
   const [menuOpen, setMenuOpen] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -99,8 +104,18 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
   }, [project, publishing])
   const barRef = useRef<HTMLDivElement>(null)
   useRevealNearPointer(barRef)
+  const phone = window.editorShell?.phonePreview
+  const modeSwitch = canAskAssistant() && (
+    <button
+      className="eui-topbar-btn wide"
+      data-tip={entry ? 'Show the whole editor: hierarchy, inspector, assets, logs' : 'Show only the assistant'}
+      onClick={() => setAdvanced(entry)}
+    >
+      {entry ? 'Advanced' : 'Simple'}
+    </button>
+  )
   return (
-    <div className="eui-topbar" ref={barRef}>
+    <div className={`eui-topbar${entry ? ' entry' : ''}`} ref={barRef}>
       <button className="eui-topbar-home" {...labelTip(leaving ? 'Saving…' : backLabel())} onClick={home} disabled={leaving} aria-busy={leaving}>
         {leaving ? <Spinner size="xs" /> : <ArrowLeftIcon />}
       </button>
@@ -109,11 +124,29 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
       </div>
       <span style={{ flex: 1 }} />
       {project !== null && <SyncChip project={project} />}
-      {window.editorShell !== undefined && project !== null && (
+      {!entry && window.editorShell !== undefined && project !== null && (
         <button className="eui-topbar-btn wide" data-tip="Browse and edit your scene's code" onClick={openCodeEditor}>
           <IconCode /> Code
         </button>
       )}
+      {entry && (phone !== undefined || window.editorShell?.mobilePreview !== undefined) && (
+        <button
+          className="eui-topbar-btn wide"
+          data-tip="Try the scene as it plays on a phone"
+          onClick={() => {
+            if (phone !== undefined) runPreview(() => phone('embedded'))
+            else setMobilePreview(true)
+          }}
+        >
+          <PhoneIcon /> Phone
+        </button>
+      )}
+      {entry && previewFail !== null && (
+        <span className="eui-topbar-entry-note" role="status">
+          {previewFail === 'no-scene' ? 'The scene is still starting. Try again in a moment.' : 'The phone preview couldn’t open on this page.'}
+        </span>
+      )}
+      {entry ? modeSwitch : null}
       {canPublish(window.editorShell) && project !== null && (
         <Button
           variant={guest ? 'secondary' : 'primary'}
@@ -125,7 +158,8 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
           Publish
         </Button>
       )}
-      {(window.editorShell?.mobilePreview !== undefined || window.editorShell?.phonePreview !== undefined) && (
+      {!entry && modeSwitch}
+      {!entry && (window.editorShell?.mobilePreview !== undefined || window.editorShell?.phonePreview !== undefined) && (
         <div className="eui-topbar-menu-wrap">
           <button
             className={`eui-topbar-btn wide ${previewOpen ? 'on' : ''}`}
@@ -186,14 +220,14 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
           )}
         </div>
       )}
-      <button
+      {!entry && <button
         className={`eui-topbar-btn ${props.logsOpen ? 'on' : ''}`}
         {...labelTip(props.logsOpen ? 'Hide logs' : 'Show build / server logs')}
         onClick={props.onToggleLogs}
       >
         <TerminalIcon />
-      </button>
-      {window.editorShell !== undefined && (
+      </button>}
+      {!entry && window.editorShell !== undefined && (
         <div className="eui-topbar-menu-wrap">
           <button
             className={`eui-topbar-btn ${upd.state === 'downloaded' ? 'eui-has-update' : ''}`}

@@ -111,6 +111,18 @@
 @media (prefers-reduced-motion: reduce) {
   .eui-topbar { transition: none; }
 }
+/* entry mode: no band over the world, always shown; only its controls take clicks. The
+   .eui-root prefix outranks every state above that reveals the advanced bar. */
+.eui-root .eui-topbar.entry {
+  opacity: 1; pointer-events: none;
+  background: transparent; border-bottom-color: transparent;
+}
+.eui-topbar.entry > * { pointer-events: auto; }
+.eui-topbar.entry .eui-topbar-title {
+  padding: 6px 12px; border-radius: var(--r-control);
+  background: var(--paper); border: 1px solid var(--divider);
+}
+.eui-topbar-entry-note { font-size: var(--fs-sm); color: var(--text-2); background: var(--paper); padding: 4px 8px; border-radius: var(--r-control); }
 .eui-topbar-home, .eui-topbar-btn {
   display: flex; align-items: center; justify-content: center;
   width: var(--control-h-md); height: var(--control-h-md);
