@@ -59,9 +59,13 @@ export function createPublisher(source: PublishSource): Publisher {
   let running: AbortController | null = null
 
   // a world holds several scenes, and without a position the link lands on its spawn, not this one
-  function position(deployment: Deployment): string {
+  function baseOf(deployment: Deployment): string | undefined {
     const base = (deployment.entity.metadata.scene as { base?: unknown } | undefined)?.base
-    return typeof base === 'string' ? `&position=${encodeURIComponent(base)}` : ''
+    return typeof base === 'string' ? base : undefined
+  }
+  function position(deployment: Deployment): string {
+    const base = baseOf(deployment)
+    return base === undefined ? '' : `&position=${encodeURIComponent(base)}`
   }
 
   // null: a NAME's world, signed by the creator in the hosting page
@@ -147,6 +151,7 @@ export function createPublisher(source: PublishSource): Publisher {
       world,
       entityId: deployment.entityId,
       url: `${worldLink(host.pageDir, server, world)}${position(deployment)}`,
+      base: baseOf(deployment),
       files: deployment.fileCount,
       bytes: deployment.bytes,
       at: Date.now()

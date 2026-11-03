@@ -63,6 +63,7 @@ export const UPLOADING_NOTE = 'Sending your scene to Decentraland. Almost thereâ
 export const SIGNING_NOTE = 'Decentraland is asking you to confirm. Check the world and the wallet, then sign.'
 export const SIGNING_STEP = 'Confirm in Decentraland'
 export const PUBLISHED_AT = 'It is live at'
+export const MOBILE_SCAN_NOTE = 'Scan with your phone to play it in the Decentraland mobile explorer.'
 
 
 export function publishingHeadline(world: string): string {
