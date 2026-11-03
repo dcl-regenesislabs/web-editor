@@ -52,6 +52,7 @@ extraResources:
     filter:
       - '*.mp3'
       - CREDITS.md
+      - properties.json
   # the surface materials the assistant's buildModel copies into scenes (src/app-paths.ts)
   - from: ../ui/src/three/materials
     to: materials

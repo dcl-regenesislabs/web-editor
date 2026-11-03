@@ -298,7 +298,7 @@ export function addSoundLibrary(skillsDir: string, soundsDir: string, log: Logge
   try {
     fs.cpSync(soundsDir, path.join(skill, 'sounds'), {
       recursive: true,
-      filter: (src) => src === soundsDir || src.endsWith('.mp3') || path.basename(src) === 'CREDITS.md'
+      filter: (src) => src === soundsDir || src.endsWith('.mp3') || ['CREDITS.md', 'properties.json'].includes(path.basename(src))
     })
   } catch (e) {
     log(`could not add the sound library: ${String(e)}`)

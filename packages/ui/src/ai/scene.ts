@@ -19,7 +19,7 @@ import { announceThumbnail, announceThumbnailUsed } from '../features/ai/built-t
 import { buildCodeModel, overBudget, MODEL_BUDGET } from './code-model'
 import { MATERIAL_MAPS, materialFile } from '../three/materials'
 import { materialBytes, soundBytes } from './library-bytes'
-import { SOUNDS, isSoundName, soundInfo, soundProjectPath } from '../sounds'
+import { SOUND_KINDS, findSounds, isSoundKind, isSoundName, soundInfo, soundProjectPath } from '../sounds'
 import { modelImagePath, sceneBudget, sceneTextures } from '../scene-budget'
 import { isFlatModel, searchModels } from './model-search'
 import { ICON_DIR, iconCredit, iconCredits, iconPath, iconSvg, loadIconIndex, searchIcons } from './icon-library'
@@ -78,6 +78,8 @@ async function setComponent(id: string, name: unknown, value: unknown, expected:
 
 const MAX_MODEL_MATCHES = 20
 const MAX_ICON_MATCHES = 40
+// the whole effect list fits one answer
+const MAX_SOUND_MATCHES = 100
 const metre = (n: number | undefined) => Math.round((n ?? 0) * 10) / 10
 const sizeOf = (a: ModelAsset) => ({ x: metre(a.width), y: metre(a.height), z: metre(a.depth) })
 const describe = (a: ModelAsset) => ({
@@ -196,6 +198,14 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       }))
     }
   }
+  if (request.type === 'findSounds') {
+    const query = typeof request.query === 'string' ? request.query : ''
+    const kind = request.kind
+    if (kind !== undefined && !isSoundKind(kind)) throw new Error(`findSounds kind is one of: ${SOUND_KINDS.join(', ')}.`)
+    const sounds = findSounds(query, kind)
+    if (sounds.length === 0) return { sounds, note: 'Nothing matched. Try other words, or findSounds with only a kind to list it all.' }
+    return { sounds: sounds.slice(0, MAX_SOUND_MATCHES).map(({ name, kind, description, durationSeconds }) => ({ name, kind, description, durationSeconds })), total: sounds.length }
+  }
   if (request.type === 'findModels') {
     if (typeof request.query !== 'string') throw new Error('findModels needs query: a few words.')
     const limit = Math.min(MAX_MODEL_MATCHES, Math.max(1, Number(request.limit ?? 8) || 8))
@@ -237,7 +247,7 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
     }
   }
   if (request.type === 'addSound') {
-    if (!isSoundName(request.name)) throw new Error(`addSound needs name, one of: ${SOUNDS.join(', ')}.`)
+    if (!isSoundName(request.name)) throw new Error('addSound needs the name of a library sound. findSounds lists them.')
     const path = soundProjectPath(request.name)
     if (!(await dataLayerListFiles()).includes(path)) await dataLayerSaveFileBytes(path, await soundBytes(request.name))
     const mapped = await ensureContentMapped(path)

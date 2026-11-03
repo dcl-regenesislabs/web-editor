@@ -23,12 +23,12 @@ function library(): string {
 }
 
 describe('addSoundLibrary', () => {
-  it('puts the mp3s and their credits beside the game-sounds skill', () => {
+  it('puts the mp3s, their index and their credits beside the game-sounds skill', () => {
     const skills = tmp()
     fs.mkdirSync(path.join(skills, 'game-sounds'))
     fs.writeFileSync(path.join(skills, 'game-sounds', 'SKILL.md'), '---')
     addSoundLibrary(skills, library(), () => {})
-    expect(fs.readdirSync(path.join(skills, 'game-sounds', 'sounds')).sort()).toEqual(['CREDITS.md', 'coin.mp3'])
+    expect(fs.readdirSync(path.join(skills, 'game-sounds', 'sounds')).sort()).toEqual(['CREDITS.md', 'coin.mp3', 'properties.json'])
   })
 
   it('leaves a cache without the skill alone', () => {
