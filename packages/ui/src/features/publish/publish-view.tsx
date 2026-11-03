@@ -4,7 +4,7 @@ import { plural } from '../../lib/format'
 import { openCodeAt } from '../../panels/ai-store'
 import { baseName } from '../../script/project-files'
 import { GlobeIcon, NAME_MARKETPLACE, openExternal, worldCoverSrc } from '../worlds/common'
-import { jumpInUrl } from '../worlds/endpoints'
+import { jumpInUrl, mobileJumpInUrl } from '../worlds/endpoints'
 import type { WorldEntry } from '../worlds/inventory'
 import { refreshWorlds, worldScenesOf, type WorldsState } from '../worlds/worlds-store'
 import { conflictRegions } from './publish-conflict'
@@ -45,6 +45,7 @@ import {
   worldRowLine
 } from './publish-copy'
 import { publishFailure, type PublishFailure } from './publish-error'
+import { PublishMobileLink } from './PublishMobileLink'
 import {
   cancelMove,
   cancelPublish,
@@ -368,12 +369,16 @@ export function publishView(input: PublishViewInput): PublishView {
       mark: 'done',
       headline: `${live ?? ''} is live!`,
       note,
-      evidence:
-        input.external === true && job.jumpIn !== null ? (
-          <p className="eui-publish-url">
-            {PUBLISHED_AT} <span className="where">{job.jumpIn}</span>
-          </p>
-        ) : undefined,
+      evidence: (
+        <>
+          {input.external === true && job.jumpIn !== null && (
+            <p className="eui-publish-url">
+              {PUBLISHED_AT} <span className="where">{job.jumpIn}</span>
+            </p>
+          )}
+          {live !== null && <PublishMobileLink url={mobileJumpInUrl(live, job.at)} />}
+        </>
+      ),
       actions: {
         ...(manageWorld === undefined ? {} : { secondary: manageWorld }),
         primary: {

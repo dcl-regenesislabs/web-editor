@@ -47,7 +47,8 @@ const SKIP = new Set([
   'agent',
   '.node-cache',
   '.dclcache',
-  '.dev-shim'
+  '.dev-shim',
+  'explorations'
 ])
 const CODE = /\.(?:ts|tsx|mjs|cjs|js)$/
 

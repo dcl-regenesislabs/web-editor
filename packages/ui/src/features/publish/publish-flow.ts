@@ -432,7 +432,7 @@ function publishInPage(p: { dir: string; world: string | null; base: string | nu
       if (!token.alive) return
       if (result.ok) {
         rememberPublishedEntity(p.dir, result.published.world, result.published.entityId)
-        finishPublish({ phase: 'success', world: result.published.world, jumpIn: result.published.url, total: p.total, signing: false })
+        finishPublish({ phase: 'success', world: result.published.world, jumpIn: result.published.url, at: result.published.base ?? p.base, total: p.total, signing: false })
         refreshWorlds()
       } else if (result.reason === 'cancelled') {
         finishPublish({ ...IDLE })
