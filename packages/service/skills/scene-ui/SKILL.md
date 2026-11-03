@@ -220,6 +220,26 @@ every UI or input change, instead of judging a picture. It measures what is on s
 during a round with the lists as long as they get. `UiButton` is `uiSizes('window').button` tall (80 on a
 phone); give a window's main action `uiTransform={{ height: uiSizes('window').primary }}`.
 
+## The creator's images
+
+A logo, a title, a button face or a background the creator drew is an image file in the project, drawn as
+a texture. Never rebuild it with `Label`s and coloured boxes.
+
+- An image attached in the chat is only something you see; it is not in the project. Find its file with
+  `list_files` (kind `images`). When it is not there, ask the creator to import it with
+  **Import files** in the Assets panel (png with a transparent background for logos) and stop until they have.
+- Draw it with `uiBackground={{ textureMode: 'stretch', texture: { src: 'assets/images/logo.png' } }}` on a
+  `UiEntity` whose `width` and `height` keep the image's proportions (take them from the picture you saw),
+  so it is not squashed.
+- Rounded corners, outlines and shadows belong in the image: `borderRadius` is not rendered on mobile.
+
+```tsx
+<UiEntity
+  uiTransform={{ width: 520, height: 300 }}
+  uiBackground={{ textureMode: 'stretch', texture: { src: 'assets/images/toss-logo.png' } }}
+/>
+```
+
 ## Gotchas that cost a phone test each
 
 These come from a real mobile pass (one HUD, three phone tests):
