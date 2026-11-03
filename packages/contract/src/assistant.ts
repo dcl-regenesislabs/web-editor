@@ -20,7 +20,7 @@ export interface BrowserToolCall {
 }
 
 export function isCatalogSearch(tool: BrowserToolName, args: Record<string, unknown>): boolean {
-  return tool === 'scene_request' && object(args.request) && args.request.type === 'findModels'
+  return tool === 'scene_request' && object(args.request) && (args.request.type === 'findModels' || args.request.type === 'findIcons')
 }
 
 /** A conversation the service keeps encrypted between sessions; only the browser holds `key`. */

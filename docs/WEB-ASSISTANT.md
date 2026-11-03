@@ -171,6 +171,17 @@ components; see the [service README](../packages/service/README.md).
   the assistant play them with an AudioSource: created once, retriggered with `AudioSource.playSound`.
   `packages/ui/scripts/pack-sounds.mjs` regenerates them; the packs have no wind, crowd, water or
   music loop, so the library has none.
+  `findIcons` searches an icon catalog of about 14,000 free icons (game-icons.net, Tabler, Lucide,
+  Pixelarticons and Kenney's input prompts; licenses and counts in `packages/ui/src/icon-library/CREDITS.md`)
+  by whole words in the icon's name, and `addIcon` draws one as a white PNG of 64, 128 or 256 px into
+  `assets/images/icons/<set>-<name>.png`, rewriting `assets/images/icons/CREDITS.md` from the icons the folder
+  holds: each one's set, license and, for game-icons.net (CC BY 3.0), its author, plus each license's text once.
+  The catalog ships as `icons.index.json` (~0.5 MB, ~115 KB gzipped, fetched against its hash) and
+  `icons.pack` (~3 MB): SVGs in deflate-raw blocks of 64, each fetched by HTTP Range only when a search or an
+  `addIcon` needs it and checked against the sha256 the index holds (desktop reads the same byte ranges from
+  its resources). Blocks, not one entry per icon: tiny SVGs compressed one by one take twice the space.
+  `packages/ui/scripts/pack-icons.mjs` regenerates both; it leaves out brand icons and game-icons.net's
+  `abstract-N` filler.
   `check` also returns the scene's budget against the parcel limits and its deploy size.
 - `build`: compile the current browser project, run the bundle once and return compiler
   diagnostics plus scene/client/server errors. This does not simulate a full playthrough.

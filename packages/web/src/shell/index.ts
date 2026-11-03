@@ -30,7 +30,7 @@ import { browserSceneRequest } from '@ui/ai/scene'
 import { sameBytes } from '../ai/tools'
 import { captureView } from '@ui/ai/view'
 import { createAssetRequests } from '@ui/ai/assets'
-import { materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
+import { iconBlockBytes, iconIndexBytes, materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
 import { setLibraryBytes } from '@ui/ai/library-bytes'
 import { runFreshBuild, saveBeforeBuild } from '@ui/actions/verify-build'
 import { flushPendingSave } from '@ui/core/autosave'
@@ -551,7 +551,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       : createUserPrefabs(createPrefabsApi(services.services.projects, (url, init) => services.signedFetch(url, init)), contentCid)
   setThreeWorker(threeWorkerSource(host.editorBase))
   setLibraryBase(host.editorBase)
-  setLibraryBytes({ material: materialBytes, sound: soundBytes })
+  setLibraryBytes({ material: materialBytes, sound: soundBytes, iconIndex: iconIndexBytes, iconBlock: iconBlockBytes })
   setPublishedSize(async () => publishedSize(await projects.files(project().id)))
   const prefabs = createPrefabLibrary({
     builtin: createBuiltinPrefabs(host.editorBase, fileIntegrity('prefabs/catalog.json'), fetchVerified),
