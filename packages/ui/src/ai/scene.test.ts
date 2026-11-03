@@ -142,7 +142,16 @@ describe('assistant scene requests', () => {
     await expect(browserSceneRequest({ type: 'buildModel', into: '512', code: 'root' }, new AbortController().signal)).rejects.toThrow('built')
   })
 
-  it('adds a library sound to its own folder once, never over an unreadable project, and names the sounds when asked for one it lacks', async () => {
+  it('finds library sounds by words and kind, and refuses a kind it does not have', async () => {
+    const steps = await browserSceneRequest({ type: 'findSounds', query: 'footstep snow', kind: 'effect' }, new AbortController().signal) as { sounds: Array<{ name: string; kind: string }>; total: number }
+    expect(steps.sounds[0]?.name).toBe('step-snow')
+    expect(steps.sounds.every((s) => s.kind === 'effect')).toBe(true)
+    const music = await browserSceneRequest({ type: 'findSounds', kind: 'music' }, new AbortController().signal) as { sounds: unknown[]; total: number }
+    expect(music.sounds.length).toBe(music.total)
+    await expect(browserSceneRequest({ type: 'findSounds', query: 'x', kind: 'songs' }, new AbortController().signal)).rejects.toThrow('effect, voice, ambience, music')
+  })
+
+  it('adds a library sound to its own folder once, never over an unreadable project, and points to findSounds when asked for one it lacks', async () => {
     const mp3 = new Uint8Array([0xff, 0xfb])
     vi.mocked(soundBytes).mockResolvedValue(mp3)
     const path = 'assets/audio/library/fire-loop.mp3'
@@ -153,7 +162,7 @@ describe('assistant scene requests', () => {
     await expect(browserSceneRequest({ type: 'addSound', name: 'fire-loop' }, new AbortController().signal)).rejects.toThrow('offline')
     expect(dataLayerSaveFileBytes).toHaveBeenCalledTimes(1)
     expect(dataLayerSaveFileBytes).toHaveBeenCalledWith(path, mp3)
-    await expect(browserSceneRequest({ type: 'addSound', name: 'banjo' }, new AbortController().signal)).rejects.toThrow('one of: coin, gem,')
+    await expect(browserSceneRequest({ type: 'addSound', name: 'banjo' }, new AbortController().signal)).rejects.toThrow('findSounds lists them')
   })
 
   it('says when the running scene cannot play a sound yet, instead of waiting for it', async () => {

@@ -15,8 +15,8 @@ These are SDK API references, adapted to this web editor by the rules here:
 - Use scene_request for authored entities and components, even if a skill shows composite edits or MCP calls.
 - Adapt main() examples to this.entity and start()/update() when writing a Script component.
 - Skills do not add tools: shell commands, MCP servers, downloads, external file storage and deployments are unavailable.
-  Use scene_request findModels/placeModel for catalog models, buildModel for models made in code, addSound for library
-  sounds, and asset_request for library prefabs. Other external
+  Use scene_request findModels/placeModel for catalog models, buildModel for models made in code, findSounds/addSound
+  for library sounds, and asset_request for library prefabs. Other external
   assets must be imported by the creator.
 
 Find code with search_files; read a long file in ranges or by query, not whole again. Change part of a file with
@@ -210,10 +210,12 @@ scene_request accepts one request:
   pick arrives as the next message. Skip the question when the creator already chose, asked you to just build,
   or nothing in the catalog is close (then build it). For many pieces at once, such as a whole game, choose
   yourself and say which you used. After building, view it and fix what looks off.
+- {type:"findSounds",query:"splash",kind:"effect"} searches library sounds; kind (effect, voice, ambience or music,
+  the last two loops) narrows it, alone lists it.
 - {type:"addSound",name:"coin"} copies a library sound into assets/audio/library/<name>.mp3 (once) and answers {path,
-  durationSeconds,loop}. Names: coin, gem, power-up, point, countdown-tick, start, win, lose, time-up, click, open,
-  close, error, jump, land, hit, splat (wet squelch), teleport, door-open, door-close, lever, explosion; loops:
-  fire-loop (fire, lava), rumble-loop (machinery, cave), machine-loop (computers, lab). Play sounds on the client:
+  durationSeconds,loop}. Known names: coin, start, countdown-tick, win, lose, time-up, click, open, close, error,
+  jump, hit, explosion.
+  Play sounds on the client:
   AudioSource.create(entity, {audioClipUrl:path,playing:false,volume:0.8}) once in start(), then
   AudioSource.playSound(entity, path) at each event, which restarts it (playing:true again does not). A loop goes
   on the entity it belongs to with loop:true, playing:true, volume 0.3–0.5; global:true for HUD and game-flow
