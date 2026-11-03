@@ -1,5 +1,5 @@
 import type { AiImageAttachment } from '@dcl-editor/contract'
-import type { RefObject } from 'react'
+import { useLayoutEffect, type RefObject } from 'react'
 import { baseName } from '../../script/project-files'
 import { type CodeSelection } from '../../panels/ai-store'
 import { type EntityInfo } from '../../ai/context'
@@ -27,6 +27,14 @@ export function Composer(props: {
   onConfirmCancel: () => void
 }): JSX.Element {
   const { entities, selection, attachments } = props
+  // grows with the prompt up to its CSS max-height, then scrolls: a long ask can be read whole
+  const field = props.inputRef
+  useLayoutEffect(() => {
+    const ta = field.current
+    if (ta === null) return
+    ta.style.height = 'auto'
+    ta.style.height = `${ta.scrollHeight}px`
+  }, [props.input, field])
   return (
     <div className="eui-ai-composer">
       {props.confirm !== null && (

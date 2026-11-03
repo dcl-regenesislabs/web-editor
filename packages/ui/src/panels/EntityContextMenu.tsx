@@ -17,6 +17,7 @@ import { PrefabDriftDialog } from './PrefabDriftDialog'
 import { uiSetSpawnedOnly } from '../actions/spawned-only'
 import { uiFocusEntity, uiSelectEntity } from '../actions/selection'
 import { setRightOpen } from '../core/chrome'
+import { showAdvanced } from '../features/editor/entry-mode'
 import { TIP_ADD_SCRIPT, focusScriptCreate, isAuthoredEntity } from './script-card'
 import { FOLDER_COMPONENT, uiGroupIntoFolder, uiNewFolder, uiUngroupFolder } from '../actions/folders'
 import { useStore } from '../core/store'
@@ -66,6 +67,7 @@ export interface CtxMenu {
 
 function addScript(entityId: string): void {
   uiSelectEntity(entityId, false, false)
+  showAdvanced()
   setRightOpen(true)
   setComponentExpanded(componentKey(entityId, SCRIPT_COMPONENT), true)
   focusScriptCreate(entityId)
