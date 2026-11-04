@@ -13,6 +13,7 @@ import { relTime } from '../../lib/format'
 import { PublishModal } from '../publish/PublishModal'
 import { PublishOutcomeToast } from '../publish/PublishOutcomeToast'
 import { SceneSettingsModal } from '../scene-settings/SceneSettingsModal'
+import { ShareSceneModal } from './ShareSceneModal'
 import { ImportResultModal } from '../sync/ImportResultModal'
 import { LOADING_LINE, syncLabel, syncLine, useSyncStatus } from '../sync/sync'
 import { NewSceneModal } from './NewSceneModal'
@@ -304,6 +305,7 @@ function CreateCard(props: {
   const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [settings, setSettings] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useOutsideClose(menu, ref, () => setMenu(false))
   const after = (op?: Promise<unknown>): void => {
@@ -311,7 +313,7 @@ function CreateCard(props: {
     void Promise.resolve(op).then(() => props.onChanged())
   }
   const open = (): void => {
-    if (!menu && !renaming && !settings) props.onOpen()
+    if (!menu && !renaming && !settings && !sharing) props.onOpen()
   }
   const world = p.published?.world ?? p.world
   return (
@@ -385,6 +387,10 @@ function CreateCard(props: {
             setMenu(false)
             setSettings(true)
           }}
+          onShare={() => {
+            setMenu(false)
+            setSharing(true)
+          }}
           onPublish={() => {
             setMenu(false)
             props.onPublish()
@@ -395,6 +401,7 @@ function CreateCard(props: {
           favourites={false}
         />
       )}
+      {sharing && <ShareSceneModal shell={shell} dir={p.path} title={p.title} onClose={() => setSharing(false)} />}
       {settings && <SceneSettingsModal dir={p.path} onClose={() => setSettings(false)} onSaved={props.onChanged} />}
     </div>
   )

@@ -63,6 +63,9 @@ export interface WebShell {
   projects: WebProjects
   // omitted: autosave, the script studio and asset import report "unavailable"
   dataLayer?: DataLayerClient
+  // a project another account shared (its token from `?editor=copy-<token>`, shell/share.ts) copied in as a new one, or the copy
+  // this device already made from it
+  copyShared?: (token: string) => Promise<{ id: string; created: boolean }>
   // called on unmount, after the last save has been flushed
   dispose?: () => void
 }

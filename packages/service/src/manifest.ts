@@ -66,3 +66,27 @@ export async function readPrefab(store: BlobStore, key: string): Promise<PrefabM
   const object = await store.get(key)
   return object == null ? null : (JSON.parse(decoder.decode(await readAll(object.body))) as PrefabManifest)
 }
+
+/** A project's share flag: another account may copy it through `token` while it exists. */
+export interface ShareRecord {
+  token: string
+  /** ms since epoch */
+  createdAt: number
+}
+
+async function readObject(store: BlobStore, key: string): Promise<Record<string, unknown> | null> {
+  const object = await store.get(key)
+  if (object == null) return null
+  const value: unknown = JSON.parse(decoder.decode(await readAll(object.body)))
+  return value != null && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+export async function readShare(store: BlobStore, key: string): Promise<ShareRecord | null> {
+  const value = await readObject(store, key)
+  return typeof value?.token === 'string' && typeof value.createdAt === 'number' ? { token: value.token, createdAt: value.createdAt } : null
+}
+
+export async function readShareIndex(store: BlobStore, key: string): Promise<{ wallet: string; id: string } | null> {
+  const value = await readObject(store, key)
+  return typeof value?.wallet === 'string' && typeof value.id === 'string' ? { wallet: value.wallet, id: value.id } : null
+}

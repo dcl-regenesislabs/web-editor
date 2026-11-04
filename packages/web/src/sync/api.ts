@@ -201,6 +201,61 @@ export function createProjectsApi(
   }
 }
 
+// ---- sharing a project for another account to copy ----
+
+export interface SharedProject {
+  name: string
+  version: number
+  updatedAt: number
+  bytes: number
+  files: ManifestFiles
+}
+
+export interface SharesApi {
+  // the project's share token; null while it is not shared
+  token(id: string): Promise<string | null>
+  // on: the token, the same one while it stays on; off: null
+  setShared(id: string, shared: boolean): Promise<string | null>
+  // null when the token opens nothing (never given, revoked, or its project is in the trash)
+  read(token: string): Promise<SharedProject | null>
+  blob(token: string, hash: string): Promise<Uint8Array>
+}
+
+export function createSharesApi(base: string, signedFetch: SignedFetch): SharesApi {
+  async function call(path: string, init?: Parameters<SignedFetch>[1]): Promise<Response | null> {
+    const response = await signedFetch(base + path, init)
+    if (response.ok) return response
+    const error = await refusal(response)
+    if (error.status === 404 && (error.code === 'not-shared' || path.startsWith('/shared/'))) return null
+    if (error.code === 'deleted') throw new SyncHttpError(error.status, error.code, 'This scene is in the trash on your account. Restore it to share it.')
+    if (error.status === 404) {
+      throw new SyncHttpError(error.status, error.code, 'This scene is not on your account yet. Wait until it says Synced, then share it.')
+    }
+    throw error
+  }
+  const tokenOf = async (response: Response | null): Promise<string | null> => {
+    if (response === null) return null
+    const { token } = (await response.json()) as { token?: unknown }
+    return typeof token === 'string' ? token : null
+  }
+  return {
+    token: async (id) => tokenOf(await call(`/projects/${id}/share`)),
+    async setShared(id, shared) {
+      const response = await call(`/projects/${id}/share`, { method: shared ? 'PUT' : 'DELETE' })
+      return shared ? tokenOf(response) : null
+    },
+    async read(token) {
+      const response = await call(`/shared/${token}`)
+      return response === null ? null : ((await response.json()) as SharedProject)
+    },
+    async blob(token, hash) {
+      const response = await call(`/shared/${token}/files/${hash}`)
+      if (response === null) throw new Error('The shared scene changed while it was being copied. Open the link again.')
+      return new Uint8Array(await response.arrayBuffer())
+    }
+  }
+}
+
 // ---- the wallet's own prefab library ----
 
 export interface RemotePrefab {

@@ -2,9 +2,9 @@ import { authenticate } from './auth.ts'
 import { HASH, matchesHash } from '../../contract/src/cid.ts'
 import { runtime } from './config.ts'
 import type { Env, Limits, Runtime } from './config.ts'
-import { encodeManifest, loadManifest, readManifest, readPrefab, readSummary, summarize, summaryMetadata } from './manifest.ts'
+import { encodeManifest, loadManifest, readManifest, readPrefab, readShare, readShareIndex, readSummary, summarize, summaryMetadata } from './manifest.ts'
 import type { Manifest, ManifestFile, PrefabManifest, ProjectSummary } from './manifest.ts'
-import { BIDI, PREFAB_NAME, PROJECT_ID, keys, parseMarker, pathProblem, ticketWallet } from './paths.ts'
+import { BIDI, PREFAB_NAME, PROJECT_ID, SHARE_TOKEN, keys, parseMarker, pathProblem, ticketWallet } from './paths.ts'
 import { STORAGE_LOCK } from './store.ts'
 import type { BlobStore } from './store.ts'
 import { issueTicket, readTicket } from './tickets.ts'
@@ -411,6 +411,82 @@ async function fileOf(run: Runtime, files: Record<string, ManifestFile>, hash: s
   })
 }
 
+const BASE32 = 'abcdefghijklmnopqrstuvwxyz234567'
+
+function shareToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(20))
+  let out = ''
+  let buffer = 0
+  let bits = 0
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | byte
+    bits += 8
+    while (bits >= 5) {
+      out += BASE32[(buffer >>> (bits - 5)) & 31]
+      bits -= 5
+    }
+  }
+  return out
+}
+
+async function getShare(run: Runtime, wallet: string, id: string): Promise<Response> {
+  const share = await readShare(run.store, keys.share(wallet, id))
+  return share == null ? fail(404, 'not-shared') : json(200, share)
+}
+
+// The flag that lets another account copy the project. Turning it on again answers the token it has.
+function putShare(run: Runtime, wallet: string, id: string): Promise<Response> {
+  return run.lock(STORAGE_LOCK, async () => {
+    const current = await loadManifest(run.store, wallet, id)
+    if (current == null) return fail(404, 'not-found')
+    if (current.manifest.deletedAt != null) return fail(409, 'deleted', { deletedAt: current.manifest.deletedAt })
+    const existing = await readShare(run.store, keys.share(wallet, id))
+    if (existing != null) return json(200, existing)
+    const share = { token: shareToken(), createdAt: run.now }
+    const encoded = new TextEncoder().encode(JSON.stringify(share))
+    const used = total((await ownedBlobs(run.store, wallet)).values()) + await manifestBytes(run.store, wallet)
+    if (used + encoded.byteLength > run.limits.maxWalletBytes) {
+      return fail(413, 'quota-exceeded', { used, needed: encoded.byteLength, limit: run.limits.maxWalletBytes })
+    }
+    // the index first: a flag never names a token nothing resolves
+    const index = await run.store.put(keys.shared(share.token), new TextEncoder().encode(JSON.stringify({ wallet, id })), { ifMatch: null })
+    if (index == null) throw new Error('share token collision')
+    await run.store.put(keys.share(wallet, id), encoded, { metadata: storedMetadata(encoded) })
+    return json(200, share)
+  })
+}
+
+// Revokes the link for good: sharing again makes a new token.
+function deleteShare(run: Runtime, wallet: string, id: string): Promise<Response> {
+  return run.lock(STORAGE_LOCK, async () => {
+    const share = await readShare(run.store, keys.share(wallet, id))
+    if (share != null) {
+      await run.store.delete(keys.share(wallet, id))
+      await run.store.delete(keys.shared(share.token))
+    }
+    return json(200, { id })
+  })
+}
+
+/** The project a share token opens while its owner keeps it shared and out of the trash. */
+async function sharedManifest(run: Runtime, token: string): Promise<Manifest | null> {
+  const index = await readShareIndex(run.store, keys.shared(token))
+  if (index == null) return null
+  const share = await readShare(run.store, keys.share(index.wallet, index.id))
+  if (share?.token !== token) return null
+  const current = await loadManifest(run.store, index.wallet, index.id)
+  return current == null || current.manifest.deletedAt != null ? null : current.manifest
+}
+
+// Read-only: no id or wallet of the owner, only what a copy needs.
+async function getShared(run: Runtime, token: string, hash: string | undefined): Promise<Response> {
+  const manifest = await sharedManifest(run, token)
+  if (manifest == null) return fail(404, 'not-found')
+  if (hash !== undefined) return fileOf(run, manifest.files, hash)
+  const { name, version, updatedAt, bytes, files } = manifest
+  return json(200, { name, version, updatedAt, bytes, files })
+}
+
 function setDeleted(run: Runtime, wallet: string, id: string, deleted: boolean): Promise<Response> {
   return run.lock(STORAGE_LOCK, async () => {
     const current = await loadManifest(run.store, wallet, id)
@@ -529,9 +605,10 @@ async function route(request: Request, env: Env, client: string | undefined): Pr
     // the per-request client address is already parsed and bucketed (src/client-ip.ts)
     return env.pool.handle({ method, path, wallet: auth.wallet, ip: client ?? null, body })
   }
-  const match = /^\/projects(?:\/([^/]+)(?:\/(manifest|uploads|restore)|\/files\/([^/]+))?)?$/.exec(path)
+  const match = /^\/projects(?:\/([^/]+)(?:\/(manifest|uploads|restore|share)|\/files\/([^/]+))?)?$/.exec(path)
   const prefab = /^\/prefabs(?:\/([^/]+)(?:\/(manifest|uploads)|\/files\/([^/]+))?)?$/.exec(path)
-  if (match == null && prefab == null) return fail(404, 'not-found')
+  const shared = /^\/shared\/([^/]+)(?:\/files\/([^/]+))?$/.exec(path)
+  if (match == null && prefab == null && shared == null) return fail(404, 'not-found')
 
   const auth = await signedBy(request, env, run)
   if ('error' in auth) return fail(auth.status, auth.error)
@@ -539,6 +616,10 @@ async function route(request: Request, env: Env, client: string | undefined): Pr
   if (env.storageWallets != null && !env.storageWallets.has(wallet)) return fail(403, 'storage-not-allowed')
   const wait = limited(run, wallet)
   if (wait != null) return wait
+  if (shared != null) {
+    if (method !== 'GET') return fail(405, 'method-not-allowed')
+    return SHARE_TOKEN.test(shared[1]) ? getShared(run, shared[1], shared[2]) : fail(404, 'not-found')
+  }
   if (match == null) return routePrefabs(run, env, wallet, request, prefab as RegExpExecArray)
 
   const [, id, action, hash] = match
@@ -549,6 +630,9 @@ async function route(request: Request, env: Env, client: string | undefined): Pr
   if (action === 'manifest' && method === 'PUT') return putManifest(run, wallet, id, request)
   if (action === 'uploads' && method === 'POST') return requestUploads(run, env, wallet, request)
   if (action === 'restore' && method === 'POST') return setDeleted(run, wallet, id, false)
+  if (action === 'share' && method === 'GET') return getShare(run, wallet, id)
+  if (action === 'share' && method === 'PUT') return putShare(run, wallet, id)
+  if (action === 'share' && method === 'DELETE') return deleteShare(run, wallet, id)
   if (action === undefined && method === 'DELETE') return setDeleted(run, wallet, id, true)
   return fail(405, 'method-not-allowed')
 }

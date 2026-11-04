@@ -412,6 +412,11 @@ export interface EditorShell {
   importProject?: (kind: 'zip' | 'folder') => Promise<ProjectImportResult | null>
   // false where the browser cannot pick a folder
   canImportFolder?: boolean
+  // ---- Sharing a copy (web, signed in) ----
+  // the link another account opens to make its own copy of the scene; null while it is not shared
+  projectShareLink?: (dir: string) => Promise<string | null>
+  // on: answers the link, the same one each time; off: null, and that link stops working for good
+  setProjectShared?: (dir: string, shared: boolean) => Promise<string | null>
   // ---- npm packages (see ProjectPackages) ----
   // where the project's packages stand; null when it asks for none
   projectPackages?: (dir: string) => Promise<ProjectPackages | null>
