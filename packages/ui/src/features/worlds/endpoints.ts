@@ -72,12 +72,13 @@ export function signedServicesOutOfReach(): boolean {
 export function chainId(): number {
   return zone() ? 11155111 : 1
 }
-// The mobile explorer, opened from a phone (a QR on the publish success): it takes
-// the world's NAME without `.dcl.eth`, and lands on the scene's own base parcel.
+// The mobile explorer, opened from a phone (a QR on the publish success): its /open
+// page takes the world's full name, `.dcl.eth` included, and the scene's base parcel.
 export function mobileJumpInUrl(world: string, base: string | null): string {
-  const realm = world.toLowerCase().replace(/\.dcl\.eth$/, '')
-  const position = base === null ? '' : `&position=${base}`
-  return `https://mobile.dclexplorer.com/?realm=${encodeURIComponent(realm)}${position}`
+  const query = new URLSearchParams()
+  if (base !== null) query.set('position', base)
+  query.set('realm', world.toLowerCase())
+  return `https://mobile.dclexplorer.com/open?${query}`
 }
 
 // Hosted, into the editor's own page like a publish's link (realm = name on
