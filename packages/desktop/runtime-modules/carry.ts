@@ -37,6 +37,7 @@ import {
   Billboard,
   BillboardMode,
   GltfContainer,
+  InputModifier,
   Material,
   MeshRenderer,
   PlayerIdentityData,
@@ -46,10 +47,12 @@ import {
   engine,
   type Entity,
   type LastWriteWinElementSetComponentDefinition,
+  type PBInputModifier,
   type PBMaterial,
   type PBMeshRenderer
 } from '@dcl/sdk/ecs'
 import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
+import { triggerSceneEmote } from '~system/RestrictedActions'
 import { isServer } from '@dcl/sdk/network'
 import { game, reportProblem, type Player } from './game'
 import { addInteractions, sayNotice, type PromptAction, type PromptCandidate } from './interactPrompt'
@@ -105,6 +108,10 @@ export interface PickupSpec {
   throwable: boolean
   heldScale: number
   returnSeconds: number
+  /** A scene `_emote.glb` the picker plays as they pick it up; '' plays none. */
+  pickEmote?: string
+  /** Seconds the picker can't walk or jump while that emote plays; 0 leaves them free. */
+  pickHoldSeconds?: number
 }
 
 export interface StationSpec {
@@ -142,6 +149,9 @@ interface CarryHub {
   bars: Map<string, Bar>
   hidden: Map<Entity, boolean>
   lastSeen: Map<Player, Vec3>
+  holdUntil: number
+  // the player's InputModifier from before a pick's hold, put back when it ends
+  heldInput: PBInputModifier | null
 }
 
 const KEY = '__dclCarry_v1'
@@ -169,7 +179,7 @@ function hub(): CarryHub {
   const created: CarryHub = {
     pickups: new Map(), stations: new Map(), extras: new Map(), rules: { sources: {}, stations: {} },
     side: null, state: freshCarry(), view: null, seenRaw: undefined, listeners: new Set(), prediction: null,
-    visuals: new Map(), bars: new Map(), hidden: new Map(), lastSeen: new Map()
+    visuals: new Map(), bars: new Map(), hidden: new Map(), lastSeen: new Map(), holdUntil: 0, heldInput: null
   }
   globals[KEY] = created
   return created
@@ -487,6 +497,7 @@ function act(h: CarryHub, action: CarryAction): void {
     return
   }
   const id = predicted.id
+  if (action.type === 'pick') playPickEmote(h, pickupOf(h, action.item))
   game.request<unknown>(REQUEST, action).then((reply) => {
     const answer = replyOk(reply)
     if (answer.ok) return
@@ -497,6 +508,39 @@ function act(h: CarryHub, action: CarryAction): void {
     sayNotice('No answer from the server. Try again.')
     console.log(`[carry] ${action.type} failed: ${String(error)}`)
   })
+}
+
+// a dropped item is picked up as its kind's Pickup Item would be
+function pickupOf(h: CarryHub, item: string): Pickup | null {
+  const own = h.pickups.get(item)
+  if (own !== undefined) return own
+  const row = h.view?.items[item]
+  return row === undefined ? null : kindSpec(h, row.kind)
+}
+
+// Played on the picker's own client the moment the pick is predicted, like the item in hand; a
+// refused pick has already shown it, which is the same rollback the hand gets.
+function playPickEmote(h: CarryHub, pickup: Pickup | null): void {
+  const src = pickup?.pickEmote ?? ''
+  if (src === '') return
+  triggerSceneEmote({ src, loop: false }).catch((error: unknown) => console.log(`[carry] the pick emote did not play: ${String(error)}`))
+  const hold = pickup?.pickHoldSeconds ?? 0
+  if (hold <= 0) return
+  // walking would cut the emote short: a squat to the floor plays out before the player moves on
+  if (h.holdUntil === 0) h.heldInput = InputModifier.getOrNull(engine.PlayerEntity)
+  InputModifier.createOrReplace(engine.PlayerEntity, {
+    mode: { $case: 'standard', standard: { disableWalk: true, disableJog: true, disableRun: true, disableJump: true } }
+  })
+  h.holdUntil = game.now() + hold * 1000
+}
+
+function releaseHold(h: CarryHub, now: number): void {
+  if (h.holdUntil === 0 || now < h.holdUntil) return
+  h.holdUntil = 0
+  const before = h.heldInput
+  h.heldInput = null
+  if (before === null) InputModifier.deleteFrom(engine.PlayerEntity)
+  else InputModifier.createOrReplace(engine.PlayerEntity, before)
 }
 
 function kindSpec(h: CarryHub, kind: string): Pickup | null {
@@ -756,6 +800,7 @@ function clientTick(h: CarryHub): void {
   const prediction = h.prediction
   if (prediction === null) return
   const now = game.now()
+  releaseHold(h, now)
   const raw = game.state[STATE_KEY]
   if (raw !== h.seenRaw || prediction.pendingCount > 0) {
     h.seenRaw = raw

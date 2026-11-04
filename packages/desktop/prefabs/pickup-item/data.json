@@ -13,8 +13,12 @@
     "multiplayer"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "changelog": [
+    {
+      "version": "1.1.0",
+      "notes": "An optional pick-up animation: \"from a table\" reaches forward, \"from the floor\" squats and holds the player still while it plays. Off by default."
+    },
     {
       "version": "1.0.1",
       "notes": "The assistant's guide says how the phone buttons the item declares combine with the ones a game's own scripts declare."
