@@ -65,6 +65,15 @@ and holds events until the terms are accepted. The editor sends only `Creator Ac
 properties (`packages/ui/src/analytics.ts`). Older hosts can omit it: the editor then sends the same
 event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, timestamp }]>')`.
 
+## Share links (no host change)
+
+A link to copy a project another account shared is `?editor=copy-<token>` (the token is 32
+characters, `[a-z2-7]`). It fits the host's project id check, so the host passes it as
+`openProject` like any other; the editor recognises the shape (`packages/web/src/shell/share.ts`),
+saves the shared project as a new one of the signed-in wallet and opens it. No project the store
+makes has that shape: its ids end in a 4-character tail. The host keeps `?editor=` in the url, so
+a reload opens the same link again: the editor then opens the copy it made from that token.
+
 ## The project-storage service (packages/service)
 - Rejects any request whose metadata has `signer === 'decentraland-kernel-scene'` (or a sceneId), or whose `intent !== 'dcl:editor:projects'`; timestamp window 5 minutes; Origin allowlist.
 - API (all under the base url, all signed, wallet = the auth chain's owner, lowercased):
@@ -75,6 +84,7 @@ event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, ti
   - `PUT /projects/:id/manifest` `{ name, files, baseVersion }` with `baseVersion: null` to create -> `{ version }`; 409/412 `{ version, updatedAt }` when baseVersion is stale; 422 when a referenced blob is missing for this wallet
   - `GET /projects/:id/files/:hash` -> the blob (only hashes in that wallet's manifests)
   - `DELETE /projects/:id` -> soft delete (kept 30 days); `POST /projects/:id/restore`
+  - `GET|PUT|DELETE /projects/:id/share` -> the share flag; `GET /shared/:token` and `/shared/:token/files/:hash` read a shared project ([service README](../packages/service/README.md#api))
 - `hash` is the Decentraland content hash a Worlds deployment uses (hashV1: `bafkrei…` up to 262,144 bytes, `bafybei…` above), so files are hashed once.
   - `/pool`, `/pool/lease`, `/pool/sign`, `/pool/published`, `/pool/scene`: shared worlds for a wallet without a NAME, off unless configured ([service README](../packages/service/README.md#shared-worlds))
 - Order: content first, manifest last. Project ids match `/^[a-z0-9][a-z0-9-]{0,63}$/`.

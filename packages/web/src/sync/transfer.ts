@@ -74,7 +74,7 @@ export async function uploadMissing(
 }
 
 export async function fetchFiles(
-  api: ProjectsApi,
+  api: Pick<ProjectsApi, 'blob'>,
   id: string,
   wanted: Array<[string, ManifestFile]>,
   progress: Progress

@@ -23,7 +23,8 @@ export async function setupRouter({ components }: GlobalContext): Promise<Router
     components.assistant.upgrade(request, clientAddress(request, remoteAddress, ipHeader)))
   const paths = [
     '/health', '/projects', '/projects/:id', '/projects/:id/manifest',
-    '/projects/:id/uploads', '/projects/:id/restore', '/projects/:id/files/:hash',
+    '/projects/:id/uploads', '/projects/:id/restore', '/projects/:id/share', '/projects/:id/files/:hash',
+    '/shared/:token', '/shared/:token/files/:hash',
     '/prefabs', '/prefabs/:name', '/prefabs/:name/manifest', '/prefabs/:name/uploads', '/prefabs/:name/files/:hash',
     '/blobs/:hash', '/assistant/:action', '/:path(.*)'
   ]

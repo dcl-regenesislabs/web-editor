@@ -20,6 +20,7 @@ import { mountEditorUi } from '@ui/mount'
 import { Root } from './Root'
 import type { WebShell } from './seam'
 import { createWebShell } from './shell'
+import { sharedToken } from './shell/share'
 import { fileIntegrity, sceneCompilerFiles } from './workers'
 
 declare const __EDITOR_UI_BUILD__: string
@@ -147,10 +148,30 @@ function mountHome(el: HTMLElement, api: HomeApi): () => void {
   }
   home = entry
 
-  const wanted = deepLinkTaken ? null : (hostV1(s.host)?.openProject ?? null)
+  const asked = deepLinkTaken ? null : (hostV1(s.host)?.openProject ?? null)
+  const copy = asked === null ? null : sharedToken(asked)
+  const wanted = copy === null ? asked : null
   deepLinkTaken = true
-  trackCreator('editor_opened', { deep_link: wanted !== null })
-  if (wanted !== null) {
+  trackCreator('editor_opened', { deep_link: asked !== null })
+  if (copy !== null) {
+    const copyShared = s.web.copyShared
+    if (copyShared === undefined) {
+      hostedRoute.notice = 'Copying a shared scene is not available on this page. Here are your scenes.'
+    } else {
+      hostedRoute.notice = 'Making your own copy of the shared scene…'
+      void copyShared(copy).then(
+        ({ id, created }) => {
+          if (created) trackCreator('project_created', { project_id: id, source: 'shared_copy' })
+          // made either way; opened only if the creator is still waiting on the scene list
+          if (home === entry) void window.editorShell?.openProject(id)
+        },
+        (error: unknown) => {
+          console.warn('[editor] could not copy the shared scene', error)
+          if (home === entry) hostedRoute.notice = error instanceof Error ? error.message : String(error)
+        }
+      )
+    }
+  } else if (wanted !== null) {
     void s.web.projects
       .find(wanted)
       .catch(() => false)

@@ -87,6 +87,8 @@ What the editor asks of the host:
   trusts it as it trusts its own code, enforced by the pinned version, SRI and review.
 - v1 only: `openProject` (the id from `?editor=<id>`) is opened by the first `mountHome` of the
   page; an id that is neither on this device nor on the account stays on the list with one line.
+  An `openProject` of the form `copy-<token>` is a share link instead: the project another
+  account shared is copied into a new one of this account's and opened (`shell/share.ts`).
   `services.projects` and `signedFetch(url, init)` carry every request to the project-storage
   service. A v0 host, a guest, or `services.projects: null` means the projects stay local.
 - v1 only: `services.worldsContent` and `signDeployment(request)` are what publishing needs.

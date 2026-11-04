@@ -163,6 +163,11 @@ before upgrading. Deploy browser and service transport updates together.
 | `GET /projects/:id/files/:hash` | the bytes, only for a hash in that project's current manifest; else 404 |
 | `DELETE /projects/:id` | `{ id, version, updatedAt, deletedAt, purgeAt }`; the project moves to the trash |
 | `POST /projects/:id/restore` | `{ id, version, updatedAt }` |
+| `GET /projects/:id/share` | `{ token, createdAt }` while the project is shared; 404 `not-shared` |
+| `PUT /projects/:id/share` | turns the share flag on: `{ token, createdAt }`, the same token while it stays on; 404 `not-found`, 409 `deleted`, 413 `quota-exceeded` |
+| `DELETE /projects/:id/share` | `{ id }`; the token stops working for good, and sharing again makes a new one |
+| `GET /shared/:token` | for any signed-in wallet: `{ name, version, updatedAt, bytes, files }` of the owner's current version, with no id or wallet of the owner; 404 `not-found` for an unknown or revoked token, or a project in the trash |
+| `GET /shared/:token/files/:hash` | the bytes, only for a hash in that current version; else 404 |
 | `GET /prefabs` | `{ prefabs: [{ name, updatedAt, bytes, files: { [path]: { hash, size } } }], usage: { bytes, limit } }`: the wallet's own prefab library |
 | `POST /prefabs/:name/uploads` | as `POST /projects/:id/uploads` |
 | `PUT /prefabs/:name/manifest` `{ files }` | `{ name, updatedAt }`. Creates only: 409 `exists`; 400 `invalid-prefab-name`; 413 `too-many-prefabs`, `quota-exceeded`; the rest as a project manifest |
@@ -171,6 +176,13 @@ before upgrading. Deploy browser and service transport updates together.
 | `GET /health` | `{ ok: true }`, unsigned |
 
 Order: content first, manifest last. A client that gets `missing-blobs` asks for uploads again.
+
+A shared project is read-only to everyone but its owner. The link is live: it opens whatever the
+owner saved last. To copy it, the editor downloads the files and saves them as a new project of the
+copier's own, uploading the blobs again under that wallet: a manifest still names only blobs its
+wallet uploaded, so a share grants no hold over the owner's blobs. A share token is 160 random
+bits (32 base32 characters). Trashing the project hides it until a restore; the purge that removes
+the project removes its share too.
 
 Project ids match `/^[a-z0-9][a-z0-9-]{0,63}$/`, prefab names `/^[a-z0-9][a-z0-9_-]{0,63}$/`. A path is relative, `/`-separated, at most 512
 characters, with no empty, `.` or `..` segment, no backslash or control character, no
@@ -222,6 +234,8 @@ blobs/<hash>                                       the bytes, once for everyone
 wallets/<addr>/blobs/<hash>.<size>                 empty marker: this wallet uploaded that blob
 wallets/<addr>/projects/<id>/manifest.json         the current version; its summary in object metadata
 wallets/<addr>/projects/<id>/history/<version>.json   the last 20 versions
+wallets/<addr>/projects/<id>/share.json            the share flag: { token, createdAt } while it is on
+shares/<token>.json                                { wallet, id }: what a share link opens, believed only while that project's flag names the token
 wallets/<addr>/prefabs/<name>.json                 a prefab in the wallet's library: its files, unversioned
 uploads/tickets/<expiry>.<wallet>.<hmac>           empty: a spent upload ticket
 purge/cursor.json                                  the last wallet the purge visited

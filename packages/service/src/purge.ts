@@ -1,6 +1,6 @@
 import { runtime } from './config.ts'
 import type { Env, Runtime } from './config.ts'
-import { loadManifest, readManifest, readPrefab } from './manifest.ts'
+import { loadManifest, readManifest, readPrefab, readShare } from './manifest.ts'
 import { keys, parseMarker, ticketExpiry } from './paths.ts'
 import { STORAGE_LOCK, readAll } from './store.ts'
 
@@ -96,6 +96,9 @@ async function purgeWallet(run: Runtime, wallet: string, result: PurgeResult): P
     const deletedAt = current?.manifest.deletedAt
     if (current == null || (deletedAt != null && run.now - deletedAt >= trashMs)) {
       for (const key of histories) await run.store.delete(key)
+      const share = await readShare(run.store, keys.share(wallet, id))
+      if (share != null) await run.store.delete(keys.shared(share.token))
+      await run.store.delete(keys.share(wallet, id))
       await run.store.delete(keys.manifest(wallet, id))
       if (current != null) result.projects++
       continue

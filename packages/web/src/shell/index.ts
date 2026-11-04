@@ -48,6 +48,7 @@ import { createPrefabsApi, createProjectsApi } from '../sync/api'
 import { createSyncEngine } from '../sync/engine'
 import { canPickFolder, downloadZip, importProject, pickFile } from './archive'
 import { createBuildTool } from './build-tool'
+import { createSharing } from './share'
 import { createBuiltinPrefabs } from './builtin-prefabs'
 import { runtimeTypes, sceneTemplates, templateFiles } from './bundled'
 import { type ProjectFiles, createPrefabLibrary, parseRef } from './prefab-library'
@@ -344,6 +345,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       return copy
     }
   })
+  const sharing = services?.services.projects == null ? null : createSharing({ base: services.services.projects, signedFetch: (url, init) => services.signedFetch(url, init), store, sync, wallet, install: (id, files) => previews.install(id, files) })
   // hidden until the service says this account may use it
   let aiOffered = false
   let aiProbe = 0
@@ -685,8 +687,8 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
           publishWorlds: async () => publishWorlds(wallet(), services.services.worldsContent)
         }),
     canImportFolder: canPickFolder(),
-    renameProject: (id, title) =>
-      editSceneJson(id, (raw) => ({ ...raw, display: { ...(raw.display ?? {}), title: title.trim() } })),
+    ...(sharing?.shell ?? {}),
+    renameProject: (id, title) => editSceneJson(id, (raw) => ({ ...raw, display: { ...(raw.display ?? {}), title: title.trim() } })),
     duplicateProject: (id) => duplicate(id, 'copy'),
     sceneTemplates: async () => sceneTemplates(),
     createScene: async (_parent, name, template) => {
@@ -782,6 +784,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     shell,
     projects,
     dataLayer,
+    ...(sharing === null ? {} : { copyShared: sharing.copyShared }),
     dispose: () => {
       phone.dispose()
       assistant.dispose()
