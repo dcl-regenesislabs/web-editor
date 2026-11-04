@@ -14,7 +14,8 @@ import { SceneSettingsModal } from '../scene-settings/SceneSettingsModal'
 import { MobilePreviewModal } from '../preview/MobilePreviewModal'
 import { backLabel, backToProjects, reloadEditor, useLeaving } from './nav'
 import { openCodeEditor } from '../../panels/ai-store'
-import { IconCode } from '../../icons'
+import { IconCode, IconPlay } from '../../icons'
+import { uiPlay } from '../../actions/playback'
 import { SyncChip } from '../sync/SyncChip'
 import { getHost } from '../../engine/hosted'
 import { useRevealNearPointer } from './topbar-reveal'
@@ -105,6 +106,8 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
   const barRef = useRef<HTMLDivElement>(null)
   useRevealNearPointer(barRef)
   const phone = window.editorShell?.phonePreview
+  // entry mode has no toolbar: Play is here, and Stop is the play bar's own
+  const canPlay = useStore(() => state.status === 'ready' && state.frozen)
   const modeSwitch = canAskAssistant() && (
     <button
       className="eui-topbar-btn wide"
@@ -145,6 +148,11 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
         <span className="eui-topbar-entry-note" role="status">
           {previewFail === 'no-scene' ? 'The scene is still starting. Try again in a moment.' : 'The phone preview couldn’t open on this page.'}
         </span>
+      )}
+      {entry && canPlay && (
+        <button className="eui-topbar-btn wide" data-tip="Play the scene as a player" onClick={() => void uiPlay()}>
+          <IconPlay /> Play
+        </button>
       )}
       {entry ? modeSwitch : null}
       {canPublish(window.editorShell) && project !== null && (
