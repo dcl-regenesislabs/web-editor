@@ -223,9 +223,11 @@ export function createBrowserAssistant(options: {
     }
   }
 
-  function reset(): Promise<void> {
+  // `discard`: the service drops the conversation too. A Stop keeps it, so the next message knows what the stopped
+  // turn already changed and reads the same history from cache.
+  function reset(discard = true): Promise<void> {
     connectionGeneration++
-    send({ kind: 'reset' })
+    if (discard) send({ kind: 'reset' })
     finish(false)
     const old = socket
     socket = null
@@ -285,7 +287,7 @@ export function createBrowserAssistant(options: {
     },
     async aiStop() {
       if (active !== null) send({ kind: 'stop', turnId: active.id })
-      await reset()
+      await reset(false)
     },
     async aiReset() { await reset() },
     async aiForget() {
