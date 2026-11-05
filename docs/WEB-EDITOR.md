@@ -42,7 +42,10 @@ around it here (example: tweens ignored Pause until the engine fixed it, bevy-ex
 A released page (`decentraland.zone`, `decentraland.org`) offers Create only when the url has
 `editor-features=experimental`; add `advanced` for the Advanced button
 (`?editor-features=experimental,advanced`). Without `advanced` the web editor is the assistant
-alone. [`HOST-CONTRACT.md`](./HOST-CONTRACT.md) "v1.5" has the details. `?baseDomain=decentraland.org`
+alone. [`HOST-CONTRACT.md`](./HOST-CONTRACT.md) "v1.5" has the details. Zone follows the npm `latest`
+tag; org runs one version checked against its hash (`PINNED_EDITOR` in dcl-one's
+`editorHost/config.ts`, `?editor-tag` ignored), so a release reaches org only with a dcl-one PR
+carrying `node packages/web/scripts/pin.mjs <version> decentraland.org`. `?baseDomain=decentraland.org`
 on the zone page points the session, and the editor's Worlds server, at org.
 
 ## Develop locally (no Docker)
