@@ -139,8 +139,10 @@ start('service', process.execPath, [
   ...(values['ai-auth'] === undefined ? [] : ['--ai-auth', path.resolve(values['ai-auth'])]),
   ...(values['ai-image-auth'] === undefined ? [] : ['--ai-image-auth', path.resolve(values['ai-image-auth'])])
 ])
+// the features a released page offers only when asked (docs/HOST-CONTRACT.md "features")
+let query = '&editor-features=experimental,advanced'
 // slot 0 keeps the defaults both sides assume; another slot names its own servers to the page
-let query = slot === 0 ? '' : `&editor-projects=http://localhost:${SERVICE_PORT}&editor-mobile=http://127.0.0.1:${MOBILE_PORT}&bridgePort=${BRIDGE_PORT}`
+query += slot === 0 ? '' : `&editor-projects=http://localhost:${SERVICE_PORT}&editor-mobile=http://127.0.0.1:${MOBILE_PORT}&bridgePort=${BRIDGE_PORT}`
 if (values.world !== undefined) {
   start('worlds', process.execPath, ['packages/web/validate/fake-worlds-server.mjs', '--port', String(WORLDS_PORT), '--claim', values.world])
   query += `&editor-worlds=http://localhost:${WORLDS_PORT}`

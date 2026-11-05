@@ -57,6 +57,9 @@ describe('a share link', () => {
     expect(shareLink(TOKEN, 'http://localhost:5173/?editor&editor-projects=http://localhost:8887')).toBe(
       `http://localhost:5173/?editor-projects=http%3A%2F%2Flocalhost%3A8887&editor=copy-${TOKEN}`
     )
+    expect(shareLink(TOKEN, 'https://decentraland.org/play/?editor=x&editor-features=experimental,advanced&position=1,2')).toBe(
+      `https://decentraland.org/play/?editor-features=experimental%2Cadvanced&editor=copy-${TOKEN}`
+    )
   })
 
   it('rides on the explorer\'s ?editor=<projectId>, and no project id of the store reads as one', () => {

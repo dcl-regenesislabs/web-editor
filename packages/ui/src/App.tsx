@@ -23,7 +23,7 @@ import { renameRequested } from './panels/reveal'
 import { assetsReview } from './panels/assets-review'
 import { storedValue, usePersistentEnum, usePersistentFlag, usePersistentNum } from './core/persist'
 import { autoSaveStatus } from './core/autosave'
-import { IconButton, Splitter, Toast as DsToast } from './ds'
+import { IconButton, Notice, Panel, Splitter, Toast as DsToast } from './ds'
 import { IconSidebarLeft, IconSidebarRight } from './icons'
 import { PhonePreviewPane } from './features/preview/PhonePreviewPane'
 import { entryMode, showAdvanced } from './features/editor/entry-mode'
@@ -161,6 +161,11 @@ export function App(props: { playing?: boolean }): JSX.Element {
           <Splitter label="Resize inspector and assistant" value={dockHeight} min={DOCK_MIN_H} max={dockMax} onChange={setAiHeight} />
         )}
         {studioHere && <AiPanel shown={rightOpen} fill={!ready || inspectorMin || entry} height={dockHeight} entry={entry} />}
+        {ready && entry && !studioHere && (
+          <Panel title="Assistant">
+            <Notice>The assistant isn’t available to this account right now. Sign in with a wallet, or try again later.</Notice>
+          </Panel>
+        )}
       </div>
       {rightOpen && (!playing || dockInPlay) && (ready || studioHere) && <RightResize width={rightWidth} onResize={setRightWidth} />}
     </>
