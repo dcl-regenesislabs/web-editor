@@ -49,6 +49,7 @@ import { createSyncEngine } from '../sync/engine'
 import { canPickFolder, downloadZip, importProject, pickFile } from './archive'
 import { createBuildTool } from './build-tool'
 import { createSharing } from './share'
+import { createAssistantOffer } from './assistant-offer'
 import { createBuiltinPrefabs } from './builtin-prefabs'
 import { runtimeTypes, sceneTemplates, templateFiles } from './bundled'
 import { type ProjectFiles, createPrefabLibrary, parseRef } from './prefab-library'
@@ -346,17 +347,8 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     }
   })
   const sharing = services?.services.projects == null ? null : createSharing({ base: services.services.projects, signedFetch: (url, init) => services.signedFetch(url, init), store, sync, wallet, install: (id, files) => previews.install(id, files) })
-  // hidden until the service says this account may use it
-  let aiOffered = false
-  let aiProbe = 0
-  async function probeAssistant(): Promise<void> {
-    const probe = ++aiProbe
-    const offered = wallet() !== null && (await assistant.shell.aiProviders()).some((provider) => provider.available)
-    if (probe !== aiProbe || offered === aiOffered) return
-    aiOffered = offered
-    notify()
-  }
-  void probeAssistant()
+  const assistantOffer = createAssistantOffer({ wallet, providers: () => assistant.shell.aiProviders(), changed: notify })
+  void assistantOffer.probe()
   // signing in or out changes whose copy the projects are compared with
   let signedInAs = wallet()
   const accountPoll = setInterval(() => {
@@ -365,7 +357,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     signedInAs = now
     assistant.reset()
     notify()
-    void probeAssistant()
+    void assistantOffer.probe()
     void sync.refresh(true)
     void clearPreviews(currentRealm).catch((error: unknown) => console.warn('[editor] could not clear the previews', error))
   }, ACCOUNT_POLL_MS)
@@ -563,7 +555,8 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
   const shell: EditorShell = {
     ...(services?.services.projects == null ? {} : {
       ...assistant.shell,
-      aiOffered: () => aiOffered,
+      aiOffered: assistantOffer.offered,
+      aiAnswered: assistantOffer.answered,
       // read on every store notify, so it uses the polled account rather than asking the host
       aiTranscript: () => {
         const signedIn = signedInAs

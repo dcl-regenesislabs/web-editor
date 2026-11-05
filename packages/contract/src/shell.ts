@@ -530,6 +530,9 @@ export interface EditorShell {
   // false while nobody here can use the assistant (a guest, no service, an account not let in),
   // which hides it; absent means it is always offered
   aiOffered?: () => boolean
+  // false until the shell has asked whether the assistant is offered: aiOffered is false meanwhile,
+  // which says nothing yet; absent means the answer is known from the start
+  aiAnswered?: () => boolean
   aiSend?: (params: AiSendParams) => Promise<{ turnId: string }>
   aiStop?: () => Promise<void>
   aiReset?: () => Promise<void>

@@ -113,6 +113,7 @@ export function App(props: { playing?: boolean }): JSX.Element {
   const aiMin = useStore(() => aiStore.collapsed)
   const aiMode = useStore(() => aiStore.mode)
   const aiHere = useStore(canAskAssistant)
+  const aiAnswered = useStore(() => window.editorShell?.aiAnswered?.() ?? true)
   // Play the assistant runs (its playtest) is not the creator's: its turn and its
   // stop control stay on screen until that Play ends.
   const turnRunning = useStore(() => aiStore.turnRunning)
@@ -161,7 +162,7 @@ export function App(props: { playing?: boolean }): JSX.Element {
           <Splitter label="Resize inspector and assistant" value={dockHeight} min={DOCK_MIN_H} max={dockMax} onChange={setAiHeight} />
         )}
         {studioHere && <AiPanel shown={rightOpen} fill={!ready || inspectorMin || entry} height={dockHeight} entry={entry} />}
-        {ready && entry && !studioHere && (
+        {ready && entry && !studioHere && aiAnswered && (
           <Panel title="Assistant">
             <Notice>The assistant isn’t available to this account right now. Sign in with a wallet, or try again later.</Notice>
           </Panel>

@@ -51,7 +51,7 @@ describe('entry mode', () => {
 })
 
 describe('advanced', () => {
-  it('is offered by the desktop app, and by a host only when its features say so', () => {
+  it('is offered by the desktop app and a v0 host, and by a v1 host only when its features say so', () => {
     expect(advancedOffered()).toBe(true)
     setHost(webHost({ advanced: true }))
     expect(advancedOffered()).toBe(true)
@@ -59,8 +59,9 @@ describe('advanced', () => {
       setHost(webHost(features))
       expect(advancedOffered()).toBe(false)
     }
+    // a v0 host has no assistant: it stays the whole editor, as before features
     setHost({ version: 0, engineConsole: async () => '' } as Partial<DclEditorHost> as DclEditorHost)
-    expect(advancedOffered()).toBe(false)
+    expect(advancedOffered()).toBe(true)
   })
 
   it('stays out of reach where it is not offered: a remembered pick, a reveal, no assistant', () => {
