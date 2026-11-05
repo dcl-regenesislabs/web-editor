@@ -321,6 +321,7 @@ block and directory overhead when sizing the volume; logical byte limits are not
 | `ASSISTANT_TURNS_PER_DAY_TOTAL` | 2000 | assistant turns for all wallets together per UTC day |
 | `ASSISTANT_TURNS_AT_ONCE` | 2 | assistant turns one wallet may have running at once, across its tabs |
 | `ASSISTANT_COMPACT_AT_TOKENS` | 200000 | context size at which the assistant summarizes older messages, also between the tool calls of one turn, keeping the latest 50k tokens verbatim; at least 50000, or `0` to leave it to pi, which waits until the model's window is nearly full (1M tokens for `claude-opus-5-5`). 200k is what the benchmark measured best; 150k cost a third more (`docs/ASSISTANT-BENCHMARK.md`, "Compaction") |
+| `ASSISTANT_CACHE_WARMING` | idle | `idle` keeps the prompt cache warm between the creator's messages, for up to 30 minutes after the last one and only while a cold rewrite would cost more than the pings (from about 100k tokens of context); `streaming` only while a turn runs; `off` never. A closed page stops it (`docs/ASSISTANT-BENCHMARK.md`, "Prompt-cache retention") |
 | `ASSISTANT_DRAIN_SECONDS` | 600 | on stop, how long running assistant turns may finish (new turns are refused); keep compose's `stop_grace_period` longer |
 | `ASSISTANT_DAILY_LIMIT` | 50000 | internal allowance per wallet per UTC day, priced at the model's API rates; usage is not displayed in the editor |
 | `ASSISTANT_WEEKLY_LIMIT` | 200000 | the same per week, from Monday 00:00 UTC |

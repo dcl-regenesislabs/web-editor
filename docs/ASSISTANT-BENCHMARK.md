@@ -91,18 +91,22 @@ session actually ran under, so it shows how far the other columns can be trusted
 
 | Policy | 19 recorded sessions |
 |---|---|
-| 5 min (today) | $74.44 |
+| 5 min, no pings (before) | $74.44 |
 | 1 h | $72.71 (−2%) |
-| 5 min + warm 30 min | $70.27 (−6%) |
-| 5 min + warm 60 min | $72.95 (−2%) |
+| 5 min + warm 30 min, every gap | $70.27 (−6%) |
+| 5 min + warm 60 min, every gap | $72.95 (−2%) |
+| pi idle warming (`ASSISTANT_CACHE_WARMING=idle`) | $70.42 (−5%) |
+| pi idle warming + compaction at 200k (the defaults) | $62.49 (−16%) |
 
 - **1 h** costs 15–20% more on the usual 10–40-minute session, because every write is billed at 2× input instead
   of 1.25×. It pays off only in a long session with gaps: 99 nights goes from $23.6 to $17.7.
-- **Keeping the cache warm for 30 minutes** is the cheapest, but it counts a page left open for 30 minutes after the
-  last reply, pinging all along; most of what it saves is again one long session.
-- **No change for now.** These sessions are mostly benchmark runs that never sit idle. The decision needs the idle
-  gaps of real creator sessions: record them on the dev deployment and run the replay over them. Compaction at 200k
-  already caps what one cold rewrite can cost.
+- **pi's idle warming is the default** (`ASSISTANT_CACHE_WARMING=idle`). Between the creator's messages pi re-sends
+  the last request with a one-token reply every 4.5 minutes, for up to 30 minutes, and only while a 15% chance of
+  saving a cold rewrite beats the ping by $0.05: from about 100k tokens of context, so short conversations are never
+  pinged. A closed page ends the session and its pings. It saves where creators pause (99 nights −18%, paper toss
+  −17%) and costs a short session $0.10–0.25 of pings after its last reply, counting the page as left open.
+- **The replay counts a page open for the full 30 minutes after the last reply.** Real creator sessions, recorded on
+  the dev deployment and replayed, will say how long pages stay open and how often a creator comes back in time.
 
 The replay replays the same calls, so it cannot see a policy change what the model does. It is sound for cache
 retention, which the model never sees, and not for compaction: on the two runs with compaction off it predicts
