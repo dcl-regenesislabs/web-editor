@@ -14,11 +14,17 @@ export interface MemoryRef {
   key: string
 }
 
+/**
+ * saved: kept as it is; trimmed: kept with its oldest images replaced by a note; too_large: still past the size cap
+ * without them, so it is not kept; full: the volume budget is spent; skipped: an invalid ref or someone else's copy.
+ */
+export type MemorySaveResult = 'saved' | 'trimmed' | 'too_large' | 'full' | 'skipped'
+
 /** The conversations of one signed-in wallet, on one connection. */
 export interface WalletMemory {
   /** Null when there is none, or it can't be opened with this key. */
   load(ref: MemoryRef): Promise<unknown[] | null>
-  save(ref: MemoryRef, entries: unknown[]): Promise<void>
+  save(ref: MemoryRef, entries: unknown[]): Promise<MemorySaveResult | void>
   forget(id: string): Promise<void>
 }
 
@@ -34,6 +40,47 @@ export const DEFAULT_MEMORY_LIMITS = {
   perWallet: 20,
   // it shares the volume with everyone's projects: past this, conversations stop being kept
   totalBytes: 2 * 1024 * 1024 * 1024
+}
+
+export const TRIMMED_IMAGE_NOTE = '[An image was here. It was removed to keep this conversation within its size limit.]'
+
+function isImage(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && (value as { type?: unknown }).type === 'image' &&
+    typeof (value as { data?: unknown }).data === 'string'
+}
+
+/**
+ * Screenshots and pasted images are most of a long conversation's bytes, and the oldest are the least use to the
+ * model: they go first, oldest to newest, until the conversation fits. The live session keeps them; only the stored
+ * copy is trimmed, so this costs one cache rewrite when the conversation is restored and nothing before.
+ */
+export function fitMemory(entries: unknown[], maxBytes: number): { entries: unknown[]; plain: Buffer; trimmed: number } {
+  let plain = Buffer.from(JSON.stringify(entries), 'utf8')
+  if (plain.length <= maxBytes) return { entries, plain, trimmed: 0 }
+  const copy: unknown = JSON.parse(plain.toString('utf8'))
+  if (!Array.isArray(copy)) return { entries, plain, trimmed: 0 }
+  const images: Array<{ holder: unknown[]; index: number; bytes: number }> = []
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        if (isImage(item)) images.push({ holder: value, index, bytes: Buffer.byteLength(JSON.stringify(item)) })
+        else walk(item)
+      })
+    } else if (value !== null && typeof value === 'object') for (const child of Object.values(value)) walk(child)
+  }
+  walk(copy)
+  const note = Buffer.byteLength(JSON.stringify({ type: 'text', text: TRIMMED_IMAGE_NOTE }))
+  let size = plain.length
+  let trimmed = 0
+  for (const image of images) {
+    if (size <= maxBytes) break
+    image.holder[image.index] = { type: 'text', text: TRIMMED_IMAGE_NOTE }
+    size -= image.bytes - note
+    trimmed++
+  }
+  if (trimmed === 0) return { entries, plain, trimmed: 0 }
+  plain = Buffer.from(JSON.stringify(copy), 'utf8')
+  return { entries: copy, plain, trimmed }
 }
 
 export function createAssistantMemory(dir: string, limits = DEFAULT_MEMORY_LIMITS): AssistantMemory {
@@ -101,14 +148,14 @@ export function createAssistantMemory(dir: string, limits = DEFAULT_MEMORY_LIMIT
           }
         },
         save(ref, entries) {
-          return serial(async () => {
-            if (!MEMORY_ID.test(ref.id) || !MEMORY_KEY.test(ref.key) || locked.has(ref.id)) return
+          return serial(async (): Promise<MemorySaveResult> => {
+            if (!MEMORY_ID.test(ref.id) || !MEMORY_KEY.test(ref.key) || locked.has(ref.id)) return 'skipped'
             const target = file(wallet, ref.id)
-            const plain = Buffer.from(JSON.stringify(entries), 'utf8')
-            // too big to keep: the next session starts fresh rather than restoring a partial one
+            const { plain, trimmed } = fitMemory(entries, limits.maxBytes)
+            // too big even without images: the next session starts fresh rather than restoring a stale one
             if (plain.length > limits.maxBytes) {
               await remove(target)
-              return
+              return 'too_large'
             }
             const iv = randomBytes(12)
             const cipher = createCipheriv('aes-256-gcm', Buffer.from(ref.key, 'base64url'), iv)
@@ -131,7 +178,7 @@ export function createAssistantMemory(dir: string, limits = DEFAULT_MEMORY_LIMIT
               }
             }
             const nextTotal = await total() - previous + sealed.length - evictions.reduce((sum, old) => sum + old.size, 0)
-            if (nextTotal > limits.totalBytes) return
+            if (nextTotal > limits.totalBytes) return 'full'
 
             for (const old of evictions) await remove(old.path)
             await mkdir(join(dir, wallet), { recursive: true, mode: 0o700 })
@@ -139,6 +186,7 @@ export function createAssistantMemory(dir: string, limits = DEFAULT_MEMORY_LIMIT
             await writeFile(temp, sealed, { mode: 0o600 })
             await rename(temp, target)
             used = Promise.resolve(nextTotal)
+            return trimmed > 0 ? 'trimmed' : 'saved'
           })
         },
         forget(id) {
