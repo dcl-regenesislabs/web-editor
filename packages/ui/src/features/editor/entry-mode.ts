@@ -2,11 +2,13 @@ import { chrome, setAdvanced } from '../../core/chrome'
 import { getHost, hostV1 } from '../../engine/hosted'
 import { canAskAssistant } from '../../panels/ai-store'
 
-// Whether this editor may show its machinery at all. The desktop app is the whole editor; a hosted
-// one only when the page's `editor-features` has `advanced`, so a creator who wasn't offered it can't
-// reach it through a remembered choice or a reveal.
+// Whether this editor may show its machinery at all. The desktop app is the whole editor, and so is
+// a v0 host: it signs nothing, so it has no assistant to be left with. A v1 host only when the page's
+// `editor-features` has `advanced`, so a creator who wasn't offered it can't reach it through a
+// remembered choice or a reveal.
 export function advancedOffered(): boolean {
-  return getHost() === null || hostV1()?.features?.advanced === true
+  const host = getHost()
+  return host === null || host.version === 0 || hostV1(host)?.features?.advanced === true
 }
 
 // Entry mode is the assistant alone: a creator who builds by asking sees the chat, the world,

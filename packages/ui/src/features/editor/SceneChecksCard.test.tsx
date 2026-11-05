@@ -7,6 +7,7 @@ import { mount, run } from '../../test/render'
 import { state } from '@scene/state'
 import { unusedFiles } from '../../unused-files'
 import { THUMBNAIL_FIX_ACTION } from './scene-check-thumbnail'
+import { type DclEditorHost, setHost } from '../../engine/hosted'
 
 const blocker: SceneFinding = {
   id: 'server-pool-multi-entity',
@@ -132,6 +133,17 @@ describe('SceneChecksCard render', () => {
     view.unmount()
   })
 
+
+  it('leaves out a fix that opens a panel where the whole editor is not offered', () => {
+    setHost({ version: 1, engineConsole: async () => '' } as Partial<DclEditorHost> as DclEditorHost)
+    setSceneFindings([blocker, playBlocker])
+    const view = mount(<SceneChecksCard />)
+    view.click(view.find('.eui-checks-head .bar'))
+    expect(view.byText('Show prefab', 'button')).toBeNull()
+    expect(view.byText('Select entity', 'button')).not.toBeNull()
+    view.unmount()
+    setHost(null)
+  })
 
   it('offers the assistant for the thumbnail even before one is signed in', () => {
     setSceneFindings([noThumbnail])

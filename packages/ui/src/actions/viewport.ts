@@ -9,7 +9,7 @@ import { cmd } from '../engine/cmd'
 import { chrome, setRightOpen } from '../core/chrome'
 import { run } from './run'
 import { uiSetTool } from './selection'
-import { showAdvanced } from '../features/editor/entry-mode'
+import { advancedOffered, showAdvanced } from '../features/editor/entry-mode'
 
 // every collision layer except the editor's own pick overlay
 const ALL_LAYERS_BUT_PICK = ~PICK_LAYER >>> 0
@@ -56,7 +56,7 @@ export const uiToggleColliders = async (): Promise<void> => {
 // Inspect a playing scene: the editor and the gizmo come back over the game so
 // values can be tuned live (they revert on Stop) and copied.
 export const uiSetPlayInspect = (on: boolean): void => {
-  if (state.playInspect === on) return
+  if (state.playInspect === on || (on && !advancedOffered())) return
   state.playInspect = on
   void sendToScene({ type: 'set-flags', playInspect: on })
   if (!on) return

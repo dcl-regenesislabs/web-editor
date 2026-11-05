@@ -14,6 +14,7 @@ import css from './scene-checks.css?inline'
 import { registerCss } from '../../ds/styles/registry'
 import { useSceneHealth } from './scene-health'
 import { scheduleSceneChecks } from './scene-check-context'
+import { advancedOffered } from './entry-mode'
 import {
   allowBlockedPlay,
   findingIdentity,
@@ -28,6 +29,7 @@ registerCss('features/editor/scene-checks', 'features', css)
 
 const IDLE_REFRESH_MS = 15_000
 
+const PANEL_ACTIONS = new Set(['reveal-prefab', REVIEW_UNUSED_ACTION])
 const FIX_ICON: Record<string, JSX.Element> = {
   [THUMBNAIL_FIX_ACTION]: <IconBot />,
   'select-entity': <IconFrame />,
@@ -113,6 +115,9 @@ export function SceneChecksCard(): JSX.Element | null {
   const summary = findingsSummary(findings)
   const fixable = canAskAssistant() ? findings.filter(assistantFixable) : []
 
+  // these open a panel of the whole editor; where it isn't offered they would do nothing
+  const ownFix = (finding: SceneFinding): SceneFinding['fix'] =>
+    finding.fix !== undefined && (advancedOffered() || !PANEL_ACTIONS.has(finding.fix.action)) ? finding.fix : undefined
   const runFix = (finding: SceneFinding): void => {
     const action = finding.fix?.action
     if (action === 'reveal-prefab' && finding.folder !== undefined) revealPrefab(finding.folder)
@@ -170,33 +175,36 @@ export function SceneChecksCard(): JSX.Element | null {
       </div>
       {open && (
         <ul className="eui-checks-list">
-          {findings.map((finding, index) => (
-            <li key={findingKey(finding, index)} className={finding.level}>
-              <div className="top">
-                <Chip size="xs" tone={finding.level === 'warning' ? 'warning' : 'danger'}>
-                  {LEVEL_LABEL[finding.level]}
-                </Chip>
-                <b>{finding.title}</b>
-                {(finding.fix !== undefined || fixable.includes(finding)) && (
-                  <span className="act">
-                    {finding.fix !== undefined && (
-                      <Button variant={fixable.includes(finding) ? 'secondary' : 'primary'} size="xs" onClick={() => runFix(finding)}>
-                        {FIX_ICON[finding.fix.action]}
-                        {finding.fix.label}
-                      </Button>
-                    )}
-                    {fixable.includes(finding) && (
-                      <Button variant="primary" size="xs" tip="Ask the assistant to fix it" onClick={() => askAssistant(fixRequest([finding]))}>
-                        <IconBot />
-                        Fix
-                      </Button>
-                    )}
-                  </span>
-                )}
-              </div>
-              <p>{finding.detail}</p>
-            </li>
-          ))}
+          {findings.map((finding, index) => {
+            const fix = ownFix(finding)
+            return (
+              <li key={findingKey(finding, index)} className={finding.level}>
+                <div className="top">
+                  <Chip size="xs" tone={finding.level === 'warning' ? 'warning' : 'danger'}>
+                    {LEVEL_LABEL[finding.level]}
+                  </Chip>
+                  <b>{finding.title}</b>
+                  {(fix !== undefined || fixable.includes(finding)) && (
+                    <span className="act">
+                      {fix !== undefined && (
+                        <Button variant={fixable.includes(finding) ? 'secondary' : 'primary'} size="xs" onClick={() => runFix(finding)}>
+                          {FIX_ICON[fix.action]}
+                          {fix.label}
+                        </Button>
+                      )}
+                      {fixable.includes(finding) && (
+                        <Button variant="primary" size="xs" tip="Ask the assistant to fix it" onClick={() => askAssistant(fixRequest([finding]))}>
+                          <IconBot />
+                          Fix
+                        </Button>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <p>{finding.detail}</p>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
