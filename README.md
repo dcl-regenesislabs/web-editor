@@ -2,7 +2,7 @@
 
 A desktop app for building and publishing [Decentraland](https://decentraland.org)
 scenes and worlds — a modern take on the Creator Hub, powered by the
-[Bevy](https://bevyengine.org)-based [bevy-explorer](https://github.com/decentraland/bevy-explorer)
+[Bevy](https://bevyengine.org)-based [bevy-explorer](https://github.com/decentraland/dcl-one/tree/main/rendering/bevy-explorer)
 engine. Edit your scene in a live 3D viewport, write scripts with the built-in
 assistant, and publish straight to your Decentraland world.
 

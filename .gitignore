@@ -6,7 +6,7 @@ dist/
 bin/
 *.tsbuildinfo
 
-# the UI build writes into the external bevy-explorer/deploy/web — not in this repo
+# the UI build writes into the external explorer's deploy/web — not in this repo
 
 # scene runtime
 packages/scene/.dclcache/

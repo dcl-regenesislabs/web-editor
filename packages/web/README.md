@@ -33,10 +33,10 @@ node packages/web/validate/fake-worlds-server.mjs --port 8799 --world my.dcl.eth
 
 Serve the directory as it is; the host page decides where (`editorBase`).
 
-To run it hosted in bevy-explorer's HUD with a local project service: `npm run dev:web` from the
+To run it hosted in the explorer's HUD (dcl-one) with a local project service: `npm run dev:web` from the
 repository root (see CONTRIBUTING.md). It exports the editor scene once (its `about` names no
 host, so the same export works on any port), builds this package, and starts the service and
-bevy-explorer's `react-web` dev server with `WEB_EDITOR_DIR` set. The end-to-end checks in the
+the explorer's `react-web` dev server with `WEB_EDITOR_DIR` set. The end-to-end checks in the
 real engine are that repo's gates (`react-web/e2e/*.gate.spec.ts`, `react-web/e2e/README.md`):
 the host contract and the preview realm.
 
@@ -320,7 +320,7 @@ CORS and `Cross-Origin-Resource-Policy` headers the cross-origin isolated page n
 node packages/web/scripts/pin.mjs <version> decentraland.zone   # prints PINNED_EDITOR
 ```
 
-Paste its output into bevy-explorer's `react-web/src/features/editorHost/config.ts`. To check a
+Paste its output into dcl-one's `rendering/bevy-explorer/source/react-web/src/features/editorHost/config.ts` and its copy in `apps/ui3/src/play/features/editorHost/config.ts`. To check a
 local build first: `npm run build -w @dcl-editor/web && node packages/web/scripts/package-dist.mjs`,
 serve `packages/web/dist`, and pass `--base <that url>`.
 

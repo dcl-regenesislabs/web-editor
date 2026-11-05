@@ -9,14 +9,14 @@ scene has one) and publishes it to a World. Start here; the other docs go deeper
 | Repo | What lives there |
 |---|---|
 | `dcl-regenesislabs/bevy-editor` (this one, private) | The editor: UI (`packages/ui`), the in-engine editor scene (`packages/scene`), the web shell (`packages/web`), the project + assistant service (`packages/service`), the shared types (`packages/contract`). |
-| `decentraland/bevy-explorer` (public) | The engine (Rust, wasm in the browser) and the web explorer (`react-web`). It hosts the editor: `react-web/src/features/editorHost` (the host contract, signing, the pin), the preview realm in the service worker (`deploy/web/PREVIEW_REALM.md`), and the headless scene server (`deploy/web/engine/headless.*`, `src/headless`). |
+| `decentraland/dcl-one` | Decentraland's monorepo. The engine (Rust, wasm in the browser) and the web explorer live in `rendering/bevy-explorer/source` (`react-web` is the HUD); `apps/ui3/src/play` is the HUD's copy that `decentraland.org/play` runs. Both host the editor: `features/editorHost` (the host contract, signing, the pin), the preview realm in the service worker (`deploy/web/PREVIEW_REALM.md`), and the headless scene server (`deploy/web/engine/headless.*`, `src/headless`). `decentraland/bevy-explorer` is archived: its PR numbers below are history. |
 
 They meet at one contract, `window.__dclEditorHost` ([`HOST-CONTRACT.md`](./HOST-CONTRACT.md),
 `packages/web/README.md`): the explorer gives the editor its services, signing, the engine
 console and the preview server; the editor never holds a key.
 
 **Fix things where they belong.** We own the engine, the explorer and the editor. When the
-editor hits an engine or host limit, fix it in bevy-explorer with its own PR instead of working
+editor hits an engine or host limit, fix it in dcl-one with its own PR instead of working
 around it here (example: tweens ignored Pause until the engine fixed it, bevy-explorer #1445).
 
 ## How a change reaches players
@@ -25,12 +25,13 @@ around it here (example: tweens ignored Pause until the engine fixed it, bevy-ex
 2. `web-package.yml` publishes `@dcl-regenesislabs/web-editor` to npm under `next`
    (version `0.1.1-<run>.commit-<sha>`).
 3. Pin it in the explorer: `node packages/web/scripts/pin.mjs <version> decentraland.zone`
-   prints `PINNED_EDITOR`; paste it into bevy-explorer's
-   `react-web/src/features/editorHost/config.ts` and open a PR. The page checks `editor.js`
+   prints `PINNED_EDITOR`; paste it into dcl-one's
+   `rendering/bevy-explorer/source/react-web/src/features/editorHost/config.ts` and its copy in
+   `apps/ui3/src/play/features/editorHost/config.ts`, and open a PR. The page checks `editor.js`
    against that hash, so nothing reaches players without this PR.
-4. Merged to bevy-explorer `main`, CI publishes `@dcl-regenesislabs/bevy-explorer-web` and
-   `https://decentraland.zone/bevy-web/` serves it a few minutes later. Check which commit is
-   live: `curl -s https://decentraland.zone/bevy-web/ | grep -o 'commit-[0-9a-f]*' | head -1`.
+4. Merged to dcl-one `main`, CI publishes `@dcl-regenesislabs/bevy-explorer-web` and rolls it out
+   at `https://decentraland.zone/play/` (`apps/bevy-explorer/README.md` in dcl-one). Check which
+   commit is live: `curl -s https://decentraland.zone/play/ | grep -o 'commit-[0-9a-f]*' | head -1`.
 
 The editor is offered only on `decentraland.zone` (the pin's `hosts`). `?baseDomain=decentraland.org`
 on that page points the session, and the editor's Worlds server, at org.
@@ -40,11 +41,13 @@ on that page points the session, and the editor's Worlds server, at org.
 You need Node 24, git, and both repos side by side:
 
 ```
-~/code/bevy-explorer
+~/code/dcl-one
 ~/code/bevy-editor      (this repo)
 ```
 
-1. **The engine.** It is Rust compiled to WebAssembly into `bevy-explorer/deploy/web/engine/pkg`
+The explorer is `dcl-one/rendering/bevy-explorer/source`; the paths below are relative to it.
+
+1. **The engine.** It is Rust compiled to WebAssembly into `deploy/web/engine/pkg`
    (the engine) and `pkg-scene` (the scene runtime). The page loads it from that folder, so
    whichever way it got there, `dev:web` runs it. Pick one:
 
@@ -53,23 +56,23 @@ You need Node 24, git, and both repos side by side:
    was built from (the `commit-<sha>` in its version) so the JS around it matches, then copy it in:
 
    ```bash
-   cd ~/code/bevy-explorer
-   v=$(npm view @dcl-regenesislabs/bevy-explorer-web dist-tags.next)   # e.g. 0.1.0-…commit-89156d6
+   cd ~/code/dcl-one
+   v=$(npm view @dcl-regenesislabs/bevy-explorer-web dist-tags.next)   # e.g. 0.1.0-…commit-7014270
    git checkout ${v##*commit-}
    mkdir -p /tmp/bew && npm pack @dcl-regenesislabs/bevy-explorer-web@$v --pack-destination /tmp/bew
    tar -xzf /tmp/bew/*.tgz -C /tmp/bew
-   cp -R /tmp/bew/package/engine/pkg /tmp/bew/package/engine/pkg-scene deploy/web/engine/
+   cp -R /tmp/bew/package/engine/pkg /tmp/bew/package/engine/pkg-scene rendering/bevy-explorer/source/deploy/web/engine/
    ```
 
-   **b. Changing Rust: build it.** The same steps as CI (`.github/workflows/ci.yml`, "Build WASM
-   package"), without the slow optimisation pass. Once:
+   **b. Changing Rust: build it.** `just wasm` in `rendering/bevy-explorer/source`, or by hand,
+   the same steps without the slow optimisation pass. Once:
 
    ```bash
    rustup toolchain install nightly-2026-04-15 --component rust-src --target wasm32-unknown-unknown
    cargo install wasm-pack --version 0.15.0
    ```
 
-   Then after each Rust change, from `bevy-explorer` (the first build takes a while; after that
+   Then after each Rust change, from `rendering/bevy-explorer/source` (the first build takes a while; after that
    about 4 minutes on an M-series Mac):
 
    ```bash
@@ -90,11 +93,11 @@ You need Node 24, git, and both repos side by side:
 
    ```bash
    npm install
-   npm run dev:web -- --bevy ../bevy-explorer
+   npm run dev:web -- --bevy ../dcl-one
    ```
 
    It builds the editor once and starts, as plain Node processes: the project service on `:8787`
-   (data in `.data/service`), bevy-explorer's react-web dev server with this checkout as the editor,
+   (data in `.data/service`), the explorer's react-web dev server with this checkout as the editor,
    and the bridge scene on `:8100`. Open `http://localhost:5173/?editor`. Add `--world name.eth` for
    a stand-in Worlds server on `:8799` to test publishing, `--no-build` to skip the build.
    `--slot 1` (up to 9) runs another stack beside the first, from another checkout: every port
@@ -104,7 +107,7 @@ You need Node 24, git, and both repos side by side:
 
    ```bash
    node packages/service/scripts/assistant-login.ts --provider claude --auth .data/assistant/.auth.json
-   npm run dev:web -- --bevy ../bevy-explorer --ai-auth .data/assistant/.auth.json
+   npm run dev:web -- --bevy ../dcl-one --ai-auth .data/assistant/.auth.json
    ```
 
 4. **After editing the editor:** `npm run build -w @dcl-editor/web`, then reload the page. A change
@@ -122,7 +125,7 @@ You need Node 24, git, and both repos side by side:
    pauses it again afterward, keeping the same instance and camera.
    Moving restarts the preview; closing it or leaving the project releases its engine.
    Builds hot-reload the scene in either view. The runtime is a separately published npm package,
-   `@dcl-regenesislabs/mobile-preview-runtime`; bevy-explorer does not serve or depend on it.
+   `@dcl-regenesislabs/mobile-preview-runtime`; the explorer does not serve or depend on it.
    `npm ci` installs the exact version pinned in `packages/mobile-preview/package.json`.
    `npm run dev:web` prepares the editor adapter and starts its server on **127.0.0.1:8788**, separate from the editor's
    localhost origin so runtime startup cannot block the editor's JavaScript thread.
@@ -151,8 +154,8 @@ Docker is for the deployed service only (below).
 |---|---|
 | Anything here | `npm run validate` (typecheck + unit tests + build). Run vitest from the repo root: `npx vitest run packages/ui/...`; from inside `packages/ui` it has no DOM and the UI tests fail. |
 | UI behavior | the flow by hand in `npm run dev:web`, and say what you checked in the PR |
-| The host contract, preview realm, scene server | bevy-explorer's gates, real engine, headed: `WEB_EDITOR_DIR=../bevy-editor npx playwright test --config playwright.gate.config.ts [editor\|preview-realm]` from `react-web/` (`react-web/e2e/README.md`) |
-| The explorer's editor host | `cd react-web && npx vitest run src/test/editorHost*.test.tsx && npx tsc -b` |
+| The host contract, preview realm, scene server | the explorer's gates, real engine, headed: `WEB_EDITOR_DIR=../bevy-editor npx playwright test --config playwright.gate.config.ts [editor\|preview-realm]` from `react-web/` (`react-web/e2e/README.md`). dcl-one's tree leaves the gate specs and configs out, so without them this is not run: say so in the PR |
+| The explorer's editor host | `cd rendering/bevy-explorer/source/react-web && npx vitest run src/test/editorHost*.test.tsx && npx tsc -b` in dcl-one, and `pnpm test` in `apps/ui3` for the `/play` copy |
 | The service | `npx vitest run packages/service`; against a running one, `scripts/session.ts` and `scripts/socket-idle.ts` |
 | The assistant end to end | [`WEB-ASSISTANT.md`](./WEB-ASSISTANT.md), "Validation" |
 
@@ -203,7 +206,7 @@ behind Cloudflare. It stores projects and runs the assistant on the team's Claud
 - **Pause must reach everything that moves.** It freezes the scene; tweens kept running until the
   engine checked the freeze (bevy-explorer #1445). GLTF animations are still held editor-side
   (`scene/src/viewport/animation-hold.ts`). The scene server is not paused, by design.
-- **The app runs in a frame without `localStorage`** (bevy-explorer's web shell): reading it
+- **The app runs in a frame without `localStorage`** (the explorer's web shell): reading it
   throws. The identity comes from the shell (`getLogin()`), which also signs. The editor keeps its
   preferences in IndexedDB `dcl-editor-prefs`; `dcl-editor` belongs to the engine's `web_save.js`.
 - **The scene server restarts after builds:** the editor calls `previewChanged()` once the bundles
@@ -218,7 +221,7 @@ behind Cloudflare. It stores projects and runs the assistant on the team's Claud
 - **CI minutes:** this repo is private, so Actions are billed. When the org's limit is reached,
   jobs don't start ("recent account payments have failed or your spending limit…") and nothing
   publishes. The desktop builds (macOS 10×, Windows 2×) use most of it.
-- **Line endings:** some bevy-explorer files are CRLF (`deploy/web/service_worker.js`,
+- **Line endings:** some explorer files are CRLF (`deploy/web/service_worker.js`,
   `sandbox_worker.js`). Keep them that way when editing.
 
 ## Open issues

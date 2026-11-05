@@ -1,6 +1,6 @@
 # Editor host contract v1 (bevy-web <-> editor package)
 
-v0 is implemented in bevy-explorer (react-web/src/features/editorHost/host/host.ts) and here (packages/ui/src/engine/hosted.ts, packages/web/README.md). v1 = v0 plus the following. Both sides implement exactly this; deviations must be reported loudly.
+v0 is implemented in dcl-one's explorer (rendering/bevy-explorer/source/react-web/src/features/editorHost/host/host.ts, and its copy in apps/ui3/src/play) and here (packages/ui/src/engine/hosted.ts, packages/web/README.md). v1 = v0 plus the following. Both sides implement exactly this; deviations must be reported loudly.
 
 ## Entering and leaving
 - The editor is AVAILABLE when the page is on an allowed host and an editor package source exists (loopback: `<PAGE_DIR>editor/`; decentraland.zone: the pinned CDN package, currently none). Availability never downloads anything.

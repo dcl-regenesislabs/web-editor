@@ -1,12 +1,13 @@
-// The web editor hosted in bevy-explorer's HUD, with a local project service, in one command:
+// The web editor hosted in the explorer's HUD (dcl-one's rendering/bevy-explorer/source), with a
+// local project service, in one command:
 //
-//   npm run dev:web                                  # bevy-explorer next to this checkout
-//   npm run dev:web -- --bevy ../bevy-explorer --world gate.eth
+//   npm run dev:web                                  # dcl-one next to this checkout
+//   npm run dev:web -- --bevy ../dcl-one --world gate.eth
 //   npm run dev:web -- --slot 1                      # a second stack beside the first: every port +100
 //
 // It builds the editor scene's export and packages/web once, starts the project service on
 // :8787 (its data under .data/service), optionally a stand-in Worlds server on :8799 that lets
-// the first wallet claim --world, and then bevy-explorer's react-web dev server with
+// the first wallet claim --world, and then the explorer's react-web dev server with
 // WEB_EDITOR_DIR set to this checkout. Ctrl+C stops all of them.
 //
 // The assistant shows only with a model session for the service: sign in once with
@@ -26,7 +27,7 @@ import { parseArgs } from 'node:util'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const { values } = parseArgs({
   options: {
-    bevy: { type: 'string', default: process.env.BEVY_DIR ?? path.resolve(root, '..', 'bevy-explorer') },
+    bevy: { type: 'string', default: process.env.BEVY_DIR ?? path.resolve(root, '..', 'dcl-one') },
     world: { type: 'string' },
     'ai-auth': { type: 'string' },
     'ai-image-auth': { type: 'string' },
@@ -46,13 +47,16 @@ const WORLDS_PORT = 8799 + slot * 100
 const MOBILE_PORT = 8788 + slot * 100
 const BRIDGE_PORT = 8100 + slot * 100
 
-const reactWeb = path.join(path.resolve(values.bevy), 'react-web')
+// a dcl-one checkout, or the explorer's own folder inside one
+const inDclOne = path.join(path.resolve(values.bevy), 'rendering', 'bevy-explorer', 'source')
+const explorer = fs.existsSync(inDclOne) ? inDclOne : path.resolve(values.bevy)
+const reactWeb = path.join(explorer, 'react-web')
 if (!fs.existsSync(path.join(reactWeb, 'package.json'))) {
-  console.error(`No bevy-explorer checkout at ${values.bevy}; pass --bevy <dir> or set BEVY_DIR.`)
+  console.error(`No dcl-one checkout at ${values.bevy}; pass --bevy <dir> or set BEVY_DIR.`)
   process.exit(1)
 }
-if (!fs.existsSync(path.join(reactWeb, '..', 'deploy', 'web', 'engine', 'pkg'))) {
-  console.error(`bevy-explorer has no engine build; run \`just wasm\` in ${path.dirname(reactWeb)} first.`)
+if (!fs.existsSync(path.join(explorer, 'deploy', 'web', 'engine', 'pkg'))) {
+  console.error(`The explorer has no engine build in ${explorer}/deploy/web/engine; see docs/WEB-EDITOR.md "Develop locally".`)
   process.exit(1)
 }
 
