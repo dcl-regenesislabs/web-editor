@@ -29,6 +29,13 @@ const TOOL_LABELS: Record<BrowserToolName, string> = {
   search_files: 'Searching the code', edit_file: 'Editing a file'
 }
 
+// a picture is quick or stuck: the browser gives up on it sooner, this covers an editor that does not
+function toolTimeout(tool: BrowserToolName): number {
+  if (tool === 'read_file' || tool === 'list_files' || tool === 'search_files') return 60_000
+  if (tool === 'view') return 2 * 60_000
+  return 15 * 60_000
+}
+
 interface Pending {
   turnId: string
   tool: BrowserToolName
@@ -148,7 +155,7 @@ export function createConnection(options: {
           finish(false, 'The browser did not answer the tool request.')
           // paused, not ended: the conversation keeps the failed call, so Continue picks up from it
           abort(`${label ?? TOOL_LABELS[tool]} timed out. Check the scene, then continue.`, true, 'timed_out')
-        }, options.toolTimeoutMs ?? (tool === 'read_file' || tool === 'list_files' || tool === 'search_files' ? 60_000 : 15 * 60_000))
+        }, options.toolTimeoutMs ?? toolTimeout(tool))
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return
           clearTimeout(timer)
