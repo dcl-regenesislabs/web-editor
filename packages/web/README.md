@@ -304,24 +304,29 @@ match is refused with an error that names it (the smoke flips one byte of `worke
 it). The fonts are inlined into `editor.css`, since a CSS `url()` cannot carry a hash, and the
 build refuses a separate chunk or asset, since a lazy `import()` could not either.
 Not covered here: `scene-compiler/index.js` (shipped, never fetched by the editor) and `scene/`,
-the editor scene the engine loads. Pinning that one is the host's side (bevy-web's
-`PINNED_EDITOR`).
+the editor scene the engine loads. Pinning that one is the host's side (dcl-one's
+`PINNED_EDITOR`, on org).
 
 ## Releasing
 
 CI (`.github/workflows/web-package.yml`) publishes `dist/` as the npm package
-`@dcl-regenesislabs/web-editor`: an oddish snapshot on `next` for every `main` push, and the
-chosen ref on `latest` for a manual dispatch. The explorer loads it by exact version from
-jsDelivr (`https://cdn.jsdelivr.net/npm/@dcl-regenesislabs/web-editor@<version>/`, which sends the
-CORS and `Cross-Origin-Resource-Policy` headers the cross-origin isolated page needs) and checks
-`editor.js` against a pinned hash, so a version reaches players only through an explorer PR:
+`@dcl-regenesislabs/web-editor`: a snapshot for every `main` push (npm shows it on `next`), and a
+GitHub release `vX.Y.Z` as that version on `latest`.
+
+- **decentraland.zone** follows `latest`: the page resolves it through the npm registry when Create
+  opens and loads that version from unpkg, with no `editor.js` hash, so a release reaches zone with
+  no explorer change. `?editor-tag=next` loads the `next` snapshot instead, to try a build first.
+- **decentraland.org** (dcl-one#288) runs one version from jsDelivr, checked against its
+  `editor.js` hash, with its editor scene pinned and `?editor-tag` ignored. A version reaches org
+  only through a dcl-one PR:
 
 ```bash
-node packages/web/scripts/pin.mjs <version> decentraland.zone   # prints PINNED_EDITOR
+node packages/web/scripts/pin.mjs <version> decentraland.org   # prints PINNED_EDITOR
 ```
 
-Paste its output into dcl-one's `rendering/bevy-explorer/source/react-web/src/features/editorHost/config.ts` and its copy in `apps/ui3/src/play/features/editorHost/config.ts`. To check a
-local build first: `npm run build -w @dcl-editor/web && node packages/web/scripts/package-dist.mjs`,
+Paste its output into dcl-one's `rendering/bevy-explorer/source/react-web/src/features/editorHost/config.ts` and its
+copy in `apps/ui3/src/play/features/editorHost/config.ts` (`docs/WEB-EDITOR.md` "How a change reaches
+players"). To check a local build first: `npm run build -w @dcl-editor/web && node packages/web/scripts/package-dist.mjs`,
 serve `packages/web/dist`, and pass `--base <that url>`.
 
 The first publish of the name is manual (npm attaches a trusted publisher only to an existing
