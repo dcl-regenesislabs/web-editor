@@ -1,4 +1,4 @@
-import { createFileTools, isFileTool, sameBytes } from '@ui/ai/file-tools'
+import { createFileTools, isFileTool, sameBytes, type FileReads } from '@ui/ai/file-tools'
 import type { BrowserToolCall } from '@dcl-editor/contract'
 import { viewRequest, type ViewRequest } from '@ui/ai/view-request'
 
@@ -30,13 +30,13 @@ function parseRequest(text: string): unknown {
   }
 }
 
-export function createBrowserTools(project: BrowserProject) {
+export function createBrowserTools(project: BrowserProject, reads?: FileReads) {
   const files = createFileTools({
     paths: async () => [...project.files().keys()],
     read: async (path) => project.files().get(path),
     write: (path, bytes, expected, signal) => project.write(path, bytes, expected, signal),
     ...(project.written === undefined ? {} : { written: project.written })
-  })
+  }, reads)
   return async (call: BrowserToolCall, signal: AbortSignal): Promise<string> => {
     signal.throwIfAborted()
     const { tool, args } = call

@@ -1,8 +1,7 @@
 // Operator-side record of assistant sessions, for studying what the assistant did and what it cost. Off unless
 // ASSISTANT_SESSION_LOG=1. Unlike memory.ts it keeps the conversation in PLAINTEXT, readable through /admin/, so
 // it is for development deployments whose users know their sessions are studied.
-import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { randomBytes } from 'node:crypto'
+import { appendFile, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AssistantTurnOutcome } from '../../../contract/src/analytics.ts'
 import type { TurnUsage } from './types.ts'
@@ -66,7 +65,7 @@ export interface SessionSummary {
 }
 
 export interface WalletSessionLog {
-  /** Appends the turn and replaces the transcript; never throws to the caller's turn. */
+  /** Appends the turn, and the transcript entries not logged yet; never throws to the caller's turn. */
   record(turn: TurnRecord, transcript: unknown[] | undefined): Promise<void>
 }
 
@@ -77,6 +76,15 @@ export interface SessionLog {
   /** The pi session entries as JSON lines, or null. */
   transcript(wallet: string, conversation: string): Promise<string | null>
   sweep(now?: number): Promise<number>
+}
+
+// a pi entry by its id; anything else by its whole line
+function entryKey(line: string): string {
+  try {
+    const entry: unknown = JSON.parse(line)
+    if (entry !== null && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') return `id:${(entry as { id: string }).id}`
+  } catch { /* a line cut short by a crash */ }
+  return line
 }
 
 const valid = (wallet: string, conversation: string) => WALLET.test(wallet) && CONVERSATION_ID.test(conversation)
@@ -157,11 +165,16 @@ export function createSessionLog(dir: string, limits = DEFAULT_SESSION_LOG_LIMIT
             const line = JSON.stringify({ ...turn, prompt: turn.prompt.slice(0, MAX_PROMPT_CHARS) })
             await appendFile(join(target, 'turns.jsonl'), `${line}\n`, { mode: 0o600 })
             if (transcript === undefined) return
-            const body = transcript.map((entry) => JSON.stringify(entry)).join('\n') + '\n'
-            if (Buffer.byteLength(body) > limits.maxTranscriptBytes) return
-            const temp = join(target, `session.jsonl.${randomBytes(6).toString('hex')}.tmp`)
-            await writeFile(temp, body, { mode: 0o600 })
-            await rename(temp, join(target, 'session.jsonl'))
+            // Appended, not replaced: an agent that restarts mid-conversation (a dropped memory, a reconnect) starts a
+            // new session, and the turns before it stay in the file. pi entries never change once written.
+            const file = join(target, 'session.jsonl')
+            const logged = await readFile(file, 'utf8').catch(() => '')
+            const seen = new Set(logged.split('\n').filter((line) => line !== '').map(entryKey))
+            const fresh = transcript.map((entry) => JSON.stringify(entry)).filter((line) => !seen.has(entryKey(line)))
+            if (fresh.length === 0) return
+            const body = fresh.join('\n') + '\n'
+            if (Buffer.byteLength(logged) + Buffer.byteLength(body) > limits.maxTranscriptBytes) return
+            await appendFile(file, body, { mode: 0o600 })
           })
         }
       }

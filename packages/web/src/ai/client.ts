@@ -3,6 +3,7 @@ import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, Ass
 import { trackCreator } from '@ui/analytics'
 import type { HostFetchInit } from '@ui/engine/hosted'
 import { createBrowserTools } from './tools'
+import type { FileReads } from '@ui/ai/file-tools'
 import type { BrowserProject } from './tools'
 
 type AssistantShell = Required<Pick<EditorShell, 'aiProviders' | 'aiSend' | 'aiStop' | 'aiReset' | 'aiForget' | 'aiCanResume' | 'onAiEvent'>>
@@ -30,6 +31,8 @@ export function createBrowserAssistant(options: {
     started: number; model: string | null; error: string | null
   } | null = null
   let toolQueue: Promise<void> = Promise.resolve()
+  // what the conversation has read, across its turns: a new chat, account or project starts over
+  let reads: { of: string; files: FileReads } = { of: '', files: new Map() }
   // the connection whose service still holds a conversation a limit paused
   let paused: WebSocket | null = null
   const emit = (event: AiEvent) => { for (const listener of listeners) listener(event) }
@@ -227,7 +230,10 @@ export function createBrowserAssistant(options: {
   // turn already changed and reads the same history from cache.
   function reset(discard = true): Promise<void> {
     connectionGeneration++
-    if (discard) send({ kind: 'reset' })
+    if (discard) {
+      send({ kind: 'reset' })
+      reads = { of: '', files: new Map() }
+    }
     finish(false)
     const old = socket
     socket = null
@@ -256,8 +262,11 @@ export function createBrowserAssistant(options: {
       if (wallet === null) throw new Error('Sign in to use the assistant.')
       paused = null
       const project = options.project()
+      const of = `${wallet}/${project.id}`
+      if (reads.of !== of) reads = { of, files: new Map() }
       const turn = {
-        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(), execute: createBrowserTools(project.tools), ended: project.tools.turnEnded,
+        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(),
+        execute: createBrowserTools(project.tools, reads.files), ended: project.tools.turnEnded,
         started: Date.now(), model: params.model ?? null, error: null
       }
       active = turn

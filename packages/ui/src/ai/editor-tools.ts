@@ -36,7 +36,8 @@ const disk: ProjectFiles = {
   },
   written: refreshWrittenScript
 }
-let fileTools = createFileTools(disk)
+// kept across turns: a write still has to name the revision its own conversation read
+const fileTools = createFileTools(disk)
 
 async function diskSources(): Promise<ReadonlyMap<string, Uint8Array>> {
   const paths = (await dataLayerListFiles()).filter((path) => /\.tsx?$/.test(path))
@@ -126,9 +127,6 @@ export function installEditorToolBridge(): void {
       .finally(() => running.delete(call.id))
   })
   shell.onAiEvent?.((e) => {
-    if (e.kind === 'started') {
-      fileTools = createFileTools(disk)
-    }
     if (e.kind === 'done') leavePhone().catch((err: unknown) => log.warn('leaving the phone canvas failed', err))
   })
 }

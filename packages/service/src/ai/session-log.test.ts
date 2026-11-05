@@ -19,7 +19,7 @@ function turn(n: number, change: Partial<TurnRecord> = {}): TurnRecord {
   }
 }
 
-it('keeps every turn and the latest transcript of a conversation, and sums them for the admin list', async () => {
+it('keeps every turn and every transcript entry of a conversation, and sums them for the admin list', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'assistant-sessions-'))
   try {
     const log = createSessionLog(dir)
@@ -30,7 +30,7 @@ it('keeps every turn and the latest transcript of a conversation, and sums them 
     const turns = await log.turns(wallet, conversation)
     expect(turns?.map((t) => t.turnId)).toEqual(['turn-1', 'turn-2'])
     expect(turns?.[1].prompt).toHaveLength(4000)
-    expect(await log.transcript(wallet, conversation)).toBe('{"type":"session"}\n{"type":"message","n":2}\n')
+    expect(await log.transcript(wallet, conversation)).toBe('{"type":"session"}\n{"type":"message","n":1}\n{"type":"message","n":2}\n')
 
     const [summary] = await log.list()
     expect(summary).toMatchObject({
@@ -69,5 +69,21 @@ it('stops writing past the volume budget and sweeps conversations older than the
     for (const name of await readdir(join(dir, wallet, conversation))) await utimes(join(dir, wallet, conversation, name), old, old)
     expect(await log.sweep()).toBe(1)
     expect(await log.list()).toEqual([])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+it('keeps the turns before an agent restart in the transcript', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'assistant-sessions-restart-'))
+  try {
+    const log = createSessionLog(dir)
+    const mine = log.forWallet(wallet)
+    const first = [{ type: 'session', id: 's1' }, { type: 'message', id: 'm1', text: 'built the stove' }]
+    await mine.record(turn(1), first)
+    await mine.record(turn(2), [...first, { type: 'message', id: 'm2', text: 'added the sink' }])
+    // a new agent session: its own header, and only what it restored or did since
+    await mine.record(turn(3, { outcome: 'cancelled' }), [{ type: 'session', id: 's2' }, { type: 'message', id: 'm3', text: 'started over' }])
+
+    const lines = (await log.transcript(wallet, conversation))?.trim().split('\n').map((line) => JSON.parse(line).id)
+    expect(lines).toEqual(['s1', 'm1', 'm2', 's2', 'm3'])
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
