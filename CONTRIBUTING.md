@@ -11,7 +11,7 @@ and the rules. This file is the practical how-to.
        packages/{contract,scene,ui,desktop}
        node_modules/@dcl-regenesislabs/bevy-explorer-web   ← stock upstream engine (prebuilt wasm)
 
-  (../bevy-explorer/   optional: a local engine checkout, only for engine devs — see BEVY_WEB_DIR)
+  (../dcl-one/         optional: the explorer (rendering/bevy-explorer/source), for dev:web and engine devs — see BEVY_WEB_DIR)
 ```
 
 The engine is **stock, unmodified upstream `bevy-explorer`** — we do **not** fork
@@ -44,18 +44,18 @@ npm run build:scene # one-off rebuild of just the editor scene (sdk-commands bui
 There is **no engine build step** for editor work: the prebuilt npm package serves
 both normal play and the editor, and all editor behaviour lives in the scene layer.
 Engine resolution order: `BEVY_WEB_DIR` env → installed npm package →
-`../bevy-explorer/deploy/web` sibling fallback. Bump the engine by changing the
+`../dcl-one/rendering/bevy-explorer/source/deploy/web` sibling fallback. Bump the engine by changing the
 package version in the root `package.json`.
 
 ### The web editor, with the project service
 
-The web target (`packages/web`) runs inside bevy-explorer's HUD, so it needs a bevy-explorer
+The web target (`packages/web`) runs inside the explorer's HUD, so it needs a dcl-one
 checkout with an engine build (`just wasm` there). One command builds the editor, starts the
 project service and the HUD's dev server, and stops them all on Ctrl+C:
 
 ```bash
-npm run dev:web                                    # bevy-explorer next to this checkout
-npm run dev:web -- --bevy <bevy-explorer> --world gate.eth   # also a stand-in Worlds server to publish to
+npm run dev:web                                    # dcl-one next to this checkout
+npm run dev:web -- --bevy <dcl-one> --world gate.eth   # also a stand-in Worlds server to publish to
 ```
 
 Open the printed url (`http://localhost:5173/?editor`) and sign in to sync projects to the local
@@ -71,7 +71,7 @@ checks the service on its own.
 
 > **Engine devs only:** if you're building bevy-explorer itself, you need the Rust
 > toolchain + `wasm-pack`, then point the editor at your local build with
-> `BEVY_WEB_DIR=/path/to/bevy-explorer/deploy/web`. This is not part of editor
+> `BEVY_WEB_DIR=/path/to/dcl-one/rendering/bevy-explorer/source/deploy/web`. This is not part of editor
 > development.
 
 ## Test / validate
@@ -113,7 +113,7 @@ APIs. The patterns the editor already uses (all on stock upstream):
 - **Asset import** — the upstream `/scene_content` mechanism.
 
 If you ever hit something genuinely impossible via upstream APIs, the answer is to
-upstream a **general** capability to bevy-explorer `main` (not an editor-specific
+upstream a **general** capability to dcl-one `main` (not an editor-specific
 patch) — but exhaust the scene-side options first; this is almost never necessary.
 
 ## How to add a feature (host UI + scene)

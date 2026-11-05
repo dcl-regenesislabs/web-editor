@@ -96,7 +96,7 @@ editor code in the engine at all.
 > **Contributor rule:** do **not** modify `bevy-explorer` for the editor. If the
 > editor needs something the engine can't yet do via upstream APIs, the fix is to
 > implement it scene-side, or (if genuinely impossible) to upstream the capability
-> to bevy-explorer `main` as a general feature — never as an editor-specific patch.
+> to dcl-one `main` as a general feature — never as an editor-specific patch.
 
 ---
 
@@ -190,7 +190,7 @@ bevy-explorer (engine wasm — external, prebuilt, NOT built here):
   comes from the @dcl-regenesislabs/bevy-explorer-web npm package (tarball
   includes the wasm). `npm install` yields a runnable engine — no Rust, no
   wasm-pack. Resolution order at serve time: BEVY_WEB_DIR env → installed npm
-  package → ../bevy-explorer/deploy/web sibling fallback.
+  package → ../dcl-one/rendering/bevy-explorer/source/deploy/web sibling fallback.
 ```
 
 The UI builds into **`packages/ui/dist`** (self-contained — nothing is written
@@ -198,7 +198,7 @@ into the engine package). At runtime the desktop's web server (`servers.ts`)
 serves the UI dir **and** the resolved engine web dir under **one origin** with
 COOP/COEP headers (required for wasm threads + the same-origin host↔iframe wiring
 and the `BroadcastChannel` bus). The engine is a prebuilt npm dependency, not a
-sibling build (a local `../bevy-explorer/deploy/web` is only used when an engine
+sibling build (a local `../dcl-one/rendering/bevy-explorer/source/deploy/web` is only used when an engine
 dev sets `BEVY_WEB_DIR`).
 
 ---
