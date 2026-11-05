@@ -65,6 +65,20 @@ and holds events until the terms are accepted. The editor sends only `Creator Ac
 properties (`packages/ui/src/analytics.ts`). Older hosts can omit it: the editor then sends the same
 event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, timestamp }]>')`.
 
+## v1.5: features (still `version: 1`, additive)
+
+`features?: { advanced?: boolean }` is what the entry url's `editor-features` turned on. It is a
+comma list, read from the ENTRY url (the engine's url sync keeps it, so a reload has it too):
+
+| `editor-features` | Host | Editor |
+|---|---|---|
+| `experimental` | A released page (`decentraland.zone`, `decentraland.org`) offers Create only with it; loopback always does | — |
+| `advanced` | passes `features.advanced: true` | shows the Advanced button. Without it the web editor is entry mode only: a remembered pick and the reveals that switch to the whole editor (a prefab, an asset review, a rename, inspecting while playing) do nothing, and without an assistant it says so instead of opening the whole editor |
+
+The flag hides the editor; it is not a boundary. Anything behind it must be safe for whoever types
+it. A host without the field offers no advanced; the desktop app is always the whole editor. Share
+links carry `editor-features` from the page they were made on, so the link opens where it was made.
+
 ## Share links (no host change)
 
 A link to copy a project another account shared is `?editor=copy-<token>` (the token is 32

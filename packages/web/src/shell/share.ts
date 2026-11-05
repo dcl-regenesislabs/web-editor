@@ -6,8 +6,9 @@ import { type SignedFetch, createSharesApi } from '../sync/api'
 import { fetchFiles } from '../sync/transfer'
 import type { SyncEngine } from '../sync/types'
 
-// what picks the environment, and the service the token belongs to
-const KEPT_PARAMS = ['baseDomain', 'editor-projects']
+// what picks the environment, the service the token belongs to, and what the explorer offers the
+// editor with: without `editor-features` a released page has no editor to open the link in
+const KEPT_PARAMS = ['baseDomain', 'editor-projects', 'editor-features']
 // The link rides on `?editor=<projectId>`, the one entry the explorer hands the editor: the token
 // fits its id pattern, and no project the store makes matches this, since its ids end in a
 // 4-character tail (store/project-store.ts).

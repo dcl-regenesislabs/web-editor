@@ -32,8 +32,11 @@ around it here (example: tweens ignored Pause until the engine fixed it, bevy-ex
    `https://decentraland.zone/bevy-web/` serves it a few minutes later. Check which commit is
    live: `curl -s https://decentraland.zone/bevy-web/ | grep -o 'commit-[0-9a-f]*' | head -1`.
 
-The editor is offered only on `decentraland.zone` (the pin's `hosts`). `?baseDomain=decentraland.org`
-on that page points the session, and the editor's Worlds server, at org.
+A released page (`decentraland.zone`, `decentraland.org`) offers Create only when the url has
+`editor-features=experimental`; add `advanced` for the Advanced button
+(`?editor-features=experimental,advanced`). Without `advanced` the web editor is the assistant
+alone. [`HOST-CONTRACT.md`](./HOST-CONTRACT.md) "v1.5" has the details. `?baseDomain=decentraland.org`
+on the zone page points the session, and the editor's Worlds server, at org.
 
 ## Develop locally (no Docker)
 

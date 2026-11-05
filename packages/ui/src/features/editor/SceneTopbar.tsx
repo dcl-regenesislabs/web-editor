@@ -21,6 +21,7 @@ import { getHost } from '../../engine/hosted'
 import { useRevealNearPointer } from './topbar-reveal'
 import { setAdvanced } from '../../core/chrome'
 import { canAskAssistant } from '../../panels/ai-store'
+import { advancedOffered } from './entry-mode'
 
 const TerminalIcon = (): JSX.Element => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -108,7 +109,7 @@ export function SceneTopbar(props: { logsOpen: boolean; onToggleLogs: () => void
   const phone = window.editorShell?.phonePreview
   // entry mode has no toolbar: Play is here, and Stop is the play bar's own
   const canPlay = useStore(() => state.status === 'ready' && state.frozen)
-  const modeSwitch = canAskAssistant() && (
+  const modeSwitch = canAskAssistant() && advancedOffered() && (
     <button
       className="eui-topbar-btn wide"
       data-tip={entry ? 'Show the whole editor: hierarchy, inspector, assets, logs' : 'Show only the assistant'}
