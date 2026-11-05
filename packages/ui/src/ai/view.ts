@@ -17,6 +17,29 @@ const MAX_SIDE = 1024
 const FOCUS_SETTLE_MS = 700
 const RELOAD_SETTLE_MS = 2000
 const RELOAD_TRIES = 5
+// The engine answers a screenshot in well under a second; a capture that takes longer than these is stuck (a scene
+// reloading, a phone preview that never gets ready) and would otherwise hold the turn until the service gives up.
+export const VIEW_TIMEOUT_MS = 45_000
+export const MOBILE_VIEW_TIMEOUT_MS = 90_000
+
+function withDeadline<T>(signal: AbortSignal, ms: number, message: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const inner = new AbortController()
+  const forward = (): void => inner.abort(signal.reason)
+  signal.addEventListener('abort', forward, { once: true })
+  if (signal.aborted) forward()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  // a console call that never answers ignores the signal, so the race is what ends the wait
+  const ended = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => inner.abort(new Error(message)), ms)
+    const stop = (): void => reject(inner.signal.reason instanceof Error ? inner.signal.reason : new Error('The view was cancelled.'))
+    if (inner.signal.aborted) stop()
+    else inner.signal.addEventListener('abort', stop, { once: true })
+  })
+  return Promise.race([work(inner.signal), ended]).finally(() => {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', forward)
+  })
+}
 
 async function frame(signal: AbortSignal): Promise<ImageBitmap> {
   const png = await consoleCommand('/screenshot')
@@ -49,12 +72,17 @@ export async function captureView(request: ViewRequest, signal: AbortSignal): Pr
   const mobile = request.target === 'mobile' || (request.target === undefined && phone?.mode === 'embedded' && request.from === null && request.entity === null && request.lookAt === null)
   if (mobile) {
     if (request.from !== null || request.entity !== null || request.lookAt !== null) throw new Error('Mobile captures use the current player camera. Use target: editor for entity framing or camera positioning.')
-    return { ...await captureMobileView(request.openIfClosed === true, signal), framed: 'mobile preview' }
+    const capture = await withDeadline(signal, MOBILE_VIEW_TIMEOUT_MS,
+      `The mobile preview did not give a picture within ${MOBILE_VIEW_TIMEOUT_MS / 1000} s. Retry once it is ready, or carry on without it.`,
+      (inner) => captureMobileView(request.openIfClosed === true, inner))
+    return { ...capture, framed: 'mobile preview' }
   }
   const moving = request.from !== null || request.entity !== null
   if (moving) await uiHoldCamera()
   try {
-    return await captureFrame(request, signal)
+    return await withDeadline(signal, VIEW_TIMEOUT_MS,
+      `The engine did not give a picture within ${VIEW_TIMEOUT_MS / 1000} s; the scene may still be reloading. Retry, or carry on without it.`,
+      (inner) => captureFrame(request, inner))
   } finally {
     if (moving) await uiReleaseCamera()
   }
