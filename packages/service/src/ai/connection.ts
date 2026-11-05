@@ -3,7 +3,7 @@ import { ASSISTANT_ID, ASSISTANT_MAX_IMAGE_BYTES, isCatalogSearch, object } from
 import type { AssistantServerMessage, BrowserToolName } from '../../../contract/src/assistant.ts'
 import type { AiSendParams } from '../../../contract/src/shell.ts'
 import { MEMORY_ID, MEMORY_KEY } from './memory.ts'
-import type { MemoryRef, WalletMemory } from './memory.ts'
+import type { MemoryRef, MemorySaveResult, WalletMemory } from './memory.ts'
 import type { WalletUsage } from './usage.ts'
 import type { AssistantTurnOutcome } from '../../../contract/src/analytics.ts'
 import type { SessionOperations } from './operations.ts'
@@ -14,6 +14,14 @@ import type { WalletImages } from './thumbnail.ts'
 
 const MAX_TURN_RESULT_CHARS = 2_000_000
 const MAX_LABEL_CHARS = 80
+// the model sees the stopped turn's finished calls; this says why the rest never ran
+const STOPPED_NOTE = '[The creator stopped your previous reply before it finished. What it already changed in the project stays.]'
+const NOT_KEPT_NOTE: Partial<Record<MemorySaveResult, string>> = {
+  too_large: 'This conversation is now too long to keep: the assistant remembers it while this page stays open, ' +
+    'but not after a reload. Start a new chat to carry on with a fresh memory.',
+  full: 'The assistant could not keep this conversation for later: its storage is full. ' +
+    'It remembers it while this page stays open, but not after a reload.'
+}
 const TOOL_LABELS: Record<BrowserToolName, string> = {
   playtest: 'Testing the game', ui_layout: 'Measuring the UI', mobile_check: 'Checking it on a phone',
   build: 'Building the scene', scene_request: 'Editing the scene', write_file: 'Saving a file', asset_request: 'Working with assets',
@@ -38,6 +46,8 @@ interface ActiveTurn {
   steps: number
   lastStepAt: number
   cause?: StopCause
+  /** The creator reset or forgot the conversation while this turn ran: neither the agent nor its memory is kept. */
+  discarded: boolean
   tools: { toolCalls: number; failedToolCalls: number; builds: number; failedBuilds: number }
   stepLog: StepRecord[]
 }
@@ -99,6 +109,8 @@ export function createConnection(options: {
   let stopping: Promise<void> | undefined
   let saving: Promise<void> = Promise.resolve()
   let browserCalls: Promise<void> = Promise.resolve()
+  // the kept agent's last turn was stopped by the creator
+  let stoppedBefore = false
   const pending = new Map<string, Pending>()
   const send = (message: AssistantServerMessage) => { if (!closed) options.send(message) }
 
@@ -189,7 +201,7 @@ export function createConnection(options: {
   async function prompt(turnId: string, projectId: string, params: AiSendParams, ref: MemoryRef | null): Promise<void> {
     const startedAt = Date.now()
     const turn: ActiveTurn = {
-      id: turnId, controller: new AbortController(), chars: 0, resumable: false, steps: 0, lastStepAt: startedAt,
+      id: turnId, controller: new AbortController(), chars: 0, resumable: false, discarded: false, steps: 0, lastStepAt: startedAt,
       tools: { toolCalls: 0, failedToolCalls: 0, builds: 0, failedBuilds: 0 }, stepLog: []
     }
     active = turn
@@ -217,6 +229,8 @@ export function createConnection(options: {
         identity = key
         conversation = ref?.id ?? crypto.randomUUID().replaceAll('-', '')
       }
+      // a restored conversation was saved with the stopped turn in it, but the note went with the old agent
+      if (agent === null) stoppedBefore = false
       if (agent === null) {
         await saving
         const restore = ref === null ? null : await options.memory?.load(ref) ?? null
@@ -233,7 +247,9 @@ export function createConnection(options: {
       if (tracked !== undefined) options.operations?.turnModel(tracked, agent.model ?? params.model)
       await stopping
       turn.controller.signal.throwIfAborted()
-      await agent.prompt(params)
+      const note = stoppedBefore
+      stoppedBefore = false
+      await agent.prompt(note ? { ...params, text: `${STOPPED_NOTE}\n\n${params.text}` } : params)
       ok = !turn.controller.signal.aborted
     } catch (error) {
       if (!turn.controller.signal.aborted) {
@@ -252,11 +268,17 @@ export function createConnection(options: {
       clearTimeout(timer)
       const cause = turn.cause ?? (closed ? 'disconnected' : undefined)
       turn.controller.abort()
-      const keep = ok && ref !== null && options.memory !== undefined
+      // A stopped, paused or cut-off turn stays in the conversation: its edits are in the scene, so the model has to
+      // know about them, and the next message reads the same history from cache instead of rewriting it.
+      const stopped = cause === 'cancelled' || cause === 'disconnected'
+      const continues = !turn.discarded && (ok || turn.resumable || stopped)
+      const keep = continues && ref !== null && options.memory !== undefined
       const snapshot = turnAgent !== null && (keep || (started && options.sessions !== undefined)) ? turnAgent.snapshot() : undefined
-      if (keep && snapshot !== undefined) {
+      let stored: Promise<MemorySaveResult | void> | undefined
+      if (keep && snapshot !== undefined && options.memory !== undefined) {
         const memory = options.memory
-        saving = saving.then(() => memory?.save(ref, snapshot)).catch(() => { options.logger.error('Assistant memory save failed') })
+        stored = saving.then(() => memory.save(ref, snapshot))
+        saving = stored.then(() => {}, () => { options.logger.error('Assistant memory save failed') })
       }
       // a stopped or failed turn still paid for the calls it made
       const spent = turnAgent?.takeUsage()
@@ -278,10 +300,16 @@ export function createConnection(options: {
       if (spent !== undefined && options.usage !== undefined) {
         await options.usage.record(spent.cost).catch(() => { options.logger.error('Assistant usage could not be recorded') })
       }
-      if (!ok && (!turn.resumable || closed)) {
+      if (turn.discarded || (!ok && (!(turn.resumable || stopped) || closed))) {
         agent?.dispose()
         agent = null
+      } else if (cause === 'cancelled') stoppedBefore = true
+      const kept = stored === undefined ? undefined : await stored.catch(() => undefined)
+      if (kept === 'trimmed' || kept === 'too_large' || kept === 'full') {
+        options.logger.info(`assistant memory turn=${turnId} kept=${kept}`)
       }
+      const notKept = kept === undefined ? undefined : NOT_KEPT_NOTE[kept]
+      if (started && notKept !== undefined) send({ kind: 'event', event: { kind: 'text', turnId, text: `\n\n_${notKept}_` } })
       active = null
       // the browser sees what a turn cost only where sessions are recorded for study, never in production use
       const usage = options.sessions === undefined || spent?.tokens === undefined ? undefined
@@ -311,7 +339,7 @@ export function createConnection(options: {
       }
       if (message.kind === 'stop' && message.turnId === active?.id) { abort(); return }
       if (message.kind === 'reset') {
-        if (active !== null) { abort(); return }
+        if (active !== null) { active.discarded = true; abort(); return }
         agent?.dispose()
         agent = null
         identity = ''
@@ -319,7 +347,7 @@ export function createConnection(options: {
       }
       if (message.kind === 'forget') {
         if (typeof message.id !== 'string' || !MEMORY_ID.test(message.id)) return
-        if (active !== null) abort()
+        if (active !== null) { active.discarded = true; abort() }
         agent?.dispose()
         agent = null
         identity = ''

@@ -354,4 +354,80 @@ describe('assistant tool bridge', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('keeps a stopped turn in the conversation and tells the model it was stopped', async () => {
+    const events: AssistantServerMessage[] = []
+    const asked: string[] = []
+    const save = vi.fn(async () => 'saved' as const)
+    const memory = { load: vi.fn(async () => null), save, forget: vi.fn(async () => {}) }
+    const ref = { id: 'b'.repeat(32), key: Buffer.alloc(32, 7).toString('base64url') }
+    const factory: AgentFactory = {
+      providers: async () => [],
+      create: vi.fn(async (_params, call) => ({
+        prompt: async (next: AiSendParams) => {
+          asked.push(next.text)
+          if (asked.length === 1) await call('scene_request', { request: { type: 'batch' } }).catch(() => {})
+        },
+        abort: async () => {}, dispose: vi.fn(), snapshot: () => [{ type: 'message', text: 'placed the stove' }], takeUsage: () => ({ cost: 0 })
+      }))
+    }
+    const connection = createConnection({ factory, logger: { error: vi.fn(), info: vi.fn() }, send: (e) => events.push(e), allowTurn: () => true, memory })
+    connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params, memory: ref })
+    await vi.waitFor(() => expect(events.some((e) => e.kind === 'call')).toBe(true))
+    connection.receive({ kind: 'stop', turnId: 'one' })
+    await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: false } }))
+    expect(save).toHaveBeenCalledWith(ref, [{ type: 'message', text: 'placed the stove' }])
+
+    connection.receive({ kind: 'prompt', turnId: 'two', projectId: 'scene', params: { ...params, text: 'Now the sink' }, memory: ref })
+    await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'two', ok: true } }))
+    expect(factory.create).toHaveBeenCalledOnce()
+    expect(asked[1]).toMatch(/^\[The creator stopped your previous reply.*\]\n\nNow the sink$/)
+
+    connection.receive({ kind: 'prompt', turnId: 'three', projectId: 'scene', params: { ...params, text: 'And a fridge' }, memory: ref })
+    await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'three', ok: true } }))
+    expect(asked[2]).toBe('And a fridge')
+    await connection.close()
+  })
+
+  it('drops the agent and its memory when the chat is reset while a turn runs', async () => {
+    const events: AssistantServerMessage[] = []
+    const save = vi.fn(async () => 'saved' as const)
+    const memory = { load: vi.fn(async () => null), save, forget: vi.fn(async () => {}) }
+    const ref = { id: 'b'.repeat(32), key: Buffer.alloc(32, 7).toString('base64url') }
+    const dispose = vi.fn()
+    const factory: AgentFactory = {
+      providers: async () => [],
+      create: vi.fn(async (_params, call) => ({
+        prompt: async () => { await call('build', {}) }, abort: async () => {}, dispose, snapshot: () => [], takeUsage: () => ({ cost: 0 })
+      }))
+    }
+    const connection = createConnection({ factory, logger: { error: vi.fn(), info: vi.fn() }, send: (e) => events.push(e), allowTurn: () => true, memory })
+    connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params, memory: ref })
+    await vi.waitFor(() => expect(events.some((e) => e.kind === 'call')).toBe(true))
+    connection.receive({ kind: 'reset' })
+    await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: false } }))
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(save).not.toHaveBeenCalled()
+    await connection.close()
+  })
+
+  it('tells the creator and the log when a conversation is too long to keep', async () => {
+    const events: AssistantServerMessage[] = []
+    const logger = { error: vi.fn(), info: vi.fn() }
+    const memory = { load: vi.fn(async () => null), save: vi.fn(async () => 'too_large' as const), forget: vi.fn(async () => {}) }
+    const connection = createConnection({
+      logger, memory, send: (e) => events.push(e), allowTurn: () => true,
+      factory: {
+        providers: async () => [],
+        create: async () => ({ prompt: async () => {}, abort: async () => {}, dispose: () => {}, snapshot: () => [], takeUsage: () => ({ cost: 0 }) })
+      }
+    })
+    connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params, memory: { id: 'b'.repeat(32), key: Buffer.alloc(32, 7).toString('base64url') } })
+    await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: true } }))
+    const notes = events.filter((e) => e.kind === 'event' && e.event.kind === 'text')
+    expect(notes).toEqual([{ kind: 'event', event: { kind: 'text', turnId: 'one', text: expect.stringContaining('too long to keep') } }])
+    expect(events.indexOf(notes[0])).toBeLessThan(events.length - 1)
+    expect(logger.info).toHaveBeenCalledWith('assistant memory turn=one kept=too_large')
+    await connection.close()
+  })
 })
