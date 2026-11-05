@@ -21,17 +21,23 @@ around it here (example: tweens ignored Pause until the engine fixed it, bevy-ex
 
 ## How a change reaches players
 
-1. Editor PR merged to `main` here.
-2. `web-package.yml` publishes `@dcl-regenesislabs/web-editor` to npm under `next`
-   (version `0.1.1-<run>.commit-<sha>`).
-3. Pin it in the explorer: `node packages/web/scripts/pin.mjs <version> decentraland.zone`
+1. Editor PR merged to `main` here. `web-package.yml` publishes a snapshot of
+   `@dcl-regenesislabs/web-editor` (`0.3.x-<run>.commit-<sha>`), which npm shows on `next`: try it
+   on zone with `?editor-tag=next`.
+2. **Zone:** publishing a GitHub release `vX.Y.Z` publishes that version on `latest`, and
+   `decentraland.zone` loads whatever `latest` names the next time Create opens: the release is
+   what reaches players there, with no explorer change. The page resolves the tag through the npm
+   registry and loads it from unpkg, with no `editor.js` hash.
+3. **Org** (dcl-one#288): `decentraland.org` runs one version checked against its hash and ignores
+   `?editor-tag`. After a release, `node packages/web/scripts/pin.mjs <version> decentraland.org`
    prints `PINNED_EDITOR`; paste it into dcl-one's
    `rendering/bevy-explorer/source/react-web/src/features/editorHost/config.ts` and its copy in
-   `apps/ui3/src/play/features/editorHost/config.ts`, and open a PR. The page checks `editor.js`
-   against that hash, so nothing reaches players without this PR.
-4. Merged to dcl-one `main`, CI publishes `@dcl-regenesislabs/bevy-explorer-web` and rolls it out
-   at `https://decentraland.zone/play/` (`apps/bevy-explorer/README.md` in dcl-one). Check which
-   commit is live: `curl -s https://decentraland.zone/play/ | grep -o 'commit-[0-9a-f]*' | head -1`.
+   `apps/ui3/src/play/features/editorHost/config.ts`, record the HUD fingerprint
+   (`python3 tooling/play-artifact.py hud-inputs` into `rendering/bevy-explorer/upstream.lock.json`)
+   and open a PR. Nothing reaches org without it.
+4. An explorer change merged to dcl-one `main`: CI publishes `@dcl-regenesislabs/bevy-explorer-web`
+   and rolls it out at `https://decentraland.zone/play/` (`apps/bevy-explorer/README.md` in dcl-one).
+   Check which commit is live: `curl -s https://decentraland.zone/play/ | grep -o 'commit-[0-9a-f]*' | head -1`.
 
 The editor is offered only on `decentraland.zone` (the pin's `hosts`). `?baseDomain=decentraland.org`
 on that page points the session, and the editor's Worlds server, at org.
