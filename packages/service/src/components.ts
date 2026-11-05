@@ -17,7 +17,9 @@ import { DISABLED_QUOTA } from './ai/quota.ts'
 import { createAssistantMemory } from './ai/memory.ts'
 import { createSessionLog, DEFAULT_SESSION_LOG_LIMITS } from './ai/session-log.ts'
 import { createUsageMeter, DEFAULT_USAGE_LIMITS } from './ai/usage.ts'
-import { ASSISTANT_MODEL, createPiFactory, DEFAULT_COMPACT_AT_TOKENS, MIN_COMPACT_AT_TOKENS } from './ai/pi.ts'
+import {
+  ASSISTANT_MODEL, CACHE_WARMING_MODES, createPiFactory, DEFAULT_CACHE_WARMING, DEFAULT_COMPACT_AT_TOKENS, isCacheWarming, MIN_COMPACT_AT_TOKENS
+} from './ai/pi.ts'
 import { codexTokenSource, createCodexImageProvider } from './ai/images.ts'
 import type { AgentFactory } from './ai/types.ts'
 import { createRateLimiter, createUploadGate, envFromConfig, DEFAULT_LIMITS, walletAllowlist } from './config.ts'
@@ -129,9 +131,13 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   if (!Number.isSafeInteger(compactAt) || (compactAt !== 0 && compactAt < MIN_COMPACT_AT_TOKENS)) {
     throw new Error(`ASSISTANT_COMPACT_AT_TOKENS must be 0 or a whole number of at least ${MIN_COMPACT_AT_TOKENS}`)
   }
+  const warming = (await config.getString('ASSISTANT_CACHE_WARMING')) ?? DEFAULT_CACHE_WARMING
+  if (!isCacheWarming(warming)) {
+    throw new Error(`ASSISTANT_CACHE_WARMING must be one of ${CACHE_WARMING_MODES.join(', ')}`)
+  }
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
-      logs.getLogger('assistant'), accounts, compactAt))
+      logs.getLogger('assistant'), accounts, compactAt, warming))
   const pool = await createPoolComponent({ config, logs })
   env.pool = pool.service
   const poolService = pool.service

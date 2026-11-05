@@ -26,6 +26,16 @@ const PROVIDERS = { claude: 'anthropic', codex: 'openai-codex' } as const
  * and the model then reads its files again. */
 export const DEFAULT_COMPACT_AT_TOKENS = 200_000
 export const MIN_COMPACT_AT_TOKENS = 50_000
+/**
+ * pi re-sends the last request with a one-token reply before its 5-minute cache expires. "idle" also does it between
+ * the creator's messages, for up to 30 minutes after the last one, and only while a cold rewrite would cost more than
+ * the pings (pi counts on a 15% chance the creator writes before the cache expires: from about 100k tokens of context
+ * at Opus prices). A closed page ends the session and its pings. "streaming" pings only while a turn runs.
+ */
+export const CACHE_WARMING_MODES = ['off', 'streaming', 'idle'] as const
+export type CacheWarming = typeof CACHE_WARMING_MODES[number]
+export const DEFAULT_CACHE_WARMING: CacheWarming = 'idle'
+export const isCacheWarming = (value: string): value is CacheWarming => (CACHE_WARMING_MODES as readonly string[]).includes(value)
 // the tail kept verbatim, so the files the current step works on stay as they were read
 const KEEP_RECENT_TOKENS = 50_000
 // pi's default reserve, for when compaction is left to pi
@@ -181,7 +191,8 @@ export { ASSISTANT_MODEL }
  * compaction to pi, which waits until the model's window is nearly full.
  */
 export async function createPiFactory(authPath: string, preferredModel?: string, setupToken?: string, skills?: SkillsComponent,
-  logger?: { info(message: string): void }, accounts?: AccountPool, compactAtTokens = DEFAULT_COMPACT_AT_TOKENS): Promise<AgentFactory> {
+  logger?: { info(message: string): void }, accounts?: AccountPool, compactAtTokens = DEFAULT_COMPACT_AT_TOKENS,
+  cacheWarming: CacheWarming = DEFAULT_CACHE_WARMING): Promise<AgentFactory> {
   const skillLibrary = skills ?? await createSkillsComponent()
   if (setupToken !== undefined) await seedSetupToken(authPath, setupToken)
   const runtime = await ModelRuntime.create({ authPath, credentials: accounts?.store, modelsPath: null, refreshOnCreate: false })
@@ -318,6 +329,7 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
       const settingsManager = SettingsManager.inMemory({
         // pi retries the failed request itself, reading the credential again: after a 429 that is the next account
         retry: { enabled: true, maxRetries: 3, baseDelayMs: 2000, provider: { maxRetries: 0 } }, defaultThinkingLevel: ASSISTANT_EFFORT,
+        cacheWarming,
         ...early ? {
           compaction: {
             enabled: true, reserveTokens: model.contextWindow - compactAtTokens,

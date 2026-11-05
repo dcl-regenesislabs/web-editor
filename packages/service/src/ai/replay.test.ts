@@ -57,3 +57,11 @@ it('reads the calls of a pi session file and sets keep-alive pings and summaries
   // the prefix the cold second call still read
   expect(parsed.shared).toBe(23_000)
 })
+
+it('pings like pi only while a cold rewrite would cost more than the pings', () => {
+  const piWarming = POLICIES.find((policy) => policy.name === 'pi idle warming')
+  if (piWarming === undefined) throw new Error('No pi policy')
+  // 60k of context: 15% of a rewrite is less than the ping plus pi's $0.05 margin
+  expect(replay(session([call(0, 60_000), call(10, 61_000)]), piWarming)).toMatchObject({ warmPings: 0, coldWrites: 1 })
+  expect(replay(session([call(0, 200_000), call(10, 201_000)]), piWarming)).toMatchObject({ warmPings: 2 + 6, coldWrites: 0 })
+})

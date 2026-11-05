@@ -37,6 +37,8 @@ export interface Policy {
   writePrice: 'cacheWrite5m' | 'cacheWrite1h'
   /** Keep the cache warm with pings for this long while nothing is sent; 0 for none. */
   warmForMs: number
+  /** Ping only while pi's idle rule expects it to pay (ASSISTANT_CACHE_WARMING=idle), not on every gap. */
+  warmLikePi?: boolean
   /** Summarize older messages before a call whose prompt passes this; 0 for never. */
   compactAt: number
 }
@@ -48,15 +50,20 @@ export const SUMMARY_TOKENS = 3_000
 const SUMMARY_INPUT_SHARE = 0.15
 const SUMMARY_INSTRUCTIONS_TOKENS = 1_500
 const MINUTE = 60_000
+// pi's idle cache warming: a refresh is sent when a 15% chance of saving a cold rewrite beats its cost by $0.05
+const PI_CONTINUATION = 0.15
+const PI_MIN_SAVING = 0.05
 
 export const POLICIES: Policy[] = [
   { name: '5 min (today)', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 0, compactAt: 0 },
   { name: '1 h', ttlMs: 60 * MINUTE, writePrice: 'cacheWrite1h', warmForMs: 0, compactAt: 0 },
   { name: '5 min + warm 30 min', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 30 * MINUTE, compactAt: 0 },
   { name: '5 min + warm 60 min', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 60 * MINUTE, compactAt: 0 },
+  { name: 'pi idle warming', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 30 * MINUTE, compactAt: 0, warmLikePi: true },
   { name: '5 min, compact 150k', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 0, compactAt: 150_000 },
   { name: '5 min, compact 200k', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 0, compactAt: 200_000 },
-  { name: '1 h, compact 200k', ttlMs: 60 * MINUTE, writePrice: 'cacheWrite1h', warmForMs: 0, compactAt: 200_000 }
+  { name: '1 h, compact 200k', ttlMs: 60 * MINUTE, writePrice: 'cacheWrite1h', warmForMs: 0, compactAt: 200_000 },
+  { name: 'pi idle warming, compact 200k', ttlMs: 5 * MINUTE, writePrice: 'cacheWrite5m', warmForMs: 30 * MINUTE, compactAt: 200_000, warmLikePi: true }
 ]
 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -120,6 +127,8 @@ export function replay(session: ReplaySession, policy: Policy, prices: Prices = 
   let touched = 0
   // tokens compaction has taken out of every later prompt
   let removed = 0
+  const worthPinging = (): boolean => !policy.warmLikePi ||
+    PI_CONTINUATION * cached * (write - prices.cacheRead) - cached * prices.cacheRead >= PI_MIN_SAVING
   const ping = (count: number): void => {
     const cost = count * (cached * prices.cacheRead + prices.output)
     result.warmPings += count
@@ -143,7 +152,7 @@ export function replay(session: ReplaySession, policy: Policy, prices: Prices = 
     }
     const gap = call.start - touched
     let warm = cached > 0 && gap <= policy.ttlMs
-    if (!warm && cached > 0 && policy.warmForMs > 0) {
+    if (!warm && cached > 0 && policy.warmForMs > 0 && worthPinging()) {
       const pings = Math.floor(Math.min(gap, policy.warmForMs) / pingEvery)
       ping(pings)
       warm = gap <= pings * pingEvery + policy.ttlMs
@@ -161,6 +170,6 @@ export function replay(session: ReplaySession, policy: Policy, prices: Prices = 
     touched = call.end
   }
   // a page left open keeps pinging after the last reply
-  if (policy.warmForMs > 0 && cached > 0) ping(Math.floor(policy.warmForMs / pingEvery))
+  if (policy.warmForMs > 0 && cached > 0 && worthPinging()) ping(Math.floor(policy.warmForMs / pingEvery))
   return result
 }
