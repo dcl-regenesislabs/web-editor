@@ -30,7 +30,7 @@ for (const file of await sessionFiles(root)) {
   const session = parseSession(await readFile(file, 'utf8'))
   if (session.calls.length === 0) continue
   const name = basename(join(file, '..'))
-  const billed = session.calls.reduce((sum, call) => sum + call.cost, 0) + session.warmCost
+  const billed = session.calls.reduce((sum, call) => sum + call.cost, 0) + session.warmCost + session.summaryCost
   const results: ReplayResult[] = POLICIES.map((policy) => replay(session, policy))
   // the model priced the way the session ran; it says how far the other columns can be trusted
   const asRun = replay(session, { ...POLICIES[0], warmForMs: session.warmCost > 0 ? 60 * 60_000 : 0 })

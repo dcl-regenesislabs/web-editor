@@ -49,3 +49,61 @@ Score each line 0 (no), 1 (partly) or 2 (yes), by playing the result, never from
 
 A release is better when its mean rubric score goes up without the cost going up by more than the gain is
 worth; write the call in the release notes with the table.
+
+## Compaction (#89)
+
+Measured on 2026-11-05, local service (`npm run dev:web` with `ASSISTANT_SESSION_LOG=1`), Opus 5.5 at medium effort,
+a new Blank 2×2 scene per run. The same five messages, each sent as soon as the previous turn ended, so no idle gap
+mixes the prompt cache's expiry into the result:
+
+1. the co-op-kitchen prompt above (none of the six runs stopped to ask for a plan);
+2. `Add a fourth recipe that needs two cooked ingredients, and show it on the order cards.`
+3. `Playtest one full shift and fix anything that doesn't work.`
+4. `Rename the chopping station to "Cutting Board" everywhere players can see it, and make a shift last 90 seconds.`
+5. `Answer from memory, without using any tools: list every station you placed with its entity name, every script file you wrote, and each recipe with its ingredients.`
+
+Message 5 checks what a summary lost: its answer is compared with the stations, scripts and recipes the run built.
+
+| `ASSISTANT_COMPACT_AT_TOKENS` | Runs | Cost | Minutes | Model calls | Peak context | Compactions | Cache write | Message 5 |
+|---|---|---|---|---|---|---|---|---|
+| 0 (off) | 2 | $7.86 ($6.78–8.94) | 31.5 | 122 | 272–329k | 0 | 0.29M | complete |
+| 150000 | 2 | $10.59 ($10.43–10.75) | 33.7 | 152 | 149k | 5 | 0.76M | complete; unsure of ids |
+| 200000 | 2 | $6.85 ($5.82–7.87) | 24.2 | 115 | 200k | 1–2 | 0.33M | complete |
+
+- **150k costs a third more.** It compacts inside the build turn (twice in message 1, again in 2 and 3), and after
+  each summary the model reads the files it was working on again: 25% more calls, 30% more output, and the new
+  shorter context written to the cache each time. The summary itself is cheap: pi sends the summarized part as
+  text with tool results cut short (13k tokens in, 3k out, about $0.11).
+- **200k is no worse than off, and keeps long conversations bounded.** Two runs per setting are within each other's
+  noise ($6.78–8.94 off), so the saving here is not proven. What 200k buys is the long tail: recorded creator
+  conversations reached 300–560k (99 nights in the forest), and every cold cache rewrite of those is paid at the
+  write price.
+- **The service default is 200000.** 150k, which the replay-based analyses in `docs/transcripts/analysis-2026-11-0*`
+  recommended, is ruled out by these runs.
+
+## Prompt-cache retention (#90), from recorded sessions
+
+`node packages/service/scripts/replay-cost.ts <folder>` reads every `session.jsonl` below the folder (as `/admin/`
+serves them), replays its calls under each policy and prices them: 5 minutes (today), 1 hour, 5 minutes kept warm
+by pings for 30 or 60 minutes, and compaction at 150k or 200k. Its "Model as run" column prices the policy the
+session actually ran under, so it shows how far the other columns can be trusted: on the 19 sessions in
+`docs/transcripts/admin-sessions` it is within 3% of what was billed.
+
+| Policy | 19 recorded sessions |
+|---|---|
+| 5 min (today) | $74.44 |
+| 1 h | $72.71 (−2%) |
+| 5 min + warm 30 min | $70.27 (−6%) |
+| 5 min + warm 60 min | $72.95 (−2%) |
+
+- **1 h** costs 15–20% more on the usual 10–40-minute session, because every write is billed at 2× input instead
+  of 1.25×. It pays off only in a long session with gaps: 99 nights goes from $23.6 to $17.7.
+- **Keeping the cache warm for 30 minutes** is the cheapest, but it counts a page left open for 30 minutes after the
+  last reply, pinging all along; most of what it saves is again one long session.
+- **No change for now.** These sessions are mostly benchmark runs that never sit idle. The decision needs the idle
+  gaps of real creator sessions: record them on the dev deployment and run the replay over them. Compaction at 200k
+  already caps what one cold rewrite can cost.
+
+The replay replays the same calls, so it cannot see a policy change what the model does. It is sound for cache
+retention, which the model never sees, and not for compaction: on the two runs with compaction off it predicts
+150k would save 22%, where real runs with 150k cost 35% more.

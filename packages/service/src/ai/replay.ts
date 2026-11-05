@@ -1,6 +1,8 @@
 // Replays recorded sessions (session.jsonl from /admin/) under another prompt-cache or compaction policy and prices
 // every call, so a policy can be compared on real conversations without spending a model call (#89, #90). It is a
 // model of the cache, not a copy of it: docs/ASSISTANT-BENCHMARK.md says how far it agrees with what was billed.
+// It replays the same calls, so it cannot see a policy change what the model does: after a compaction the model
+// reads files again, which made 150k cost more in real runs than it saves here.
 
 /** USD per token, Opus 5.5 at the rates the session logs record. A 1-hour cache write is 2x input, as Anthropic bills it. */
 export const OPUS_PRICES = { input: 4e-6, output: 20e-6, cacheRead: 0.2e-6, cacheWrite5m: 5e-6, cacheWrite1h: 8e-6 }
@@ -22,8 +24,9 @@ export interface ReplayCall {
 
 export interface ReplaySession {
   calls: ReplayCall[]
-  /** Keep-alive pings the recording paid for: they are left out when a policy is simulated. */
+  /** Keep-alive pings and summaries the recording paid for: left out when a policy is simulated. */
   warmCost: number
+  summaryCost: number
   /** The system prompt and tools every conversation starts with, warm from other conversations. */
   shared: number
 }
@@ -39,8 +42,10 @@ export interface Policy {
 }
 
 export const KEEP_RECENT_TOKENS = 50_000
-// a structured summary of a long build conversation: measured ones run 2-6k tokens
-export const SUMMARY_TOKENS = 4_000
+// Measured on the compaction benchmark: pi sends the summarized part as text with tool results cut short, about a
+// seventh of its tokens, and writes a summary of about 3k tokens.
+export const SUMMARY_TOKENS = 3_000
+const SUMMARY_INPUT_SHARE = 0.15
 const SUMMARY_INSTRUCTIONS_TOKENS = 1_500
 const MINUTE = 60_000
 
@@ -61,6 +66,7 @@ const tokens = (usage: Record<string, unknown>, key: string): number => typeof u
 export function parseSession(text: string): ReplaySession {
   const calls: ReplayCall[] = []
   let warmCost = 0
+  let summaryCost = 0
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue
     let entry: unknown
@@ -68,6 +74,10 @@ export function parseSession(text: string): ReplaySession {
     if (!record(entry)) continue
     if (entry.type === 'usage' && entry.kind === 'cache_warm' && record(entry.usage) && record(entry.usage.cost)) {
       warmCost += tokens(entry.usage.cost, 'total')
+      continue
+    }
+    if (entry.type === 'compaction' && record(entry.usage) && record(entry.usage.cost)) {
+      summaryCost += tokens(entry.usage.cost, 'total')
       continue
     }
     const message = entry.message
@@ -86,7 +96,7 @@ export function parseSession(text: string): ReplaySession {
   // after a long gap only the prefix every conversation shares is still read from cache
   const cold = calls.filter((call, i) => i > 0 && call.cacheRead > 0 && call.cacheWrite > call.cacheRead)
   const shared = cold.length === 0 ? 0 : Math.min(...cold.map((call) => call.cacheRead), calls[0].prompt)
-  return { calls, warmCost, shared }
+  return { calls, warmCost, summaryCost, shared }
 }
 
 export interface ReplayResult {
@@ -123,7 +133,7 @@ export function replay(session: ReplaySession, policy: Policy, prices: Prices = 
       const kept = session.shared + SUMMARY_TOKENS + KEEP_RECENT_TOKENS
       const summarized = Math.max(0, prompt - session.shared - KEEP_RECENT_TOKENS)
       // the summary has its own system prompt and gets the conversation as text: nothing of it is cached
-      const cost = (summarized + SUMMARY_INSTRUCTIONS_TOKENS) * prices.input + SUMMARY_TOKENS * prices.output
+      const cost = (summarized * SUMMARY_INPUT_SHARE + SUMMARY_INSTRUCTIONS_TOKENS) * prices.input + SUMMARY_TOKENS * prices.output
       result.compactions++
       result.compactionCost += cost
       result.cost += cost
