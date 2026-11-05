@@ -20,9 +20,11 @@ import type { SkillsComponent } from '../adapters/skills.ts'
 
 const PROVIDERS = { claude: 'anthropic', codex: 'openai-codex' } as const
 
-/** Context size at which older messages are summarized, far below the model's window. Off by default: at Opus
- * prices a summary costs about what the cache reads it saves on a 70-call turn, so it is on only where measured. */
-export const DEFAULT_COMPACT_AT_TOKENS = 0
+/** Context size at which older messages are summarized, far below the model's window. 200k, measured on the
+ * benchmark conversation (docs/ASSISTANT-BENCHMARK.md, "Compaction"): it compacts once or twice and keeps the long
+ * conversations that went to 300-560k under 200k. 150k cost a third more there: it compacts within a build turn,
+ * and the model then reads its files again. */
+export const DEFAULT_COMPACT_AT_TOKENS = 200_000
 export const MIN_COMPACT_AT_TOKENS = 50_000
 // the tail kept verbatim, so the files the current step works on stay as they were read
 const KEEP_RECENT_TOKENS = 50_000
