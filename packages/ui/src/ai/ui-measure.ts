@@ -60,3 +60,62 @@ export function measuredNodes(snapshot: Record<string, Components>): { nodes: Re
   nodes.sort((a, b) => Number(a.order) - Number(b.order))
   return { nodes, unnamed }
 }
+
+/** What the scene's installed SDK carries, when the editor can tell (desktop probes the scene's node_modules). */
+export interface SceneSdk {
+  elementId: boolean
+  version?: string
+}
+
+export interface Unmeasurable {
+  reason: 'no-ui' | 'no-element-ids' | 'sdk-has-no-element-id' | 'explorer-has-no-layout-feedback'
+  why: string
+  instead: string
+}
+
+const BY_HAND = 'Check the layout rules by hand instead: the sizes and positions in the UI code against the scene-ui rules, and the picture (playtest with platform mobile for the phone). Say which rules you checked only that way.'
+const EXPERIMENTAL_SDK = '@dcl/sdk@experimental-bevy-auth-server @dcl/sdk-commands@experimental-bevy-auth-server'
+
+/**
+ * Why nothing on screen can be measured, or null when the engine measured at least one node:
+ * an empty measurement must never read as "no problems".
+ */
+export function unmeasurable(snapshot: Record<string, Components>, sdk: SceneSdk | null): Unmeasurable | null {
+  let ui = 0
+  let named = 0
+  for (const components of Object.values(snapshot)) {
+    if (!object(components.UiTransform)) continue
+    if (object(components.UiLayoutFeedback)) return null
+    ui++
+    if (typeof components.UiTransform.elementId === 'string') named++
+  }
+  if (ui === 0) {
+    return {
+      reason: 'no-ui',
+      why: 'The scene draws no screen UI right now: no entity has a UiTransform.',
+      instead: 'Check that the scene sets its UI renderer (ReactEcsRenderer.setUiRenderer, or the HUD from ./runtime/hudLayout) and that the playtest reached the screen that shows it, then measure again.'
+    }
+  }
+  if (named > 0) {
+    return {
+      reason: 'explorer-has-no-layout-feedback',
+      why: `${named} of the ${ui} UI nodes have an elementId, but the explorer reported no layout for any of them (UiLayoutFeedback): this explorer build does not measure screen UI. Only the Bevy explorer does.`,
+      instead: `Measuring again will not help. ${BY_HAND}`
+    }
+  }
+  if (sdk !== null && !sdk.elementId) {
+    const version = sdk.version === undefined ? '' : ` ${sdk.version}`
+    return {
+      reason: 'sdk-has-no-element-id',
+      why: `This scene's @dcl/sdk${version} has no elementId in uiTransform, so none of its ${ui} UI nodes can be measured: elementId is only in the experimental Bevy SDK builds, which new editor scenes use.`,
+      instead: `Do not write elementId in this scene's code: its SDK does not have it. ${BY_HAND} Tell the creator the UI could be measured if the project moved to the experimental SDK (npm install ${EXPERIMENTAL_SDK} in the project folder); it changes package.json, so leave that choice to them.`
+    }
+  }
+  return {
+    reason: 'no-element-ids',
+    why: `None of the ${ui} UI nodes has an elementId: the engine measures only nodes with one.`,
+    instead: sdk === null
+      ? `If uiTransform has elementId in this project's SDK (check its type, never guess), give every button, panel and text a unique one and measure again. If it does not: ${BY_HAND}`
+      : 'Give every button, panel, dialog and text a unique elementId in uiTransform and measure again.'
+  }
+}
