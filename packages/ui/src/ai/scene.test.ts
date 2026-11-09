@@ -11,6 +11,7 @@ import { soundBytes } from './library-bytes'
 import { createPrefabFrom } from '../actions/prefabs'
 import { flushPendingSave } from '../core/autosave'
 import { uiSetSpawnedOnly } from '../actions/spawned-only'
+import { uiAddEntity } from '../actions/entities'
 
 const { setValue, deleteValue, status } = vi.hoisted(() => {
   const status = new Map<string, string>()
@@ -200,5 +201,39 @@ describe('assistant scene requests', () => {
     // an instance placed into the game still moves to "When spawned"
     expect(uiSetSpawnedOnly).toHaveBeenLastCalledWith('513', true)
     delete state.snapshot['513']
+  })
+})
+
+describe('a batch that edits many entities', () => {
+  it('answers a forest of placements and moves briefly, saying what they share once', async () => {
+    let next = 700
+    vi.mocked(uiAddEntity).mockImplementation(async () => {
+      const id = String(next++)
+      state.snapshot[id] = { Transform: { position: { x: 8, y: 0, z: 8 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 }, parent: 0 } }
+      state.activeEntity = id
+    })
+    vi.mocked(loadModelCatalog).mockResolvedValue(catalog)
+    vi.mocked(modelById).mockReturnValue(asset({ name: 'Pine Tree 02', category: 'nature', subcategory: 'tree', tags: ['tree'], width: 2.14, height: 6.42, depth: 2.31 }))
+    vi.mocked(importCatalogFile).mockResolvedValue('models/catalog/pine-tree-02.glb')
+    vi.mocked(inspectModel).mockReturnValue({ materials: ['Bark', 'Leaves'], textures: 2, sharedImages: [] } as unknown as ReturnType<typeof inspectModel>)
+    // the first tree leaves more of the texture limit than the rest
+    vi.mocked(sceneTextures).mockResolvedValueOnce({ used: 10, limit: 40, shared: new Set() }).mockResolvedValue({ used: 12, limit: 40, shared: new Set() })
+    for (let i = 0; i < 10; i++) state.snapshot[String(600 + i)] = { Transform: { position: { x: i * 1.1, y: 0.3, z: 4.7 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 }, parent: 0 } }
+    const requests = [
+      ...Array.from({ length: 40 }, (_, i) => ({
+        type: 'placeModel', id: 'Pine Tree 02', name: `Pine ${i + 1}`, position: { x: 2 + (i % 8) * 1.7, y: 0, z: 2 + Math.floor(i / 8) * 2.9 },
+        rotation: { x: 0, y: Math.sin(i), z: 0, w: Math.cos(i) }, scale: { x: 1, y: 0.8 + (i % 5) * 0.1, z: 1 }
+      })),
+      ...Array.from({ length: 10 }, (_, i) => ({ type: 'move', to: String(600 + i), by: { x: 0.1, y: 0, z: -0.3 } }))
+    ]
+    const answer = await browserSceneRequest({ type: 'batch', requests }, new AbortController().signal) as { results: unknown[]; same: unknown }
+    // 7,141 chars when every result repeated the model, its size and its texture cost
+    expect(JSON.stringify(answer).length).toBeLessThan(2200)
+    expect(answer.results).toHaveLength(50)
+    expect(answer.same).toEqual({ placeModel: { model: 'models/catalog/pine-tree-02.glb', size: { x: 2.1, y: 6.4, z: 2.3 }, textures: 2, materials: 2, sceneTexturesLeft: 26 } })
+    expect(answer.results[0]).toEqual({ ok: true, result: { id: '700', sceneTexturesLeft: 28 } })
+    expect(answer.results[1]).toEqual({ ok: true, result: { id: '701' } })
+    expect(answer.results[45]).toEqual({ ok: true, result: { id: '605' } })
+    vi.mocked(sceneTextures).mockReset()
   })
 })
