@@ -2,14 +2,16 @@ import { isReservedEntity, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
 import { buildFromSchema, getSchema, toEngineValue, type ComponentSchema } from '@scene/schema'
 import { cmd } from '../engine/cmd'
-import { entityName, NAME_COMPONENT } from '@scene/custom-components'
+import { entityName, nameKey, NAME_COMPONENT } from '@scene/custom-components'
 import { isAllowedComponent } from '@scene/allowed-components'
-import { uiAddEntity } from '../actions/entities'
+import { uiAddEntity, uiDeleteEntityRecursive } from '../actions/entities'
 import { uiDeleteComponent, uiSetComponentValue } from '../actions/components'
 import { createPrefabFrom } from '../actions/prefabs'
 import { uiSetSpawnedOnly } from '../actions/spawned-only'
 import { asAssistant, flushPendingSave } from '../core/autosave'
 import { prefabStore, refreshPrefabs } from '../panels/prefab-store'
+import { isCodeEntity } from '../panels/hierarchy-model'
+import { authoredFromComposite } from '../panels/authored-ids'
 import { prefabAssetId } from '../prefabs/provenance'
 import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
 import { dataLayerListFiles, dataLayerReadFile, dataLayerReadFileBytes, dataLayerSaveFile, dataLayerSaveFileBytes } from '../engine/datalayer'
@@ -359,6 +361,8 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
     uiDeleteComponent(id, name)
     return { id, component: name, components: state.snapshot[id] }
   }
+  // the other edits name their target `to`; taking it too saves a failed call
+  if (request.type === 'deleteEntity') return deleteEntity(request.entity ?? request.to)
   if (request.type === 'createPrefab') {
     const id = entity(request.from)
     const spawnedOnly = request.spawnedOnly !== false
@@ -382,6 +386,36 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
   if (!['attachScript', 'setParams', 'placePrefab'].includes(String(request.type))) throw new Error('Unsupported scene request.')
   if (request.type !== 'placePrefab') entity(request.to)
   return runRequestText(JSON.stringify({ version: 1, requests: [request] }), state.activeEntity)
+}
+
+// The entity and everything under it, parents first: what the Delete key takes.
+function subtree(id: string): string[] {
+  const out = [id]
+  for (let i = 0; i < out.length; i++) {
+    for (const [child, components] of Object.entries(state.snapshot)) {
+      if (object(components.Transform) && String(components.Transform.parent) === out[i]) out.push(child)
+    }
+  }
+  return out
+}
+
+// The Delete key's path, so it is one undo step and autosaves like a hand delete, children included.
+async function deleteEntity(ref: unknown): Promise<unknown> {
+  const id = entity(ref)
+  const name = entityName(state.snapshot, id) ?? null
+  // a name shared by two entities would delete whichever came first
+  if (state.snapshot[String(ref)] === undefined) {
+    const same = Object.keys(state.snapshot).filter((other) => nameKey(entityName(state.snapshot, other) ?? '') === nameKey(String(ref)))
+    if (same.length > 1) throw new Error(`${same.length} entities are called "${String(ref)}" (ids ${same.join(', ')}): delete one by its id.`)
+  }
+  // the hierarchy refuses these too: the code makes them again on every run
+  if (isCodeEntity(state.snapshot, id, provenanceBaseline(), authoredFromComposite())) {
+    throw new Error(`"${name ?? id}" is made by the scene's code on every run, so deleting it here would not stick. Change the code that creates it.`)
+  }
+  const deleted = subtree(id).map((each) => ({ id: each, name: entityName(state.snapshot, each) ?? null }))
+  await uiDeleteEntityRecursive(id)
+  if (state.snapshot[id] !== undefined) throw new Error(`"${name ?? id}" could not be deleted.`)
+  return { id, name, deleted }
 }
 
 // A catalog model is placed whatever its textures cost: the answer says what it spends of the scene's limit.

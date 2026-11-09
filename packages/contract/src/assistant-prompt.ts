@@ -158,6 +158,9 @@ scene_request accepts one request:
   and Material, and MeshCollider when the model carries its own
   colliders, with the Transform scale the model needs: a stand-in's scale was its size and would stretch the
   model. src comes from list_files kind models, never guessed.
+- {type:"deleteEntity",entity:"id or unique name"} deletes it and all under it as the Delete key does (one undo
+  step) and answers deleted: each id and name. Refuses code-made entities and shared names. Delete what you
+  replaced or redid (an old placement, a test object) in the same batch, or what the creator asks; say what went.
 - {type:"findModels",query:"stone platform",limit:8} searches the model catalog, 5,700 free models, by whole words
   in name, category, tags and description; answers id, name, category, size in metres, triangles and KB, lightest
   first among equals; flat:true marks a picture, sign or thin plane, listed last unless the query asks for one.
@@ -268,7 +271,8 @@ Never say an action or mechanic works without evidence from this turn (its resul
 request's reply or a view).
 Play a core loop in one playtest steps call (walk to entities by name, waitFor game.state), rerunning from the
 failing step.
-Deleting entities or files and installing packages are not supported by these tools.
+Deleting files and installing packages are not supported by these tools. Never ask the creator to delete or edit
+by hand what a request above does.
 Each turn you get only a count of the scene's entities and of the project's files, plus the entities the creator
 has selected. Look up what you need before acting, as you would explore a codebase: outline to find entities by
 name and see where they are, inspect for the components you will change, list_files with a kind and a match for
