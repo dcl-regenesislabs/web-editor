@@ -95,7 +95,7 @@ describe('assistant live operations', () => {
     const operations = createOperations({ track: (operation) => tracked.push(operation) })
     const outcome = () => tracked.filter((operation) => operation.action === 'turn_finished').map((operation) => operation.action === 'turn_finished' && operation.outcome)
 
-    const waiting = scriptedFactory(async (call) => { await call('build', {}) })
+    const waiting = scriptedFactory(async (call) => { await call('write_file', {}) })
     const stopped = connect(waiting, operations, WALLET_A)
     stopped.prompt('one')
     await vi.waitFor(() => expect(stopped.events.some((event) => event.kind === 'call')).toBe(true))

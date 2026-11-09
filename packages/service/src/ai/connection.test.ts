@@ -7,7 +7,8 @@ import { fauxAssistantMessage, fauxProvider, fauxToolCall, Type } from '@earendi
 import { describe, expect, it, vi } from 'vitest'
 import type { AssistantServerMessage } from '../../../contract/src/assistant.ts'
 import type { AiSendParams } from '../../../contract/src/shell.ts'
-import { createConnection, parsePrompt } from './connection.ts'
+import { createConnection, parsePrompt, toolTimeout } from './connection.ts'
+import { editorToolDeadlineMs } from '../../../contract/src/editor-tools.ts'
 import { createAssistantMemory } from './memory.ts'
 import { createSessionLog, type TurnRecord } from './session-log.ts'
 import { createUsageMeter } from './usage.ts'
@@ -87,7 +88,7 @@ describe('assistant tool bridge', () => {
     expect(events.filter((e) => e.kind === 'event' && e.event.kind === 'done')).toEqual([])
   })
 
-  it('stops the turn after a browser timeout, prevents retries, and hides provider errors', async () => {
+  it('pauses the turn when a tool without a deadline of its own times out, prevents retries, and hides provider errors', async () => {
     const events: AssistantServerMessage[] = []
     let toolError = ''
     const connection = createConnection({
@@ -96,8 +97,8 @@ describe('assistant tool bridge', () => {
         providers: async () => [],
         create: async (_params, call) => ({
           async prompt() {
-            try { await call('build', {}) } catch (error) { toolError = String(error) }
-            await expect(call('build', {})).rejects.toThrow('cancelled')
+            try { await call('write_file', {}) } catch (error) { toolError = String(error) }
+            await expect(call('write_file', {})).rejects.toThrow('cancelled')
             throw new Error('a provider credential must not appear')
           },
           abort: async () => {}, dispose: () => {}, snapshot: () => [], takeUsage: () => ({ cost: 0 })
@@ -108,10 +109,69 @@ describe('assistant tool bridge', () => {
     await vi.waitFor(() => expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: false } }))
     expect(toolError).toContain('browser did not answer')
     // paused, so Continue carries the same conversation on from the failed call
-    expect(events).toContainEqual({ kind: 'event', event: { kind: 'error', turnId: 'one', message: 'Building the scene timed out. Check the scene, then continue.', resumable: true } })
+    expect(events).toContainEqual({ kind: 'event', event: { kind: 'error', turnId: 'one', message: 'Saving a file timed out. Check the scene, then continue.', resumable: true } })
     expect(events.filter((event) => event.kind === 'call')).toHaveLength(1)
     expect(JSON.stringify(events)).not.toContain('credential must not appear')
     connection.close()
+  })
+
+  it.each(['build', 'scene_request', 'playtest'] as const)('answers a %s that timed out with an error the model can act on, and the turn goes on', async (tool) => {
+    vi.useFakeTimers()
+    const events: AssistantServerMessage[] = []
+    const info = vi.fn()
+    let toolError = ''
+    const args = { action: 'status' }
+    const connection = createConnection({
+      logger: { error: vi.fn(), info }, send: (e) => events.push(e), allowTurn: () => true,
+      factory: {
+        providers: async () => [],
+        create: async (_params, call) => ({
+          async prompt() {
+            try { await call(tool, args) } catch (error) { toolError = String(error) }
+            await call('read_file', { path: 'src/index.ts' })
+          },
+          abort: async () => {}, dispose: () => {}, snapshot: () => [], takeUsage: () => ({ cost: 0 })
+        })
+      }
+    })
+    try {
+      const limit = toolTimeout(tool, args)
+      connection.receive({ kind: 'prompt', turnId: 'one', projectId: 'scene', params })
+      await vi.advanceTimersByTimeAsync(limit - 1)
+      expect(toolError).toBe('')
+      await vi.advanceTimersByTimeAsync(1)
+      expect(toolError).toBe(`Error: The ${{ build: 'build', scene_request: 'scene request', playtest: 'playtest' }[tool]} did not answer within ${limit / 1000} s; ` +
+        'the editor may have reloaded, or it is stuck on the scene. Try again once, or carry on and tell the creator what is left.')
+      expect(events.some((e) => e.kind === 'event' && e.event.kind === 'error')).toBe(false)
+      expect(info).toHaveBeenCalledWith(`assistant tool timeout turn=one n=1 tool=${tool} limit=${limit}ms`)
+      const read = events.filter((e) => e.kind === 'call')[1]
+      if (read?.kind !== 'call') throw new Error('No call')
+      connection.receive({ kind: 'result', turnId: 'one', callId: read.callId, ok: true, text: 'file' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(events).toContainEqual({ kind: 'event', event: { kind: 'done', turnId: 'one', ok: true } })
+    } finally {
+      await connection.close()
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives each slow tool a limit far below the 15 minutes, past the deadline the editor keeps itself', () => {
+    expect(toolTimeout('read_file')).toBe(60_000)
+    expect(toolTimeout('view')).toBe(120_000)
+    expect(toolTimeout('write_file')).toBe(15 * 60_000)
+    expect(toolTimeout('build')).toBe((editorToolDeadlineMs('build', {}) ?? 0) + 30_000)
+    expect(toolTimeout('build')).toBe(270_000)
+    expect(toolTimeout('scene_request', { request: { type: 'batch' } })).toBe(270_000)
+    // status: two reads of the game, then a margin
+    expect(toolTimeout('playtest', { action: 'status' })).toBe(16_000 + 30_000 + 30_000)
+    const steps = [{ action: 'start' }, { action: 'walk', entity: 'Crate' }, { action: 'input', keys: ['E'] }, { action: 'waitFor', path: 'score', changes: true, timeoutMs: 20_000 }]
+    // 120 + 10 + 1.3 + 20 s of actions, a game read after each and one before, then the picture and the margins
+    expect(toolTimeout('playtest', { action: 'steps', steps, view: true })).toBe(151_300 + 5 * 8_000 + 45_000 + 30_000 + 30_000)
+    const longest = Array.from({ length: 20 }, () => ({ action: 'waitFor', hud: 'Score', timeoutMs: 60_000 }))
+    const capped = toolTimeout('playtest', { action: 'steps', steps: longest, view: true })
+    // the editor starts no step after 180 s, but the last one runs out its own 60 s
+    expect(capped).toBe(180_000 + 60_000 + 8_000 + 8_000 + 45_000 + 30_000 + 30_000)
+    expect(capped).toBeLessThan(15 * 60_000 / 2)
   })
 
   it('keeps the session after a turn limit so the next prompt continues it', async () => {

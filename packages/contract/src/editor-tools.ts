@@ -118,6 +118,64 @@ export const EDITOR_TOOL_DESCRIPTIONS: Record<EditorToolName, string> = {
   view: 'A picture of the scene. As is; or framed on entity (an id or unique name); or from a world position `from` looking at `lookAt`, in metres (16 per parcel), for a plan view from above, a facade or a close-up. Use it to check what you placed, moved or built. target mobile pictures the open mobile preview instead, with its touch controls, from the player camera (no entity, from or lookAt); with no target or camera arguments an embedded mobile preview is pictured.'
 }
 
+// ---- how long the editor works on a call before it answers with an error instead ----
+
+// A cold build starts the 16 MB bundler and installs the project's packages before it compiles, then reloads the
+// scene and waits up to ~20 s for it to come back: about a minute on a slow connection. Four is generous and still
+// ends a stuck one long before the turn would.
+const BUILD_DEADLINE_MS = 4 * 60_000
+// The slowest scene requests are a sceneSettings that moves the parcels (a build, then up to 90 s for the preview to
+// load them) and a 200-request batch of prefab imports.
+const SCENE_REQUEST_DEADLINE_MS = 4 * 60_000
+// playtest: what each action may take, as packages/ui/src/ai/playtest.ts bounds it. start and stop reload the scene,
+// which first waits for a pending rebuild.
+const RESTART_MS = 2 * 60_000
+const PROBE_MS = 8_000
+const STEPS_MS = 180_000
+const VIEW_MS = 45_000
+const PLAYTEST_MARGIN_MS = 30_000
+
+function within(value: unknown, fallback: number, max: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(value, max) : fallback
+}
+
+function playtestActionMs(raw: unknown): number {
+  if (!object(raw)) return 0
+  switch (raw.action) {
+    case 'start': case 'stop': return RESTART_MS
+    case 'input': return within(raw.durationMs, 300, 5000) + (raw.waitFor === undefined ? 0 : 15_000) + 1000
+    case 'wait': return within(raw.durationMs, 1000, 5000)
+    case 'walk': return raw.entity === undefined ? 10_000 : within(raw.timeoutMs, 10_000, 20_000)
+    case 'click': return 2000
+    case 'waitFor': return within(raw.timeoutMs, 10_000, 60_000)
+    default: return 0
+  }
+}
+
+// A steps run starts no step after STEPS_MS, but the one that started last runs to its own end.
+function playtestDeadlineMs(args: Record<string, unknown>): number {
+  if (args.action !== 'steps' || !Array.isArray(args.steps)) return playtestActionMs(args) + 2 * PROBE_MS + PLAYTEST_MARGIN_MS
+  const steps = args.steps.slice(0, 20).map(playtestActionMs)
+  const chain = steps.reduce((sum, ms) => sum + ms + PROBE_MS, 0)
+  return Math.min(chain, STEPS_MS + Math.max(0, ...steps) + PROBE_MS) + PROBE_MS + (args.view === true ? VIEW_MS : 0) + PLAYTEST_MARGIN_MS
+}
+
+/** How long the editor works on a call before it answers with an error; undefined for a tool without a deadline. */
+export function editorToolDeadlineMs(tool: EditorToolName, args: Record<string, unknown>): number | undefined {
+  if (tool === 'build') return BUILD_DEADLINE_MS
+  if (tool === 'scene_request') return SCENE_REQUEST_DEADLINE_MS
+  if (tool === 'playtest') return playtestDeadlineMs(args)
+  return undefined
+}
+
+const DEADLINE_SUBJECT: Partial<Record<EditorToolName, string>> = { build: 'The build', scene_request: 'The scene request', playtest: 'The playtest' }
+
+// what the model reads when a call ran out of time: why it may have, and what to do next
+export function editorToolTimeoutMessage(tool: EditorToolName, ms: number, cause: string): string {
+  return `${DEADLINE_SUBJECT[tool] ?? 'The tool'} did not answer within ${Math.round(ms / 1000)} s; ${cause}. ` +
+    'Try again once, or carry on and tell the creator what is left.'
+}
+
 export type EditorToolContent =
   | { type: 'text'; text: string }
   | { type: 'image'; mimeType: 'image/jpeg'; data: string }
