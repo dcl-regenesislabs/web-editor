@@ -12,6 +12,8 @@ import { captureView } from './view'
 /** What the desktop editor knows about the scene's installed SDK; the web build uses the editor's own. */
 export type SceneSdkProbe = () => Promise<SceneSdk | null>
 
+const LAYOUT_SETTLE_MS = 500
+
 function measure(snapshot: Record<string, Components>, sdk: SceneSdk | null): Record<string, unknown> {
   const root = snapshot['0'] ?? {}
   const blocked = unmeasurable(snapshot, sdk)
@@ -35,7 +37,13 @@ export async function uiLayout(request: Record<string, unknown>, signal: AbortSi
   }
   if (state.frozen) throw new Error('Start playtesting first (platform mobile for the phone layout): the UI is laid out while the game runs.')
   const scene = await probe()
-  const layout = measure(await cmd.crdtSnapshot(), scene)
+  let layout = measure(await cmd.crdtSnapshot(), scene)
+  // right after a playtest starts the engine can write the layout a frame or two late: look again before blaming it
+  if (layout.unmeasurable === 'explorer-has-no-layout-feedback') {
+    await new Promise((resolve) => setTimeout(resolve, LAYOUT_SETTLE_MS))
+    signal.throwIfAborted()
+    layout = measure(await cmd.crdtSnapshot(), scene)
+  }
   signal.throwIfAborted()
   const view = await captureView({ entity: null, from: null, lookAt: null }, signal)
   return { platform: playtestPlatform(), ...layout, view }
