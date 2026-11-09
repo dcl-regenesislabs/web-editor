@@ -347,3 +347,58 @@ describe('a playtest run as steps', () => {
     expect(blocked).toMatchObject({ ok: false, error: expect.stringContaining('stopped 9 m from it') })
   })
 })
+
+describe('a playtest of a scene where many things move', () => {
+  // twenty movers wander every step, one loses health, some start chasing, the score and the timer tick
+  const movers = (t: number) => Array.from({ length: 20 }, (_, i) => ({
+    id: `zombie-${i + 1}`, kind: i % 3 === 0 ? 'runner' : 'walker',
+    pos: { x: Math.round((4 + i * 0.6 + Math.sin(t + i) * 2) * 1000) / 1000, y: 0, z: Math.round((6 + Math.cos(t * 0.7 + i) * 3) * 1000) / 1000 },
+    hp: Math.max(0, 100 - (i === 3 ? t * 20 : 0)), mode: t > 4 && i % 4 === 0 ? 'chase' : 'wander'
+  }))
+  const moving = () => {
+    let t = 0
+    const world = () => answer({
+      round: { id: 'w-1', number: 1, seed: 5, phase: 1 }, score: Math.floor(t / 3) * 10, held: t % 4 === 1 ? 'sword' : null,
+      timeLeft: 120 - t * 1.5, movers: movers(t), wave: 1 + Math.floor(t / 5)
+    }, { now: 10_000 + t * 400 })
+    mock.game = world()
+    const real = mock.probe.getMockImplementation()!
+    mock.probe.mockImplementation(async (entity, name, value) => { t++; mock.game = world(); return real(entity, name, value) })
+    onTestFinished(() => { mock.probe.mockImplementation(real) })
+  }
+  const play = async (request: Record<string, unknown>) => {
+    vi.useFakeTimers()
+    const pending = playtest(request, new AbortController().signal)
+    await vi.runAllTimersAsync()
+    return (await pending) as { steps: Array<{ changed: Record<string, Record<string, unknown>> }>; game: Record<string, unknown> }
+  }
+  const steps = [{ action: 'walk', to: { x: 8, y: 0, z: 8 } }, ...Array.from({ length: 15 }, (_, i) => i % 2 === 0 ? { action: 'input', keys: ['E'] } : { action: 'wait', durationMs: 500 })]
+
+  it('reports the movers as one entry per field and keeps every single change in view', async () => {
+    moving()
+    const result = await play({ action: 'steps', steps })
+    // 19,421 chars when every moved coordinate was its own entry
+    expect(JSON.stringify(result).length).toBeLessThan(8000)
+    for (const step of result.steps) expect(Object.keys(step.changed).length).toBeLessThanOrEqual(12)
+    expect(result.steps[0].changed).toMatchObject({
+      held: { before: 'sword', after: null }, 'movers.3.hp': { before: 80, after: 60 },
+      'movers.*.pos.x': { paths: 20, example: expect.stringMatching(/^movers\.\d+\.pos\.x$/) }
+    })
+    expect(result.steps[3].changed['movers.*.mode']).toEqual({ paths: 5, example: 'movers.0.mode', before: 'wander', after: 'chase' })
+    expect(result.game.changed).toMatchObject({ score: { before: 0, after: 50 }, wave: { before: 1, after: 4 } })
+  })
+
+  it('reads one value in full when asked by path', async () => {
+    moving()
+    const single = await play({ action: 'wait', durationMs: 500 })
+    // 2,496 chars before
+    expect(JSON.stringify(single).length).toBeLessThan(2000)
+    expect((single.game.state as { movers: unknown[] }).movers).toHaveLength(13)
+    const read = await play({ action: 'status', path: 'movers' })
+    expect(read.game.read).toMatchObject({ path: 'movers', value: expect.any(Array) })
+    expect(((read.game.read as { value: unknown[] }).value)).toHaveLength(20)
+    expect((await play({ action: 'status', path: 'game.state.movers.15.pos' })).game.read).toEqual({ path: 'game.state.movers.15.pos', value: expect.objectContaining({ y: 0 }) })
+    expect((await play({ action: 'status', path: 'boss' })).game.read).toEqual({ path: 'boss', exists: false })
+    await expect(playtest({ action: 'status', path: '' }, new AbortController().signal)).rejects.toThrow('path is a game.state path')
+  })
+})

@@ -282,7 +282,7 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
             hud: Type.Optional(Type.String()), path: Type.Optional(Type.String()), equals: Type.Optional(Type.Unknown()),
             changes: Type.Optional(Type.Boolean()), exists: Type.Optional(Type.Boolean()), observe: Type.Optional(Type.Boolean())
           }), { maxItems: 20 })),
-          view: Type.Optional(Type.Boolean()), label
+          view: Type.Optional(Type.Boolean()), path: Type.Optional(Type.String()), label
         }),
         ui_layout: Type.Object({ label }),
         mobile_check: Type.Object({ label }),

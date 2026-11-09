@@ -28,6 +28,7 @@ import { ICON_DIR, iconCredit, iconCredits, iconPath, iconSvg, loadIconIndex, se
 import { ICON_SIZES, iconPng } from './icon-png'
 import { uiResyncScene } from '../actions/assets'
 import { runRequestText } from './requests'
+import { batchAnswer, type BatchOutcome } from './batch-answer'
 import { resolveEntityRef } from './request-format'
 import { sceneOutline } from './roster'
 import { invalidateSceneCheckCache, refreshSceneChecks } from '../features/editor/scene-check-context'
@@ -104,14 +105,6 @@ export type SceneSettingsEditor = (settings: AssistantSceneSettings) => Promise<
 
 const MAX_BATCH = 200
 
-// A batch answers what the request did, not the components it just wrote: echoing them back
-// filled the conversation with the assistant's own input. inspect reads them when needed.
-function brief(result: unknown): unknown {
-  if (!object(result)) return result
-  const { components: _components, value: _value, ...rest } = result
-  return rest
-}
-
 export async function browserSceneRequest(request: unknown, signal: AbortSignal, settings?: SceneSettingsEditor): Promise<unknown> {
   signal.throwIfAborted()
   if (!object(request)) throw new Error('Invalid scene request.')
@@ -120,17 +113,18 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       throw new Error(`A batch needs 1–${MAX_BATCH} requests.`)
     }
     // one failure doesn't stop the rest: each later request may not depend on it
-    const results: unknown[] = []
+    const results: Array<{ type: string; outcome: BatchOutcome }> = []
     for (const item of request.requests) {
       if (object(item) && item.type === 'batch') throw new Error('Batches do not nest.')
+      const type = object(item) && typeof item.type === 'string' ? item.type : ''
       try {
-        results.push({ ok: true, result: brief(await browserSceneRequest(item, signal, settings)) })
+        results.push({ type, outcome: { ok: true, result: await browserSceneRequest(item, signal, settings) } })
       } catch (e) {
         signal.throwIfAborted()
-        results.push({ ok: false, error: e instanceof Error ? e.message : String(e) })
+        results.push({ type, outcome: { ok: false, error: e instanceof Error ? e.message : String(e) } })
       }
     }
-    return { results }
+    return batchAnswer(results)
   }
   if (request.type === 'sceneSettings') {
     if (settings === undefined) throw new Error('Scene settings cannot be changed here.')

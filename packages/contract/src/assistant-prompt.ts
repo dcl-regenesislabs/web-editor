@@ -245,10 +245,10 @@ scene_request accepts one request:
   which are soft (explorers warn, slower devices struggle): keep every value under, and simplify or grow the
   parcels first. megabytes is the deploy size; keep it small, as big scenes load slowly.
 - {type:"batch",requests:[...]} runs up to 200 of the requests above in order, reads and writes together, and
-  returns one {ok,result|error} per request, the result naming what changed (ids, model paths) without the
-  components you sent; inspect reads them back. A failure does not stop the rest. Later requests can name entities
-  created earlier in the batch. One batch per change, not one request per call: outline the entities you need,
-  then every edit in one batch, then view.
+  returns one {ok,result|error} per request, an edit's naming what changed (ids, model paths), not what you sent;
+  inspect reads it back. same.<type> has what edits share. A failure does not stop the rest. Later requests can
+  name entities created earlier in the batch. One batch per change, not one request per call: outline the
+  entities you need, then every edit in one batch, then view.
 Edits need edit mode, and playtest and mobile_check leave the scene playing: playtest stop before any edit.
 You can see the scene: view returns a picture from the creator's camera; framed on an entity when you name one;
 or from a world position you choose (from, lookAt in metres): above the scene centre looking down for a plan view,
