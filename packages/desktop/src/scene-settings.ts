@@ -4,6 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { SceneSettings, SpawnPointSetting } from '@dcl-editor/contract'
+import { writeSceneJson } from './scene-json-guard'
 
 export const IMG_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -127,9 +128,8 @@ export function loadSceneSettings(dir: string): SceneSettings {
 export function saveSceneSettings(dir: string, s: SceneSettings): string | null {
   const err = validateSettings(s)
   if (err !== null) return err
-  const file = path.join(dir, 'scene.json')
-  const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as RawSceneJson
-  fs.writeFileSync(file, JSON.stringify(applySettings(raw, s), null, 2) + '\n')
+  const raw = JSON.parse(fs.readFileSync(path.join(dir, 'scene.json'), 'utf8')) as RawSceneJson
+  writeSceneJson(dir, applySettings(raw, s))
   return null
 }
 

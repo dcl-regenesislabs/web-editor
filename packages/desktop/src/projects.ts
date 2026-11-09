@@ -11,6 +11,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import * as config from './config'
 import { templatesDir } from './app-paths'
+import { renameScene, writeSceneJson } from './scene-json-guard'
 import type { ProjectInfo, SceneTemplate } from '@dcl-editor/contract'
 
 const IMG_MIME: Record<string, string> = {
@@ -123,22 +124,19 @@ export async function deleteProject(win: BrowserWindow, cfg: config.AppConfig, d
   return true
 }
 
-// Rename edits scene.json's display.title — NOT the folder — so recents paths stay valid.
+// Rename edits scene.json's display.title — NOT the folder — so recents paths stay valid —
+// and the composite's copy of it, which would otherwise be written back over the new name.
 export function renameProject(dir: string, title: string): void {
-  const sj = path.join(dir, 'scene.json')
-  const meta = JSON.parse(fs.readFileSync(sj, 'utf8')) as { display?: Record<string, unknown> }
-  meta.display = { ...(meta.display ?? {}), title: title.trim() }
-  fs.writeFileSync(sj, JSON.stringify(meta, null, 2))
+  renameScene(dir, title)
 }
 
-// Set the scene's target world (scene.json worldConfiguration.name) — same
-// write pattern as renameProject. sdk-commands treats any non-empty
-// worldConfiguration as "this is a World deployment".
+// Set the scene's target world (scene.json worldConfiguration.name).
+// sdk-commands treats any non-empty worldConfiguration as "this is a World deployment".
 export function setWorldName(dir: string, name: string): void {
   const sj = path.join(dir, 'scene.json')
   const meta = JSON.parse(fs.readFileSync(sj, 'utf8')) as { worldConfiguration?: Record<string, unknown> }
   meta.worldConfiguration = { ...(meta.worldConfiguration ?? {}), name: name.trim().toLowerCase() }
-  fs.writeFileSync(sj, JSON.stringify(meta, null, 2))
+  writeSceneJson(dir, meta)
 }
 
 export function duplicateProject(cfg: config.AppConfig, dir: string): string | null {
@@ -154,22 +152,6 @@ export function duplicateProject(cfg: config.AppConfig, dir: string): string | n
   return dest
 }
 
-// The template ships a composite whose scene metadata matches its scene.json: without one the
-// inspector writes its own (a one-parcel "Test Scene"), and that copy can later be written back
-// over scene.json. The new scene's name goes in both.
-function nameComposite(dir: string, name: string): void {
-  const file = path.join(dir, 'assets', 'scene', 'main.composite')
-  try {
-    const composite = JSON.parse(fs.readFileSync(file, 'utf8')) as { components?: Array<{ name?: string; data?: Record<string, { json?: Record<string, unknown> }> }> }
-    const root = composite.components?.find((c) => c.name?.startsWith('inspector::SceneMetadata'))?.data?.['0']?.json
-    if (root === undefined) return
-    root.name = name
-    fs.writeFileSync(file, JSON.stringify(composite, null, 2))
-  } catch {
-    /* no composite in the template: the inspector makes one on first open */
-  }
-}
-
 // Scaffold a new scene by copying a bundled template folder (offline, deterministic
 // — no global sdk-commands init). Deps install on first open (ensureProjectDeps).
 export function createScene(
@@ -183,15 +165,13 @@ export function createScene(
   const slug = slugify(name)
   const dest = freeFolder(path.join(parentDir, slug), (n) => path.join(parentDir, `${slug}-${n}`))
   fs.cpSync(tdir, dest, { recursive: true })
+  // The template ships a composite whose metadata matches its scene.json (without one the
+  // inspector writes its own default copy); the new name goes in both.
   try {
-    const sj = path.join(dest, 'scene.json')
-    const meta = JSON.parse(fs.readFileSync(sj, 'utf8')) as { display?: Record<string, unknown> }
-    meta.display = { ...(meta.display ?? {}), title: name.trim() }
-    fs.writeFileSync(sj, JSON.stringify(meta, null, 2))
+    renameScene(dest, name)
   } catch {
     /* template had no/invalid scene.json — leave as copied */
   }
-  nameComposite(dest, name.trim())
   cfg.recentProjects = [dest, ...cfg.recentProjects.filter((p) => p !== dest)]
   cfg.lastOpened[dest] = Date.now()
   config.save(cfg)
