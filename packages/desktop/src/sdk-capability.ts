@@ -7,23 +7,55 @@
 //
 // Probe the capability rather than compare versions: any build carrying the API
 // works, so a creator already on a newer auth-server build is never told to change.
+// The same probe tells ui_layout whether uiTransform has elementId: published SDK
+// releases drop it, and then the explorer measures none of the scene's UI.
 import fs from 'node:fs'
 import path from 'node:path'
+import type { SdkCapability } from '@dcl-editor/contract'
 import { spawnNpm } from './servers'
 
-export interface SdkCapability {
-  authServer: boolean
-  /** false when the scene has no node_modules yet — unknown, not incapable */
-  installed: boolean
+
+const UI_TRANSFORM_DTS = ['dist', 'components', 'generated', 'pb', 'decentraland', 'sdk', 'components', 'ui_transform.gen.d.ts']
+
+function readOrNull(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+// the @dcl/ecs the scene's @dcl/sdk loads: its own nested copy first, else the hoisted one
+function uiElementId(projectDir: string): boolean | undefined {
+  const modules = path.join(projectDir, 'node_modules')
+  for (const ecs of [path.join(modules, '@dcl', 'sdk', 'node_modules', '@dcl', 'ecs'), path.join(modules, '@dcl', 'ecs')]) {
+    const src = readOrNull(path.join(ecs, ...UI_TRANSFORM_DTS))
+    if (src !== null) return src.includes('elementId')
+  }
+  return undefined
+}
+
+function sdkVersion(projectDir: string): string | undefined {
+  const src = readOrNull(path.join(projectDir, 'node_modules', '@dcl', 'sdk', 'package.json'))
+  if (src === null) return undefined
+  try {
+    const pkg: unknown = JSON.parse(src)
+    return typeof pkg === 'object' && pkg !== null && 'version' in pkg && typeof pkg.version === 'string' ? pkg.version : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function sdkCapability(projectDir: string): SdkCapability {
-  const dts = path.join(projectDir, 'node_modules', '@dcl', 'sdk', 'network', 'index.d.ts')
-  try {
-    const src = fs.readFileSync(dts, 'utf8')
-    return { authServer: src.includes('isServer'), installed: true }
-  } catch {
-    return { authServer: false, installed: false }
+  const src = readOrNull(path.join(projectDir, 'node_modules', '@dcl', 'sdk', 'network', 'index.d.ts'))
+  if (src === null) return { authServer: false, installed: false }
+  const elementId = uiElementId(projectDir)
+  const version = sdkVersion(projectDir)
+  return {
+    authServer: src.includes('isServer'),
+    installed: true,
+    ...(elementId === undefined ? {} : { uiElementId: elementId }),
+    ...(version === undefined ? {} : { version })
   }
 }
 

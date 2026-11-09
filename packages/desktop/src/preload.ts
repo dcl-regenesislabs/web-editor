@@ -3,7 +3,7 @@
 // engine-related goes through the same-origin iframe instead.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { EDITOR_CHORD_CHANNEL, type EditorChord, AUTH_SIGNIN_CHANNEL, PUBLISH_EVENT_CHANNEL, UPDATE_EVENT_CHANNEL, EDITOR_TOOL_CALL_CHANNEL, EDITOR_TOOL_RESULT_CHANNEL, type EditorToolCall, type EditorToolResult } from '@dcl-editor/contract'
-import type { AiEvent, AiProviderInfo, AiSendParams, AuthSigninPayload, DeployCapability, EditorShell, MobilePreview, OpenPreview, PrefabCopyResult, PrefabImportInspect, PrefabLibraryEntry, PublishEvent, SceneSettings, SceneTemplate, ServersReady, UpdateStatus } from '@dcl-editor/contract'
+import type { AiEvent, AiProviderInfo, AiSendParams, AuthSigninPayload, DeployCapability, EditorShell, MobilePreview, OpenPreview, PrefabCopyResult, PrefabImportInspect, PrefabLibraryEntry, PublishEvent, SceneSettings, SceneTemplate, SdkCapability, ServersReady, UpdateStatus } from '@dcl-editor/contract'
 
 // synchronous probe at load — reliable in a sandboxed preload (see main.ts)
 const isDev = ipcRenderer.sendSync('editor-is-dev') === true
@@ -25,7 +25,7 @@ const shell = {
   renameProject: (dir: string, title: string): Promise<void> => ipcRenderer.invoke('rename-project', dir, title),
   // Scene settings: read/merge-write the editable subset of scene.json
   compositeEntityIds: (dir: string): Promise<number[]> => ipcRenderer.invoke('composite-entity-ids', dir),
-  sdkCapability: (dir: string): Promise<{ authServer: boolean; installed: boolean }> =>
+  sdkCapability: (dir: string): Promise<SdkCapability> =>
     ipcRenderer.invoke('sdk-capability', dir),
   installAuthServerSdk: (dir: string): Promise<{ ok: boolean; message: string }> =>
     ipcRenderer.invoke('sdk-install-auth-server', dir),

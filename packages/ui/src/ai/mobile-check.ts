@@ -7,7 +7,7 @@ import { state } from '@scene/state'
 import { cmd } from '../engine/cmd'
 import { keyHintIssues, layoutIssues, touchIssues, touchLayout, usedActions, visibleButtons, type Canvas, type Issue, type MeasuredNode, type Rect } from './mobile-rules'
 import { playtest, playtestPlatform } from './playtest'
-import { measuredNodes } from './ui-measure'
+import { measuredNodes, unmeasurable, type SceneSdk } from './ui-measure'
 import { captureView } from './view'
 
 type Snapshot = Record<string, Record<string, unknown>>
@@ -96,14 +96,18 @@ function decoded(files: ReadonlyMap<string, Uint8Array>): Array<[string, string]
 }
 
 /** Measure every screen state of the scene's UI on a phone and check it; leaves the mobile playtest running. */
-export async function mobileCheck(signal: AbortSignal, sources: ProjectSources): Promise<unknown> {
+export async function mobileCheck(signal: AbortSignal, sources: ProjectSources, sdk: SceneSdk | null = null): Promise<unknown> {
   signal.throwIfAborted()
   if (state.frozen || playtestPlatform() !== 'mobile') await playtest({ action: 'start', platform: 'mobile' }, signal)
   const first = await untilUi(signal)
-  const modals = modalCount(first)
+  const blocked = unmeasurable(first, sdk)
+  // nothing can be measured: the modals can't be found either, and a check of no nodes would pass
+  const modals = blocked === null ? modalCount(first) : null
   const states: StateResult[] = []
   const issues: Issue[] = []
-  if (modals === null) {
+  if (blocked !== null) {
+    issues.push({ rule: 'setup', state: 'hud', detail: `nothing could be measured (${blocked.reason}): ${blocked.why} ${blocked.instead}` })
+  } else if (modals === null) {
     issues.push({ rule: 'setup', state: 'hud', detail: 'the scene has no HUD from ./runtime/hudLayout: place every panel with addHudItem, or check the layout by hand from the code and a view picture' })
   }
   if (modals !== null) {
