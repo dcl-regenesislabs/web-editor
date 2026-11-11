@@ -26,12 +26,10 @@ export interface AdminIcons {
   tabVideo: string
   tabSmartItems: string
   tabTextAnnouncements: string
-  tabRewards: string
   headerModeration: string
   headerVideo: string
   headerSmartItems: string
   headerTextAnnouncements: string
-  headerRewards: string
 }
 
 export function adminIcons(base: string): AdminIcons {
@@ -43,11 +41,9 @@ export function adminIcons(base: string): AdminIcons {
     tabVideo: icon('admin-panel-video-control-button.png'),
     tabSmartItems: icon('admin-panel-smart-item-control-button.png'),
     tabTextAnnouncements: icon('admin-panel-text-announcement-control-button.png'),
-    tabRewards: icon('admin-panel-rewards-control-button.png'),
     headerModeration: icon('moderation-control-icon.png'),
     headerVideo: icon('video-control.png'),
     headerSmartItems: icon('smart-item-control.png'),
-    headerTextAnnouncements: icon('text-announcement-control.png'),
-    headerRewards: icon('rewards-control.png')
+    headerTextAnnouncements: icon('text-announcement-control.png')
   }
 }

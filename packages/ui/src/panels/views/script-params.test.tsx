@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { getScriptParams } from '../../script/parser'
 import { state } from '@scene/state'
 import { NAME_COMPONENT } from '@scene/custom-components'
 import { ParamField } from './script-params'
@@ -249,6 +253,26 @@ describe('Creator Hub param shapes (creator-hub#1513, #1667, #1748)', () => {
     )
     view.click(view.find('.eui-ds-select-field'))
     expect(view.all('.eui-ds-pop-row').map((e) => e.textContent)).toEqual(['none', 'open', 'close'])
+    view.unmount()
+  })
+})
+
+describe("Creator Hub's Admin Tools script (creator-hub#1748)", () => {
+  it('renders every section of its config, down to the list rows', () => {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../script/creator-hub-fixtures/AdminTools.ts.txt')
+    const { params } = getScriptParams(readFileSync(file, 'utf8'))
+    params.videoControl = { ...params.videoControl, value: { ...(params.videoControl.value as object), videoPlayers: [{ entity: 0, customName: 'Stage' }] } }
+    const view = mount(
+      <>
+        {Object.entries(params).map(([name, param]) => (
+          <ParamField key={name} name={name} param={param} onChange={() => {}} />
+        ))}
+      </>
+    )
+    for (const label of ['Admin Permissions', 'Authorized Admin Users', 'Admin Allow List', 'Kick Coordinates', 'Video Players', 'Smart Items']) {
+      expect(view.byText(label, '.plabel')).not.toBeNull()
+    }
+    expect((view.all('.eui-param-group input').map((i) => (i as HTMLInputElement).value))).toContain('Stage')
     view.unmount()
   })
 })

@@ -18,7 +18,6 @@ import {
 import { adminIcons } from '../../../desktop/prefabs/admin-tools/scripts/icons'
 import { announcementIcons } from '../../../desktop/prefabs/admin-tools/scripts/tabs/announcements/icons'
 import { moderationIcons } from '../../../desktop/prefabs/admin-tools/scripts/tabs/moderation/icons'
-import { rewardsIcons } from '../../../desktop/prefabs/admin-tools/scripts/tabs/rewards/icons'
 import { videoIcons } from '../../../desktop/prefabs/admin-tools/scripts/tabs/video/icons'
 import {
   ASSET_PATH_TOKEN,
@@ -201,7 +200,6 @@ describe('built-in admin-tools prefab', () => {
       ...Object.values(adminIcons('')),
       ...Object.values(announcementIcons('')),
       ...Object.values(moderationIcons('')),
-      ...Object.values(rewardsIcons('')),
       ...Object.values(videoIcons(''))
     ]
     expect(paths.length).toBeGreaterThan(30)

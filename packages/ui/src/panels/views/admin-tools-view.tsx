@@ -7,7 +7,6 @@ import { IconButton, NumberField, Select, TextInput, Toggle } from '../../ds'
 import { IconPlus, IconTrash } from '../../icons'
 import {
   ACTIONS_COMPONENT,
-  REWARDS_COMPONENT,
   VIDEO_PLAYER_COMPONENT,
   actionNames,
   adminToolsJson,
@@ -252,26 +251,6 @@ export const AdminToolsView: ComponentView = (props: ComponentViewProps): JSX.El
           snapshot={snapshot}
           onChange={(smartItems) =>
             apply({ ...value, smartItemsControl: { ...value.smartItemsControl, smartItems } })
-          }
-        />
-      </Section>
-
-      <Section title="Rewards" enabled={value.rewardsControl.isEnabled}>
-        <ToggleRow
-          label="enabled"
-          checked={value.rewardsControl.isEnabled}
-          onChange={(isEnabled) =>
-            apply({ ...value, rewardsControl: { ...value.rewardsControl, isEnabled } })
-          }
-        />
-        <RefList
-          items={value.rewardsControl.rewardItems}
-          options={options(REWARDS_COMPONENT)}
-          prefix="Reward"
-          addLabel="Add reward dispenser"
-          emptyHint="No entity in this scene has a Rewards component yet."
-          onChange={(rewardItems) =>
-            apply({ ...value, rewardsControl: { ...value.rewardsControl, rewardItems } })
           }
         />
       </Section>

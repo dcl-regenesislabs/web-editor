@@ -944,7 +944,7 @@ packages/desktop/prefabs/admin-tools/
     state.ts         mutable panel state; react-ecs re-renders off it each frame
     components.ts    the asset-packs components the prefab touches
     api.ts           endpoints + the signedFetch wrapper
-    actions.ts       ~100-line local action dispatcher (not the Hub's interpreter)
+    actions.ts       ~150-line local action dispatcher (not the Hub's interpreter)
     message-bus.ts   wallet-validated comms commands + per-frame revert
     icons.ts         iconPath()/createIcons() — every texture path in the prefab
     ui.tsx           shared react-ecs primitives
@@ -974,12 +974,27 @@ Things worth knowing before touching it:
   comms bus, one synced video state under a fixed sync id, one drain system the
   engine refuses to add twice. A module-scope `started` flag stops a second
   item with a console line naming the fix (delete it) instead of throwing.
-- **Endpoints are hardcoded** (`comms-gatekeeper.decentraland.<org|zone>`,
-  `rewards.decentraland.<org|zone>`) exactly as they are in the Hub runtime, with
-  the org/zone switch driven by the realm's network id.
+- **Endpoints are hardcoded** (`comms-gatekeeper.decentraland.<org|zone>`)
+  exactly as they are in the Hub runtime, with the org/zone switch driven by the
+  realm's network id.
+- **The Smart Items tab runs** `play_animation`, `play_sound`, `set_visibility`,
+  `set_state`, `play_video_stream` and `call_script_method`. The last is what
+  Creator Hub's script-backed smart items (doors, buttons, levers, platforms,
+  seats) author on their Actions since creator-hub#1667: `actions.ts` looks the
+  instance up in `globalThis.__DCL_SCRIPT_INSTANCES__` by `<entity>:<scriptPath>`
+  (a payload still holding `{assetPath}/` matches the entity's script with that
+  file name) and calls `methodName` with `params` positionally.
+- **No Rewards tab.** Creator Hub dropped its Rewards control (creator-hub#1748;
+  rewards live in the `wearable_dispenser` smart item now), and so did this
+  panel. `rewardsControl` stays in the `asset-packs::AdminTools` schema and in the
+  inspector's write, unedited, because placed items carry it.
 - **Not ported:** the DCL Cast presentation-bot flow (this SDK pin exposes only
-  `getActiveVideoStreams` from `~system/CommsApi` — no pub/sub transport) and the
-  rewards supply counter (the server rejects the explorer's signedFetch for it).
+  `getActiveVideoStreams` from `~system/CommsApi` — no pub/sub transport).
+- **Creator Hub's own Admin Tools is a script now** (creator-hub#1748): its
+  `admin_toolkit` carries `asset-packs::Script` with `AdminTools.ts` and no
+  `asset-packs::AdminTools` component, so a scene made with it opens here as a
+  Script card whose object and list params the inspector edits directly (see
+  `packages/ui/src/script/parser.ts`), not in the Admin Tools view.
 - **`asset-packs::AdminTools` is deliberately absent from `ALLOWED_COMPONENTS`,**
   so it stays out of the Add-Component picker: the config with no `admin.tsx`
   behind it would do nothing. The inspector still renders it for placed prefabs.

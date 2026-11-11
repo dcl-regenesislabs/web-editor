@@ -9,8 +9,7 @@ export enum TabId {
   SMART_ITEMS = 'smart_items',
   TEXT_ANNOUNCEMENTS = 'text_announcements',
   VIDEO = 'video',
-  MODERATION = 'moderation',
-  REWARDS = 'rewards'
+  MODERATION = 'moderation'
 }
 
 export interface SmartItemUiState {
@@ -35,9 +34,6 @@ export interface AdminState {
     announcements: Array<{ id: string; text: string; author: string; timestamp: number }>
     maxAnnouncements: number
   }
-  rewards: {
-    selectedIndex: number | undefined
-  }
 }
 
 export function createAdminState(): AdminState {
@@ -48,8 +44,7 @@ export function createAdminState(): AdminState {
     bans: [],
     smartItems: { selectedIndex: undefined, byEntity: new Map() },
     video: { selectedIndex: undefined },
-    textAnnouncements: { draft: '', announcements: [], maxAnnouncements: 4 },
-    rewards: { selectedIndex: undefined }
+    textAnnouncements: { draft: '', announcements: [], maxAnnouncements: 4 }
   }
 }
 

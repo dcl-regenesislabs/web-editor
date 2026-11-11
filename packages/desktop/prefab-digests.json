@@ -1,7 +1,7 @@
 {
   "admin-tools": {
-    "version": "1.1.0",
-    "digest": "6b4554f262be1e1034668f237fb021838d22cc4d84f9a4c5140f3704d2b77157"
+    "version": "1.2.0",
+    "digest": "39ee5923b4e8bf8564213b8bb51a87e9139b585a1c877bd1e4bf02b1e27de3d4"
   },
   "announcer": {
     "version": "1.3.0",

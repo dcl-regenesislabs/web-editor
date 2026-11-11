@@ -26,7 +26,6 @@ import { createAdminState, drainNextTick, nextTick, TabId, type AdminState } fro
 import type { AdminPlayer, TabProps, TabSpec } from './types'
 import { IconButton, PANEL_BACKGROUND, PANEL_WIDTH, TEXT_DIM } from './ui'
 import { moderationTab } from './tabs/Moderation'
-import { rewardsTab } from './tabs/Rewards'
 import { smartItemActionsTab } from './tabs/SmartItemActions'
 import { AnnouncementOverlay, textAnnouncementsTab } from './tabs/TextAnnouncements'
 import { videoControlTab } from './tabs/VideoControl'
@@ -43,8 +42,7 @@ const TABS: TabSpec[] = [
   moderationTab,
   videoControlTab,
   smartItemActionsTab,
-  textAnnouncementsTab,
-  rewardsTab
+  textAnnouncementsTab
 ]
 
 function videoPlayerEntities(): Entity[] {
