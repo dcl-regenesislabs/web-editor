@@ -41,6 +41,13 @@ function coerce(param: ScriptParam, value: ParamValue, prefabs: PrefabRefChoice[
       const n = typeof value === 'number' ? value : Number(value)
       return Number.isFinite(n) ? { value: n } : { problem: `expects a number, not ${JSON.stringify(value)}` }
     }
+    case 'slider': {
+      const n = typeof value === 'number' ? value : Number(value)
+      const min = param.min ?? -Infinity
+      const max = param.max ?? Infinity
+      if (!Number.isFinite(n)) return { problem: `expects a number, not ${JSON.stringify(value)}` }
+      return n >= min && n <= max ? { value: n } : { problem: `expects a number from ${min} to ${max}` }
+    }
     case 'boolean':
       if (typeof value === 'boolean') return { value }
       if (value === 'true') return { value: true }
@@ -73,7 +80,10 @@ function coerce(param: ScriptParam, value: ParamValue, prefabs: PrefabRefChoice[
       }
       return { value: ids }
     }
-    default:
+    case 'object':
+    case 'array':
+      return { problem: `is a ${param.type === 'object' ? 'group of settings' : 'list'}, which only the inspector can set` }
+    case 'action':
       return { problem: 'is an action picker, which only the inspector can set' }
   }
 }

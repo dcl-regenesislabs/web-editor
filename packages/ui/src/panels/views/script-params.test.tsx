@@ -192,3 +192,63 @@ describe('scene theme and course controls', () => {
     view.unmount()
   })
 })
+
+describe('Creator Hub param shapes (creator-hub#1513, #1667, #1748)', () => {
+  it('edits a slider within its range', () => {
+    const view = mount(<ParamField name="speed" param={{ type: 'slider', value: 2, min: 0, max: 10, step: 0.5 }} onChange={() => {}} />)
+    const range = view.find('input[type="range"]') as HTMLInputElement
+    expect([range.min, range.max, range.step, range.value]).toEqual(['0', '10', '0.5', '2'])
+    view.unmount()
+  })
+
+  it("edits an object's members in place and writes the whole object back", () => {
+    let picked: unknown
+    const param = {
+      type: 'object' as const,
+      value: { label: 'a', on: false },
+      fields: { label: { type: 'string' as const, value: '' }, on: { type: 'boolean' as const, value: false } }
+    }
+    const view = mount(<ParamField name="cfg" param={param} onChange={(v) => { picked = v }} />)
+    expect(view.text()).toContain('2 settings')
+    view.type(view.find('.eui-param-group input'), 'b')
+    expect(picked).toEqual({ label: 'b', on: false })
+    view.unmount()
+  })
+
+  it('adds and removes list rows', () => {
+    let picked: unknown
+    const item = { type: 'object' as const, value: { entity: 0, customName: '' }, fields: { entity: { type: 'entity' as const, value: 0 }, customName: { type: 'string' as const, value: '' } } }
+    const render = (value: { entity: number; customName: string }[]) => (
+      <ParamField name="videoPlayers" param={{ type: 'array', value, item }} onChange={(v) => { picked = v }} />
+    )
+    const view = mount(render([]))
+    expect(view.text()).toContain('none yet')
+    view.click(view.find('[aria-label="add videoPlayers"]'))
+    expect(picked).toEqual([{ entity: 0, customName: '' }])
+    view.render(render([{ entity: 512, customName: 'Screen' }, { entity: 513, customName: 'Other' }]))
+    view.click(view.find('[aria-label="remove videoPlayers 1"]'))
+    expect(picked).toEqual([{ entity: 513, customName: 'Other' }])
+    view.unmount()
+  })
+
+  it('offers only entities with the @components it names', () => {
+    run(() => { state.snapshot = {
+      '512': { [NAME_COMPONENT]: { value: 'Screen' }, 'asset-packs::VideoScreen': {} },
+      '513': { [NAME_COMPONENT]: { value: 'Wall' } }
+    } })
+    const view = mount(<ParamField name="entity" param={{ type: 'entity', value: 0, components: ['asset-packs::VideoScreen'] }} onChange={() => {}} />)
+    view.click(view.find('.eui-ds-select-field'))
+    expect(view.all('.eui-ds-pop-row').map((e) => e.textContent)).toEqual(['none', 'Screen#512'])
+    view.unmount()
+  })
+
+  it('picks a default action among those of the sibling entity (@actionsOf)', () => {
+    run(() => { state.snapshot = { '520': { 'asset-packs::Actions': { id: 520, value: [{ name: 'open' }, { name: 'close' }] } } } })
+    const view = mount(
+      <ParamField name="defaultAction" param={{ type: 'string', value: '', actionsOf: 'entity' }} siblings={{ entity: 520 }} onChange={() => {}} />
+    )
+    view.click(view.find('.eui-ds-select-field'))
+    expect(view.all('.eui-ds-pop-row').map((e) => e.textContent)).toEqual(['none', 'open', 'close'])
+    view.unmount()
+  })
+})

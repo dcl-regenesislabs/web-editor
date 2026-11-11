@@ -2,7 +2,7 @@
 // modified-file diff, and the layout merge an update applies to placed
 // entities. No data-layer, no engine — unit-testable as-is; the IO lives in
 // hashes.ts and update.ts.
-import { mergeLayout, parseLayout, type ScriptLayout, type ScriptParseResult } from '../script/parser'
+import { layoutOf, mergeLayout, parseLayout, type ScriptParseResult } from '../script/parser'
 import { isRecord } from './format'
 
 // Written next to a copied prefab's files: { [pathRelativeToFolder]: sha256hex }
@@ -50,14 +50,10 @@ export function scriptFilesOf(paths: string[]): string[] {
   return paths.filter((rel) => SCRIPT_FILE.test(rel)).sort()
 }
 
-function freshLayout(fresh: ScriptParseResult): ScriptLayout {
-  return { params: fresh.params, actions: fresh.actions, error: fresh.error }
-}
-
 // The layout a just-parsed script gets when nothing is there to preserve — what
 // instantiation writes onto a prefab's Script entries.
 export function freshLayoutJson(fresh: ScriptParseResult): string {
-  return JSON.stringify(freshLayout(fresh))
+  return JSON.stringify(layoutOf(fresh))
 }
 
 // Layout an updated script leaves on a placed entity: the fresh parse supplies
@@ -70,5 +66,5 @@ export function mergedLayoutJson(
 ): string {
   const existing = parseLayout(existingLayout)
   if (existing === undefined) return freshLayoutJson(fresh)
-  return JSON.stringify(mergeLayout(freshLayout(fresh), existing))
+  return JSON.stringify(mergeLayout(layoutOf(fresh), existing))
 }
