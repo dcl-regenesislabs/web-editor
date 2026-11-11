@@ -254,11 +254,11 @@ describe('built-in seat prefabs', () => {
     }
   })
 
-  // 23 copies of one file: a fix applied to the seat a creator reported and not to
-  // the other 22 is drift nothing else guards — the runtime modules escaped this
-  // problem entirely by moving to one shared copy. The one sanctioned per-seat difference
-  // is the SCENE_EMOTES list (only sit-spot-edge ships its own emotes), so that
-  // line is normalized away and everything else must match byte for byte.
+  // The behaviour is one shared module, ~runtime/seat; each folder's seat.ts only
+  // declares the params and actions. 23 copies of that wrapper still drift if a
+  // fix lands in one: the one sanctioned per-seat difference is the SCENE_EMOTES
+  // list (only sit-spot-edge ships its own emotes), so that line is normalized
+  // away and everything else must match byte for byte.
   const EMOTES_LINE = /^const SCENE_EMOTES: string\[\] = .*$/m
 
   function seatBody(folder: string): string {
@@ -272,6 +272,34 @@ describe('built-in seat prefabs', () => {
     expect(master.length).toBeGreaterThan(200)
     for (const folder of seats) {
       expect(seatBody(folder), `${folder}/scripts/seat.ts drifted from ${seats[0]}`).toBe(master)
+    }
+  })
+
+  it("runs the shared seat module with Creator Hub's params and actions", () => {
+    for (const folder of seats) {
+      const source = read(`${folder}/scripts/seat.ts`, PREFABS_ROOT)
+      expect(runtimeSpecifiers(folder), folder).toEqual(['~runtime/seat'])
+      const { params, actions, error } = getScriptParams(source)
+      expect(error, folder).toBeUndefined()
+      expect(params, folder).toMatchObject({
+        hoverText: { type: 'string', value: 'Sit Here' },
+        takenMessage: { type: 'string', value: 'Seat is taken' }
+      })
+      expect(actions.map((action) => action.methodName), folder).toEqual(['sit', 'markAsFree'])
+    }
+  })
+
+  // what other smart items and the Admin Tools panel call (call_script_method)
+  it('offers Sit and Mark as free on its Actions, aimed at its own script', () => {
+    for (const folder of seats) {
+      const actions = prefabComposite(folder).components.find((c) => c.name === 'asset-packs::Actions')
+      const json = actions?.data['0']?.json
+      const value = isRecord(json) && Array.isArray(json.value) ? json.value : []
+      const calls = value.filter(isRecord).map((action) => ({ name: action.name, type: action.type, payload: JSON.parse(String(action.jsonPayload)) as unknown }))
+      expect(calls, folder).toEqual([
+        { name: 'Sit Here', type: 'call_script_method', payload: { scriptPath: `${ASSET_PATH_TOKEN}/scripts/seat.ts`, methodName: 'sit', params: {} } },
+        { name: 'Mark as free', type: 'call_script_method', payload: { scriptPath: `${ASSET_PATH_TOKEN}/scripts/seat.ts`, methodName: 'markAsFree', params: {} } }
+      ])
     }
   })
 

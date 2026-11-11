@@ -304,10 +304,11 @@ travels with the folder, a guide always describes the exact code on disk in that
 project.
 
 The rule is a biconditional, enforced in `packages/ui/src/prefabs/guides.test.ts`:
-**`ai.md` exists iff the folder's scripts import a `~runtime/` module.** Reaching
-for the shared runtime is what makes a prefab something other scripts talk to
-(`zoneBus`, `timeSync`, `rpc`), and it auto-forbids a guide on the 23 seats and on
-admin-tools, which expose no API.
+**`ai.md` exists iff the folder's scripts import a `~runtime/` module other than
+`~runtime/seat`.** Reaching for the shared runtime is what makes a prefab something
+other scripts talk to (`zoneBus`, `timeSync`, `rpc`), and it auto-forbids a guide
+on admin-tools, which exposes no API. The 23 seats import only `~runtime/seat`,
+their shared behaviour, which is not an API either.
 
 | property | rule |
 | --- | --- |
@@ -664,17 +665,24 @@ folder there with a `data.json`). To add one, follow the
   collapsed into one browsable "Seats" card in the Prefabs tab via `data.json`'s
   optional `group` field (any prefabs sharing a `group` value render as a single
   drill-down card; a text filter searches the members flat). Each is a GLB root
-  plus hidden "Sit Spot" child entities carrying only a Transform; the bundled
-  `scripts/seat.ts` gives every spot its pointer collider and hover at runtime,
-  then sits the player with `movePlayerTo` onto the spot plus a looping emote —
-  the predefined `sittingChair1/2` via `triggerEmote` by default, or the
-  scene-bundled emote `.glb`s listed in the script's `SCENE_EMOTES` const via
-  `triggerSceneEmote` (how `sit-spot-edge` gets Genesis Plaza's
-  `Sit_Edge1/2_emote.glb` legs-dangling pose). The Hub's and Genesis Plaza's
-  exact mechanism — no AvatarAttach; walking cancels the emote engine-side.
-  Declares `ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE` + `ALLOW_TO_TRIGGER_AVATAR_EMOTE`.
-  No seat reservation (matching Plaza; the Hub's Taken state needs synced
-  state — deferred). Because a sit spot is invisible at runtime, the editor
+  plus hidden "Sit Spot" child entities carrying only a Transform. The
+  behaviour is one shared module, `runtime-modules/seat.ts`, a port of the
+  Hub's current `Seat.ts` (creator-hub#1354); each folder's `scripts/seat.ts` is
+  a thin class declaring its params (`hoverText`, `takenMessage`) and its
+  `@action` methods (`sit`, `markAsFree`), which the composite's
+  `asset-packs::Actions` offer as `call_script_method` to other smart items and
+  the Admin Tools panel. Each spot gets its pointer collider and hover at
+  runtime and a Free/Taken `asset-packs::States` synced under the spot's entity
+  number, so every player sees which spots are taken and a taken one says
+  `takenMessage`. Clicking sits the player with `movePlayerTo` onto the spot
+  (the nearest free one if it is taken), then a looping emote — the predefined
+  `sittingChair1/2` via `triggerEmote` by default, or the scene-bundled emote
+  `.glb`s listed in the wrapper's `SCENE_EMOTES` const via `triggerSceneEmote`
+  (how `sit-spot-edge` gets Genesis Plaza's `Sit_Edge1/2_emote.glb`
+  legs-dangling pose). No AvatarAttach; walking cancels the emote engine-side,
+  and walking 1.5 m away frees the spot. Declares
+  `ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE` + `ALLOW_TO_TRIGGER_AVATAR_EMOTE`.
+  Because a sit spot is invisible at runtime, the editor
   draws a ghost seated persona over every "…Sit Spot…" entity while the scene is
   stopped (`packages/scene/src/viewport/seat-marker.ts`).
 - **video-screen** — a port of the Hub's `video_screen` smart item: GLB screen,

@@ -78,6 +78,7 @@ Rules for modules in this folder:
 | `statusHud` | a one-line themed status readout in the shared HUD layout; `.tsx` |
 | `pure/cameraRig` | the Camera Rig's fixed-camera framing: heading and pitch to a pose, and the distance that fits a box on a canvas of a given aspect (phone 1600x720 included) |
 | `authoring` | `ColorHex`, `EntityName(s)` and `ZoneName(s)` parameter types that get pickers in the inspector |
+| `seat` | the seats' shared behaviour (Creator Hub's Seat.ts): synced Free/Taken per sit spot, the taken message, `sit()` / `markAsFree()`, standing up by walking away; the only module a seat imports |
 | `carry` | what players carry: one server-decided holder per item, right-hand display, drop/throw, stations that hold and turn items, and the script API (`heldBy`, `giveItem`, `onStation`…); Pickup Item and Work Station register into it |
 | `pure/carryRules` | the carry rules both sides run: pick, drop, throw, put, take, hold-to-work, timed turns, combines, used-up items coming home |
 | `pure/carryPrediction` | this player's carry actions shown before the server answers, replayed over server state and rolled back on refusal or expiry |
