@@ -107,7 +107,7 @@ export const EDITOR_TOOL_SCHEMAS: Record<EditorToolName, Record<string, unknown>
 // scene_request's requests, the same for both assistants; the system prompt says how to use them.
 const SCENE_REQUEST_DESCRIPTION = [
   'Inspect or change the live scene with the editor\'s actions and undo: one request, {type, ...fields}.',
-  '- {type:"outline",match?:"door",offset?:0} lists named entities, one line each: name, id, kind, world position and size in metres, components and scripts with their params; 200 a page, those whose name contains match, with the total.',
+  '- {type:"outline",match?:"door",offset?:0} lists named entities, one line each: name, id, kind, world position, size (its Transform scale: metres for a primitive or a zone, a multiplier for a model), components and scripts with their params; 200 a page, those whose name contains match, with the total.',
   '- {type:"inspect",match?:"door",offset?:0} returns up to 150 entities with their full component values, filtered and paged the same way.',
   '- {type:"createEntity",name:"Door",parent:"0",components:{Transform:{...},MeshRenderer:{...}}} adds an authored entity with those components and returns its id. Shapes: {box:{}}, {sphere:{}}, {cylinder:{radiusTop:0.5,radiusBottom:0.5}}, {plane:{}}.',
   '- {type:"move",to:"entity id or unique name",by:{x:0,y:1,z:0}} moves an entity by that much, in metres, and answers its new position.',

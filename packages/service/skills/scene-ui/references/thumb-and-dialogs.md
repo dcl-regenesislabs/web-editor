@@ -12,7 +12,7 @@ thumb is the only free finger, and it rests bottom-right. Everything here follow
 | Right thumb | x > 60%, y > 45% of the screen | frequent actions (D1) |
 | Top edge | the top 15% of the area | status to glance at; rare actions in its corners (D2) |
 | Centre | the middle of the area (x ≈ 964 on a 1600 × 720 phone) | dialogs that ask for something (D3, L7) |
-| Left column | x < 436 | nothing of yours: chat, emotes, joystick |
+| Left column | x < 436 | glanceable, non-interactive info only (the explorer's chat opens over it); no buttons |
 
 **D1 — Frequent actions under the right thumb.** Use, shoot, pick up, the item buttons: bottom-right. If
 native buttons are still there, yours go just above or left of the cluster, never under it (L2). If you

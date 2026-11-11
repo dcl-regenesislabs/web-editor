@@ -20,6 +20,9 @@ import {
 } from './builtin-fixtures'
 
 const SHARED_PROMPT_TS = new URL('../../../contract/src/assistant-prompt.ts', import.meta.url)
+// The tool descriptions are model-facing prose sent with every request, like the prompt: a per-prefab
+// rule copied there ages apart the same way, so the vocabulary lint reads them too.
+const TOOL_DESCRIPTIONS_TS = new URL('../../../contract/src/editor-tools.ts', import.meta.url)
 const STORE_TS = new URL('../panels/prefab-store.ts', import.meta.url)
 
 // The name the guide ships under, the name the store looks for and the name the
@@ -110,7 +113,7 @@ function extractPrompt(source: string, opener: string): string {
 // spawn-points prefab's vocabulary.
 const PROMPT = {
   text: () => extractPrompt(promptSource, 'export const ASSISTANT_PROMPT = `'),
-  vocabulary: promptSource,
+  vocabulary: `${promptSource}\n${readFileSync(TOOL_DESCRIPTIONS_TS, 'utf8')}`,
   max: MAX_PROMPT_CHARS,
   exempt: ['spawnPoints']
 }
