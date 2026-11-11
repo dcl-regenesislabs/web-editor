@@ -8,7 +8,10 @@ import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh
 import type { ThreeReply, ThreeRequest } from './protocol'
 import { lockDown, refusedSyntax } from './sandbox'
 import { isLibraryName, LIBRARY, libraryMaterialName, metresPerTile, surface, type LibraryName, type MaterialMap } from './materials'
-import { boxProjectUVs, externalizeLibraryImages } from './library-glb'
+import { libraryGeometry, externalizeLibraryImages } from './library-glb'
+import { keepUVs, lathe, rock, seededRandom, tube } from './model-geometry'
+import { foliage, leafMaterial, tree, type TreeOptions } from './model-nature'
+import { renderModelPreview } from './model-preview'
 import { checkCanvasSize, mergeParts, mergeStatic, partNamer, singleSided, stripVertexColors, toSceneAxes } from './build-passes'
 
 type Axis = 'x' | 'y' | 'z'
@@ -79,6 +82,11 @@ const libraryOf = (node: THREE.Mesh): LibraryName | undefined =>
 const addons = {
   // a shared tiling material: its texture is one file for every model, laid at one tile per metre
   material: libraryMaterial,
+  tube, lathe, rock, foliage, leafMaterial, keepUVs, random: seededRandom,
+  tree: (options: Partial<TreeOptions> = {}) => tree({
+    ...options, trunkMaterial: options.trunkMaterial ?? libraryMaterial('bark'),
+    leafMaterial: options.leafMaterial ?? leafMaterial()
+  }),
   RoundedBoxGeometry, mergeGeometries: mergeParts, mergeVertices,
   Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION,
   canvas: (width: number, height: number) => {
@@ -141,9 +149,7 @@ async function build(code: string, model: string): Promise<void> {
     const key = `${node.geometry.uuid}|${metresPerTile(name)}|${turn.elements.map((n) => n.toFixed(4)).join(',')}`
     let geometry = projected.get(key)
     if (geometry === undefined) {
-      geometry = mergeVertices(boxProjectUVs(node.geometry, turn, metresPerTile(name)))
-      // normal maps need tangents, and the exporter writes only the ones the geometry has
-      if (geometry.getAttribute('normal') !== undefined) geometry.computeTangents()
+      geometry = libraryGeometry(node.geometry, turn, metresPerTile(name))
       projected.set(key, geometry)
     }
     node.geometry = geometry
@@ -167,7 +173,7 @@ function externalUris(glb: ArrayBuffer, given: Record<string, ArrayBuffer>): boo
     const rows: unknown = typeof json === 'object' && json !== null ? Reflect.get(json, key) : undefined
     return Array.isArray(rows) ? rows.map((row: unknown) => (typeof row === 'object' && row !== null ? Reflect.get(row, 'uri') : undefined)) : []
   }
-  return [...uris('buffers'), ...uris('images')].some((uri) => typeof uri === 'string' && !uri.startsWith('data:') && given[uri] === undefined)
+  return [...uris('buffers'), ...uris('images')].some((uri) => typeof uri === 'string' && !uri.startsWith('data:') && !Object.prototype.hasOwnProperty.call(given, uri))
 }
 
 let view: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; target: THREE.Vector3; yaw: number; pitch: number; distance: number } | null = null
@@ -242,12 +248,16 @@ function show(request: Extract<ThreeRequest, { kind: 'view' }>): void {
 function handle(event: MessageEvent<ThreeRequest>): void {
   const request = event.data
   try {
-    if (request.kind !== 'build' && request.kind !== 'view' && request.kind !== 'clip' && view === null) return
-    if ((request.kind === 'build' && mode !== 'build') || (request.kind === 'view' && mode !== 'view')) throw new Error(`a ${String(mode)} worker does not ${request.kind}`)
+    if (!['build', 'view', 'preview', 'clip'].includes(request.kind) && view === null) return
+    if ((request.kind === 'build' && mode !== 'build') || ((request.kind === 'view' || request.kind === 'preview') && mode !== 'view')) throw new Error(`a ${String(mode)} worker does not ${request.kind}`)
     if (request.kind === 'build') {
       build(request.code, request.name).catch((error: unknown) => reply({ kind: 'failed', error: error instanceof Error ? error.message : String(error) }))
     } else if (request.kind === 'view') {
       show(request)
+    } else if (request.kind === 'preview') {
+      if (externalUris(request.bytes, request.files)) throw new Error('The model refers to files outside it.')
+      renderModelPreview(request.bytes, request.files).then((preview) => reply({ kind: 'previewed', preview }))
+        .catch((error: unknown) => reply({ kind: 'failed', error: error instanceof Error ? error.message : String(error) }))
     } else if (request.kind === 'clip') {
       play(request.name)
     } else if (view !== null && request.kind === 'orbit') {

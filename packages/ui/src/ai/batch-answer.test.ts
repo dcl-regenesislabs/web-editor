@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { batchAnswer } from './batch-answer'
+import { editorToolContent } from '@dcl-editor/contract'
 
 describe('batchAnswer', () => {
+  it('keeps repeated model previews on their results, bounded and extracted as images', () => {
+    const preview = { mimeType: 'image/jpeg', image: 'AAAA', width: 1152, height: 384 }
+    const answer = batchAnswer(Array.from({ length: 10 }, (_, i) => ({ type: 'buildModel', outcome: { ok: true, result: { id: i, preview } } })))
+    expect(answer.same?.buildModel?.preview).toBeUndefined()
+    const content = editorToolContent('scene_request', JSON.stringify(answer))
+    expect(content.filter((part) => part.type === 'image')).toHaveLength(4)
+    expect(content.filter((part) => part.type === 'text').map((part) => part.text).join('')).not.toContain('AAAA')
+  })
+
   it('says a repeated error once and points the rest at it', () => {
     const playing = 'The scene is playing. Run playtest stop, then make this change again.'
     expect(batchAnswer([

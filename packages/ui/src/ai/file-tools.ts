@@ -1,6 +1,7 @@
 // The project-file tools both assistants call (list_files, search_files, read_file, edit_file,
 // write_file): over the browser's copy of the project on the web, over the files on disk on desktop.
-import { ASSET_KINDS, ASSISTANT_MAX_FILE_BYTES, assetKind, assistantReadable, assistantWritable } from '@dcl-editor/contract'
+import { ASSET_KINDS, ASSISTANT_MAX_FILE_BYTES, assetKind, assistantReadable, assistantWritable, isModelScriptPath } from '@dcl-editor/contract'
+import { modelScriptExclusion } from './model-scripts'
 
 export const FILE_TOOLS = ['list_files', 'search_files', 'read_file', 'edit_file', 'write_file'] as const
 export type FileToolName = (typeof FILE_TOOLS)[number]
@@ -58,6 +59,15 @@ export type FileReads = Map<string, { revision: string; bytes: Uint8Array; whole
 
 // `reads` lives as long as the conversation, so a file read in an earlier turn can be written without reading it again.
 export function createFileTools(project: ProjectFiles, reads: FileReads = new Map()) {
+  async function protectModelScript(path: string, signal: AbortSignal): Promise<void> {
+    if (!isModelScriptPath(path)) return
+    const bytes = await project.read('.dclignore')
+    const current = bytes === undefined ? '' : decoder.decode(bytes)
+    const next = modelScriptExclusion(current)
+    if (next !== current) await project.write('.dclignore', encoder.encode(next), bytes ?? null, signal)
+    signal.throwIfAborted()
+  }
+
   return async (tool: FileToolName, args: Record<string, unknown>, signal: AbortSignal): Promise<string> => {
     signal.throwIfAborted()
     if (tool === 'list_files') {
@@ -124,6 +134,7 @@ export function createFileTools(project: ProjectFiles, reads: FileReads = new Ma
       const changed = args.all === true ? content.split(args.old).join(args.new) : content.replace(args.old, () => args.new as string)
       const next = encoder.encode(changed)
       if (next.byteLength > ASSISTANT_MAX_FILE_BYTES) throw new Error('This file is too large for the assistant.')
+      await protectModelScript(path, signal)
       await project.write(path, next, bytes.slice(), signal)
       signal.throwIfAborted()
       const revision = crypto.randomUUID()
@@ -142,6 +153,7 @@ export function createFileTools(project: ProjectFiles, reads: FileReads = new Ma
     }
     // a whole-file write after seeing only part of it would drop the rest
     if (expected !== null && read?.whole === false) throw new Error('You read only part of this file: change it with edit_file, or read it whole before replacing it.')
+    await protectModelScript(path, signal)
     await project.write(path, next, expected, signal)
     signal.throwIfAborted()
     const revision = crypto.randomUUID()

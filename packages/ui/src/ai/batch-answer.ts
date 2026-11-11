@@ -1,7 +1,7 @@
 // What a scene_request batch answers. Its history stays for the whole conversation and every later
 // call pays for it again, so an edit says what it did and nothing the assistant sent or that every
 // other edit of the batch also says. Reads answer in full: their answer is what they were sent for.
-import { object } from '@dcl-editor/contract'
+import { modelPreviewLimit, MODEL_PREVIEW_OMITTED, object } from '@dcl-editor/contract'
 
 const READS = new Set(['outline', 'inspect', 'check', 'findSounds', 'findModels', 'findIcons', 'readThumbnail'])
 
@@ -45,6 +45,7 @@ function hoist(results: Array<Record<string, unknown>>): Record<string, unknown>
   const same: Record<string, unknown> = {}
   if (results.length < 2) return same
   for (const key of Object.keys(results[0])) {
+    if (key === 'preview') continue
     if (!results.every((r) => key in r)) continue
     const counts = new Map<string, number>()
     for (const r of results) {
@@ -61,6 +62,7 @@ function hoist(results: Array<Record<string, unknown>>): Record<string, unknown>
 
 export function batchAnswer(items: Array<{ type: string; outcome: BatchOutcome }>): BatchAnswer {
   const firstError = new Map<string, number>()
+  const acceptPreview = modelPreviewLimit()
   const results: BatchOutcome[] = items.map(({ type, outcome }, i) => {
     if (!outcome.ok) {
       const seen = firstError.get(outcome.error)
@@ -68,7 +70,10 @@ export function batchAnswer(items: Array<{ type: string; outcome: BatchOutcome }
       firstError.set(outcome.error, i + 1)
       return outcome
     }
-    return isEdit(type) ? { ok: true, result: brief(type, outcome.result) } : outcome
+    const result = isEdit(type) ? brief(type, outcome.result) : outcome.result
+    if (!object(result) || result.preview === undefined) return { ok: true, result }
+    const { preview, ...rest } = result
+    return { ok: true, result: acceptPreview(preview) ? { ...rest, preview } : { ...rest, previewNote: MODEL_PREVIEW_OMITTED } }
   })
   const byType = new Map<string, Array<Record<string, unknown>>>()
   results.forEach((outcome, i) => {

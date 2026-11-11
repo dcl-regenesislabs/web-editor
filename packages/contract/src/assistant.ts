@@ -59,8 +59,12 @@ export function assistantReadable(path: string): boolean {
 }
 
 export function assistantWritable(path: string): boolean {
-  return assistantReadable(path) && /^src\//.test(path) && /\.(ts|tsx|js|jsx)$/.test(path) &&
-    !path.split('/').includes('runtime')
+  return assistantReadable(path) && (isModelScriptPath(path) ||
+    (/^src\//.test(path) && /\.(ts|tsx|js|jsx)$/.test(path) && !path.split('/').includes('runtime')))
+}
+
+export function isModelScriptPath(path: unknown): path is `models/src/${string}.js` {
+  return typeof path === 'string' && /^models\/src\/[a-z0-9][a-z0-9-]{0,59}\.js$/.test(path)
 }
 
 // What a project file is to the assistant, by path: what list_files filters by and the per-turn summary counts

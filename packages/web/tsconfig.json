@@ -3,8 +3,9 @@
   "compilerOptions": {
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
       "@scene/*": ["../scene/src/*"],
