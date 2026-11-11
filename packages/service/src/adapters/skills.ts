@@ -66,6 +66,12 @@ export async function createSkillsComponent(): Promise<SkillsComponent> {
       if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid skill offset')
       const baseDir = key.split('/')[0]
       const content = source.replaceAll('{baseDir}', baseDir)
+      const page = () => {
+        const end = Math.min(offset + PAGE_SIZE, content.length)
+        return { path: key, baseDir, offset, content: content.slice(offset, end),
+          nextOffset: end < content.length ? end : null,
+          ...(key.endsWith('/SKILL.md') ? { references: [...files.keys()].filter((file) => file.startsWith(`${baseDir}/`) && file !== key) } : {}) }
+      }
       if (query !== undefined) {
         if (query.trim() === '' || query.length > 128) throw new Error('Invalid skill search')
         const matches: Array<{ offset: number; text: string }> = []
@@ -78,14 +84,11 @@ export async function createSkillsComponent(): Promise<SkillsComponent> {
           }
           cursor += line.length + 1
         }
-        return JSON.stringify({ path: key, matches, total })
+        return JSON.stringify({ path: key, matches, total, ...(total === 0 ? {
+          ...page(), notice: 'No literal matches. Read this guide page; query is plain text, not a regular expression.'
+        } : {}) })
       }
-      const end = Math.min(offset + PAGE_SIZE, content.length)
-      return JSON.stringify({
-        path: key, baseDir, offset, content: content.slice(offset, end),
-        nextOffset: end < content.length ? end : null,
-        ...(key.endsWith('/SKILL.md') ? { references: [...files.keys()].filter((file) => file.startsWith(`${baseDir}/`) && file !== key) } : {})
-      })
+      return JSON.stringify(page())
     }
   }
 }

@@ -1,5 +1,5 @@
 import { startThreeWorker, type ThreeWorker } from '../three/client'
-import type { ModelStats, ThreeReply, ThreeRequest } from '../three/protocol'
+import { MODEL_BUDGET, type ModelStats, type ThreeReply, type ThreeRequest } from '../three/protocol'
 import { isLibraryName, LIBRARY, type LibraryName } from '../three/materials'
 
 const MAX_GLB_BYTES = 20 * 1024 * 1024
@@ -19,7 +19,7 @@ function checked(reply: Extract<ThreeReply, { kind: 'built' }>): { bytes: Uint8A
   return { bytes: new Uint8Array(glb), clips: names, library: materials, warnings: notes }
 }
 
-export const MODEL_BUDGET = { triangles: 8000, materials: 6, textures: 4, largestTexture: 512 }
+export { MODEL_BUDGET } from '../three/protocol'
 const BUILD_TIMEOUT_MS = 20_000
 
 export function overBudget(stats: ModelStats, textureProblems: readonly string[] = []): string[] {

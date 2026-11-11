@@ -105,6 +105,23 @@ function picture(value: unknown): string {
 
 // What the model reads from a tool's JSON answer: pictures as images, not as base64 text.
 export function editorToolContent(name: EditorToolName, text: string): EditorToolContent[] {
+  if (name === 'scene_request') {
+    const images: EditorToolContent[] = []
+    const extract = (value: unknown): unknown => {
+      if (!object(value)) return value
+      const { preview, ...result } = value
+      if (preview !== undefined) {
+        const caption = Array.isArray(result.models) ? 'Catalog thumbnails. Compare the labelled models before choosing.'
+          : `Exported model ${String(result.path ?? result.script ?? '')}: three studio views. Check shape and materials; scene lighting is separate.`
+        images.push({ type: 'text', text: caption },
+          { type: 'image', mimeType: 'image/jpeg', data: picture(preview) })
+      }
+      if (Array.isArray(result.results)) result.results = result.results.map((item: unknown) => object(item) ? { ...item, result: extract(item.result) } : item)
+      return result
+    }
+    const result = extract(JSON.parse(text))
+    return [...images, { type: 'text', text: images.length > 0 ? JSON.stringify(result) : text }]
+  }
   if (name !== 'view' && name !== 'ui_layout') return [{ type: 'text', text }]
   const answer: unknown = JSON.parse(text)
   if (!object(answer)) throw new Error('The editor sent no answer.')

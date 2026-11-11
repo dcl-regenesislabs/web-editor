@@ -58,4 +58,16 @@ describe('packaged SDK skills', () => {
     expect(() => skills.read('scene-ui/SKILL.md', -1)).toThrow('Invalid skill offset')
     expect(() => skills.read('scene-ui/SKILL.md', 0, '')).toThrow('Invalid skill search')
   })
+
+  it('returns bounded guidance when a literal search misses instead of leaving modeling rules unread', () => {
+    const missed = JSON.parse(skills.read('model-building/SKILL.md', 0, 'material\\(|relief|wood|fabric'))
+    expect(missed.total).toBe(0)
+    expect(missed.matches).toEqual([])
+    expect(missed.content).toContain("addons.material(name)")
+    expect(missed.content).toContain('Use `view`')
+    expect(missed.content.length).toBeLessThanOrEqual(16_000)
+    const long = JSON.parse(skills.read('add-3d-models/references/model-catalog.md', 0, 'not-a-real-model-search'))
+    expect(long.content.length).toBe(16_000)
+    expect(long.nextOffset).toBe(16_000)
+  })
 })

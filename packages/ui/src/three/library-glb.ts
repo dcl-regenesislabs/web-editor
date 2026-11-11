@@ -1,5 +1,15 @@
 import * as THREE from 'three'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { isLibraryName, materialFile, type LibraryName, type MaterialMap } from './materials'
+
+export function libraryGeometry(geometry: THREE.BufferGeometry, world: THREE.Matrix4, metresPerTile: number): THREE.BufferGeometry {
+  const mapped = geometry.userData.keepUVs === true
+    ? geometry.clone() : boxProjectUVs(geometry, world, metresPerTile)
+  if (mapped.getAttribute('uv') === undefined) throw new Error('Preserved texture mapping needs UV coordinates.')
+  const result = mergeVertices(mapped)
+  if (result.getAttribute('normal') !== undefined) result.computeTangents()
+  return result
+}
 
 // UVs from world position, one tile per metre on whichever axis a face looks along: library
 // textures then line up on any shape the script made, with no UV work in the script.

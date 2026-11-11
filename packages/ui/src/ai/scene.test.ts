@@ -6,7 +6,7 @@ import { inspectModel } from '../model-info'
 import { sceneTextures } from '../scene-budget'
 import { buildCodeModel } from './code-model'
 import { materialFile } from '../three/materials'
-import { dataLayerListFiles, dataLayerSaveFileBytes } from '../engine/datalayer'
+import { dataLayerListFiles, dataLayerReadFileBytes, dataLayerSaveFileBytes } from '../engine/datalayer'
 import { soundBytes } from './library-bytes'
 import { createPrefabFrom } from '../actions/prefabs'
 import { flushPendingSave } from '../core/autosave'
@@ -31,6 +31,7 @@ vi.mock('@scene/allowed-components', () => ({ isAllowedComponent: () => true }))
 vi.mock('../actions/entities', () => ({ uiAddEntity: vi.fn() }))
 vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiDeleteComponent: deleteValue }))
 vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn() }))
+vi.mock('./catalog-preview', () => ({ previewCatalogModels: vi.fn(async () => undefined) }))
 vi.mock('../engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
 vi.mock('./library-bytes', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() }))
 vi.mock('../engine/bus', () => ({ sendToScene: vi.fn() }))
@@ -142,6 +143,18 @@ describe('assistant scene requests', () => {
     await expect(browserSceneRequest({ type: 'buildModel', into: '512', code: 'root' }, new AbortController().signal)).rejects.toThrow('built')
   })
 
+  it('rebuilds the saved model script without resending its code', async () => {
+    const code = 'root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)));'
+    const signal = new AbortController().signal
+    vi.mocked(dataLayerReadFileBytes).mockResolvedValueOnce(new TextEncoder().encode(code))
+    await expect(browserSceneRequest({ type: 'buildModel', name: 'Chair', script: 'models/src/chair.js' }, signal)).rejects.toThrow('built')
+    expect(buildCodeModel).toHaveBeenLastCalledWith(code, 'Chair', signal)
+    await expect(browserSceneRequest({ type: 'buildModel', name: 'Chair', code, script: 'models/src/chair.js' }, signal)).rejects.toThrow('not both')
+    for (const script of ['src/index.ts', 'models/src/../chair.js', 'models/chair.js']) {
+      await expect(browserSceneRequest({ type: 'buildModel', name: 'Chair', script }, signal)).rejects.toThrow('saved model script')
+    }
+  })
+
   it('adds a library sound to its own folder once, never over an unreadable project, and names the sounds when asked for one it lacks', async () => {
     const mp3 = new Uint8Array([0xff, 0xfb])
     vi.mocked(soundBytes).mockResolvedValue(mp3)
@@ -163,6 +176,24 @@ describe('assistant scene requests', () => {
     vi.mocked(sceneTextures).mockResolvedValueOnce({ used: 9, limit: 10, shared: new Set(['models/catalog/materials/T_Rock_D.jpg']) })
     const placed = await browserSceneRequest({ type: 'placeModel', id: 'Stone 03', into: '512' }, new AbortController().signal)
     expect(placed).toMatchObject({ model: 'models/catalog/stone-03.glb', textures: 3, materials: 1, sceneTexturesLeft: -1, warning: expect.stringContaining('11 of its 10 textures') })
+  })
+
+  it('places a requested height from the file bounds, including its offset pivot, without trusting catalog size', async () => {
+    state.snapshot['512'] = { Transform: { position: { x: 16, y: 0, z: 16 }, rotation: { x: 0, y: 0, z: 0, w: 1 } } }
+    vi.mocked(modelById).mockReturnValueOnce(asset({ name: 'Tree', category: 'nature', tags: [], height: 300 }))
+    vi.mocked(importCatalogFile).mockResolvedValueOnce('models/tree.glb')
+    vi.mocked(inspectModel).mockReturnValueOnce({
+      bytes: 1024, bounds: { min: { x: 10, y: 30, z: -20 }, max: { x: 14, y: 40, z: -16 }, size: { x: 4, y: 10, z: 4 } },
+      coordinates: 'SDK local metres', triangles: 12, primitives: 1, materials: ['Bark'], textures: 0, largestImage: 0,
+      textureProblems: [], sharedImages: [], animations: [], colliderNodes: [], externalResources: [], warnings: []
+    })
+    vi.mocked(sceneTextures).mockResolvedValueOnce({ used: 0, limit: 10, shared: new Set() })
+    const placed = await browserSceneRequest({ type: 'placeModel', id: 'Tree', into: '512', height: 5 }, new AbortController().signal)
+    expect(placed).toMatchObject({ model: 'models/tree.glb', size: { x: 4, y: 10, z: 4 }, triangles: 12, kb: 1 })
+    expect(JSON.parse(String((setValue.mock.calls as unknown[][]).at(-1)?.[3]))).toMatchObject({
+      position: { x: 10, y: -15, z: 25 }, scale: { x: 0.5, y: 0.5, z: 0.5 }
+    })
+    await expect(browserSceneRequest({ type: 'placeModel', id: 'Tree', height: 5, scale: { x: 1, y: 1, z: 1 } }, new AbortController().signal)).rejects.toThrow('height or scale')
   })
 
   it('makes a scene entity a prefab a spawner can point at, kept out of the build and of the creator\'s library', async () => {

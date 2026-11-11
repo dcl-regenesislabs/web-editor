@@ -16,13 +16,19 @@ those workflows need tools this assistant does not have or conflict with the edi
 Their supporting references remain available for cross-skill links.
 
 `read_skill` reads only documents in this bundle, with bounded paging and literal search.
+An empty search includes a guide page (at most 16,000 characters) and explains the
+literal matching, so a mistaken search pattern does not hide the guidance.
 It cannot read arbitrary service files, download assets or access project storage.
 The web system prompt adapts examples to `src/scripts/`, browser tools and editor actions.
 
 ## Editor skills
 
-Every folder here with a `SKILL.md` (today `scene-ui/` and `game-sounds/`) is the editor's own skill, written in this
+Every folder here with a `SKILL.md` (including `scene-ui/`, `game-sounds/` and `model-building/`) is the editor's own skill, written in this
 repository. Both assistants read it: the web service layers it over the bundle at startup, and the
 desktop app copies it over the downloaded SDK skills (`packages/desktop/src/skills.ts`, shipped as the
 `editor-skills` resource). An editor skill can replace an SDK skill: `build-ui` loses its `SKILL.md` in
 both places and keeps its references, which `scene-ui` links to.
+
+The shared assistant prompt includes the essential model helper signatures, surface
+names and finish rules. Common model builds do not depend on a separate skill lookup;
+`model-building/SKILL.md` supplies the full options and longer examples when needed.

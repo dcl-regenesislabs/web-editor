@@ -137,31 +137,37 @@ export function modelRelPath(a: ModelAsset): string {
   return `models/${base}-${a.id.slice(-8)}${ext}`
 }
 
-// Make a just-written file resolvable by the live scene without a reload. The
-// patched engine had /register_content for this; stock main instead exposes
-// /scene_content, which REFRESHES the engine's content map from the dev server
-// (picking up files written outside the editor) and returns the file list. Poll
-// it until our file appears: that both forces the refresh (so GltfContainer.src
-// resolves) and confirms the dev server is serving it before the engine's single
-// load attempt. Bounded by config; a miss just means the model may need a reload.
+// scene_content refreshes the live content map before the engine's single load attempt.
 export async function ensureContentMapped(rel: string): Promise<void> {
   const target = rel.toLowerCase()
+  const timeoutMs = CONTENT_POLL_ATTEMPTS * CONTENT_POLL_INTERVAL_MS
+  const deadline = Date.now() + timeoutMs
   for (let i = 0; i < CONTENT_POLL_ATTEMPTS; i++) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      const files = await cmd.sceneContent()
+      const files = await Promise.race([
+        cmd.sceneContent(),
+        new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), remaining) })
+      ])
+      if (files === null) break
       if (files.some((f) => f.toLowerCase() === target)) return
     } catch {
       /* engine briefly busy — retry */
+    } finally {
+      clearTimeout(timer)
     }
-    await new Promise((r) => setTimeout(r, CONTENT_POLL_INTERVAL_MS))
+    await new Promise((r) => setTimeout(r, Math.min(CONTENT_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now()))))
   }
+  throw new Error(`${rel} was saved, but Bevy did not confirm it within ${timeoutMs / 1000} seconds. Reload the preview, then reuse the saved file instead of importing or building another copy.`)
 }
 
 const MAX_MODEL_BYTES = 50 * 1024 * 1024
 
 // streamed, so an oversized or lying content-length can't fill memory first
-async function readCapped(res: Response, max: number): Promise<Uint8Array> {
-  if (Number(res.headers.get('content-length')) > max || res.body === null) throw new Error('model exceeds the 50 MB file limit')
+export async function readCapped(res: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
+  if (Number(res.headers.get('content-length')) > max || res.body === null) throw new Error(`File exceeds the ${max / 1024 / 1024} MB limit.`)
   const reader = res.body.getReader()
   const chunks: Uint8Array[] = []
   let size = 0
@@ -170,7 +176,7 @@ async function readCapped(res: Response, max: number): Promise<Uint8Array> {
       const { done, value } = await reader.read()
       if (done) break
       size += value.byteLength
-      if (size > max) throw new Error('model exceeds the 50 MB file limit')
+      if (size > max) throw new Error(`File exceeds the ${max / 1024 / 1024} MB limit.`)
       chunks.push(value)
     }
   } finally {
