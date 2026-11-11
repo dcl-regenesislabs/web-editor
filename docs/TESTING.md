@@ -140,6 +140,8 @@ and the default tree's triangle budget after two-sided leaves are expanded.
 `model-assistant.mjs` uses the production assistant provider, prompts and browser
 tools. It creates a fresh temporary scene and conversation for each tree, chair,
 shed and cartoon chest, then captures each result in Bevy at a fixed camera pose.
+Its turn driver and tool queue live alongside it in `packages/web/validate/`, which
+owns the Playwright dependency; the service can typecheck with only its own dependencies.
 It needs an existing editor OAuth session, an isolated Chromium CDP endpoint and
 an installed SDK7 scene to supply its dependencies. It uses that session's model
 allowance. It does not send messages to another person.

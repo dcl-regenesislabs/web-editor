@@ -89,7 +89,7 @@ if (!values['skip-build']) {
   await bundle({ entryPoints: [path.join(repo, 'packages/ui/src/three/worker.ts')], bundle: true, format: 'iife',
     outfile: path.join(built, 'ui/assets/model-worker.js'), plugins: [sourcePlugin] })
   await fs.cp(path.join(repo, 'packages/ui/src/three/materials'), path.join(built, 'ui/assets/materials'), { recursive: true })
-  await bundle({ entryPoints: [path.join(repo, 'packages/service/scripts/model-agent-turn.ts')], bundle: true, format: 'esm',
+  await bundle({ entryPoints: [path.join(repo, 'packages/web/validate/model-agent-turn.ts')], bundle: true, format: 'esm',
     platform: 'node', packages: 'external', outfile: path.join(built, 'turn.mjs'), plugins: [sourcePlugin, {
       name: 'packaged-resources', setup(builder) {
         builder.onLoad({ filter: /\/(skills|thumbnail)\.ts$/ }, async ({ path: file }) => ({

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { orderedBrowserTools } from '../../service/scripts/model-agent-tools'
+import { orderedBrowserTools } from './model-agent-tools'
 
 it('preserves both simultaneous script edits and rebuilds the edited version', async () => {
   let script = 'width=1;height=1'
