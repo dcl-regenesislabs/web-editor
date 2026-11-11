@@ -1,7 +1,7 @@
 // Reading and merge-writing a project's scene.json and main.composite. These
 // mirror desktop's scene-settings.ts, scene-meta.ts and composite-entities.ts:
 // that package reads through node:fs and is not a dependency of this one.
-import type { SceneSettings, SpawnPointSetting } from '@dcl-editor/contract'
+import { alignCompositeMetadata, type SceneSettings, type SpawnPointSetting } from '@dcl-editor/contract'
 import type { AssistantSceneSettings } from '@ui/ai/scene'
 
 export const IMG_MIME: Record<string, string> = {
@@ -137,6 +137,22 @@ export function spawnWorldPosition(raw: RawSceneJson): string {
 }
 
 export const COMPOSITE_CANDIDATES = ['assets/scene/main.composite', 'main.composite', 'assets/main.composite']
+
+// scene.json is the source of truth: the composite's copy of its metadata (inspector::SceneMetadata),
+// which the Creator Hub and the desktop editor write back over scene.json, made to match it.
+// The files to write: none when there is nothing to change.
+// `read` gives a project file's bytes, or undefined when it has none.
+export async function compositeFixes(sceneJson: Uint8Array | undefined, read: (path: string) => Promise<Uint8Array | undefined> | Uint8Array | undefined): Promise<Array<[string, Uint8Array]>> {
+  const scene = parseSceneJson(sceneJson)
+  if (scene === null) return []
+  for (const path of COMPOSITE_CANDIDATES) {
+    const composite = await read(path)
+    if (composite === undefined) continue
+    const aligned = alignCompositeMetadata(new TextDecoder().decode(composite), scene)
+    return aligned === null ? [] : [[path, new TextEncoder().encode(aligned)]]
+  }
+  return []
+}
 
 // The entities authored into a main.composite, from its text.
 export function compositeEntityIds(text: string): number[] {

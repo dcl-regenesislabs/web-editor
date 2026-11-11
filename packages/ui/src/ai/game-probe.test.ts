@@ -54,8 +54,28 @@ describe('stateChanges', () => {
     expect(stateChanges({ a: { b: 1 } }, { a: { b: 1 } })).toEqual({})
     const many = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`k${i}`, i]))
     const changes = stateChanges({}, many)
-    expect(Object.keys(changes)).toHaveLength(21)
-    expect(changes['…'].after).toBe('10 more changed paths')
+    expect(Object.keys(changes)).toHaveLength(13)
+    expect(changes['…'].after).toBe('18 more changed paths')
+  })
+
+  it('reports paths that differ in one key as one entry, after the single changes', () => {
+    const crowd = (dx: number, hurt: number) => ({
+      score: 1 + hurt,
+      npcs: Object.fromEntries(['Ana', 'Bo', 'Cy', 'Di'].map((name, i) => [name, { at: { x: i + (i === 2 ? dx * 3 : dx), z: 0 }, hp: name === 'Bo' ? 10 - hurt : 10 }]))
+    })
+    expect(stateChanges(crowd(0, 0), crowd(1, 2))).toEqual({
+      score: { before: 1, after: 3 },
+      'npcs.Bo.hp': { before: 10, after: 8 },
+      'npcs.*.at.x': { paths: 4, example: 'npcs.Cy.at.x', before: 2, after: 5 }
+    })
+  })
+
+  it('compares a long list that grew item by item, not as two copies of it', () => {
+    const list = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i, kind: 'crate' }))
+    expect(stateChanges({ crates: list(10) }, { crates: list(11) })).toEqual({ 'crates.10': { before: null, after: { id: 10, kind: 'crate' } } })
+    expect(stateChanges({ crates: list(10) }, { crates: [] })).toEqual({
+      'crates.*': { paths: 10, example: 'crates.0', before: { id: 0, kind: 'crate' }, after: null }
+    })
   })
 })
 

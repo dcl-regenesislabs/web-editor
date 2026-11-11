@@ -19,6 +19,7 @@
 import { useSyncExternalStore } from 'react'
 import { Authenticator } from '@dcl/crypto'
 import type { EditorShell, PublishProgress, ScenePublishResult } from '@dcl-editor/contract'
+import { flushPendingSave } from '../../core/autosave'
 import { canSign, getAccount, getIdentity } from '../account/auth'
 import { chainId, jumpInUrl, worldsServer } from '../worlds/endpoints'
 import { fetchWorldScenes } from '../worlds/inventory'
@@ -33,7 +34,8 @@ import {
   NEEDS_DESKTOP,
   offlineOldSdkNote,
   oldSdkNote,
-  SIGN_IN_TO_PUBLISH
+  SIGN_IN_TO_PUBLISH,
+  UNSAVED_BEFORE_PUBLISH
 } from './publish-copy'
 import { lastPublishedEntity, rememberPublishedEntity } from './publish-identity'
 import { deployDenial, destructiveVerdict, readCapability, readLocalFootprint } from './publish-preflight'
@@ -291,8 +293,14 @@ export function startSharedPublish(dir: string): void {
     setPublishStore({ ...IDLE, phase: 'error', error: SIGN_IN_TO_PUBLISH, dir })
     return
   }
-  abandon()
-  publishInPage({ dir, world: null, base: null, total: null }, (onProgress) => publishShared(dir, onProgress))
+  const a = abandon()
+  // the save can take a moment: say so, and let the guard above refuse a second press
+  setPublishStore({ ...IDLE, phase: 'checking', dir, shared: true })
+  void saveBeforePublish()
+    .then(() => {
+      if (live(a)) publishInPage({ dir, world: null, base: null, total: null }, (onProgress) => publishShared(dir, onProgress))
+    })
+    .catch((err: unknown) => failAttempt(a, err))
 }
 
 // ---- the decisions ----
@@ -447,7 +455,20 @@ function publishInPage(p: { dir: string; world: string | null; base: string | nu
     })
 }
 
+// An edit still in the autosave's debounce (or one whose write failed) is not on
+// disk, and the build packs the scene from disk: it would publish without it (creator-hub#1512).
+async function saveBeforePublish(): Promise<void> {
+  if (!(await flushPendingSave()).ok) throw new Error(UNSAVED_BEFORE_PUBLISH)
+}
+
 function spawn(a: number): void {
+  if (!live(a)) return
+  void saveBeforePublish()
+    .then(() => spawnSaved(a))
+    .catch((err: unknown) => failAttempt(a, err))
+}
+
+function spawnSaved(a: number): void {
   if (!live(a)) return
   const p = pending
   const shell = window.editorShell

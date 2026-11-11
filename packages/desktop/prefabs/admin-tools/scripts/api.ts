@@ -31,19 +31,12 @@ export function gatekeeperUrl(path: string): string {
   return `https://comms-gatekeeper.decentraland.${getDomain()}${path}`
 }
 
-export function rewardsUrl(path: string): string {
-  return `https://rewards.decentraland.${getDomain()}${path}`
-}
-
 export const ENDPOINTS = {
   sceneAdmin: (): string => gatekeeperUrl('/scene-admin'),
   sceneBans: (): string => gatekeeperUrl('/scene-bans'),
   streamAccess: (): string => gatekeeperUrl('/scene-stream-access'),
   castStreamLink: (): string => gatekeeperUrl('/cast/generate-stream-link'),
-  castPresenters: (): string => gatekeeperUrl('/cast/presenters'),
-  rewardsCampaignKeys: (): string => rewardsUrl('/api/campaigns/keys'),
-  rewardsCaptcha: (): string => rewardsUrl('/api/captcha'),
-  rewardsAssign: (): string => rewardsUrl('/api/rewards')
+  castPresenters: (): string => gatekeeperUrl('/cast/presenters')
 }
 
 // signedFetch is unavailable in local preview (no wallet-signed identity), so the

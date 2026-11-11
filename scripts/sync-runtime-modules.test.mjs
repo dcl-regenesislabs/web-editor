@@ -155,10 +155,14 @@ describe('transitiveModules', () => {
 })
 
 describe('the built-in prefabs', () => {
-  it('uses the runtime in exactly the Multiplayer Server prefabs, and in no seat', () => {
-    const users = [...plan()]
-      .filter(([, modules]) => modules.length > 0)
-      .map(([folder]) => folder)
+  // The seats share one behaviour module and nothing else: placing a chair must not
+  // vendor the multiplayer runtime into a scene.
+  it('uses the runtime in exactly the Multiplayer Server prefabs, and the seat module in the seats', () => {
+    const used = [...plan()].filter(([, modules]) => modules.length > 0)
+    const seats = used.filter(([, modules]) => modules.includes('seat.ts'))
+    expect(seats).toHaveLength(23)
+    for (const [folder, modules] of seats) expect(modules, folder).toEqual(['seat.ts'])
+    const users = used.filter(([, modules]) => !modules.includes('seat.ts')).map(([folder]) => folder)
     expect(users).toEqual([
       'announcer',
       'camera-rig',

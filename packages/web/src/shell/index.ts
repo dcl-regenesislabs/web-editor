@@ -65,6 +65,7 @@ import { publishedSize } from './deploy-size'
 import {
   COMPOSITE_CANDIDATES,
   IMG_MIME,
+  compositeFixes,
   type RawSceneJson,
   applySettings,
   applyAssistantSettings,
@@ -371,7 +372,10 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
   async function editSceneJson(id: string, edit: (raw: RawSceneJson) => RawSceneJson): Promise<void> {
     const raw = parseSceneJson(await readFile(id, 'scene.json'))
     if (raw === null) throw new Error('scene.json is missing or is not valid JSON')
-    await writeFile(id, 'scene.json', sceneJsonBytes(edit(raw)))
+    const scene = sceneJsonBytes(edit(raw))
+    await writeFile(id, 'scene.json', scene)
+    // Rename and Scene settings change the composite's copy of the metadata too
+    for (const [path, bytes] of await compositeFixes(scene, (path) => readFile(id, path).catch(() => undefined))) await writeFile(id, path, bytes)
   }
 
   async function thumbnail(id: string, path: string | null | undefined): Promise<string | null> {
@@ -416,7 +420,8 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
         return
       }
       const files = await store.readAll(id).then(async (files) => {
-        for (const [path, bytes] of assetPacksStubUpgrades(files)) {
+        // a composite whose scene metadata is not scene.json's (the inspector's default) is fixed from it
+        for (const [path, bytes] of [...assetPacksStubUpgrades(files), ...await compositeFixes(files.get('scene.json'), (path) => files.get(path))]) {
           await writeFile(id, path, bytes)
           files.set(path, bytes)
         }
@@ -689,6 +694,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       const scene = parseSceneJson(files.get('scene.json'))
       if (scene === null) throw new Error(`template not found: ${template}`)
       files.set('scene.json', sceneJsonBytes({ ...scene, display: { ...(scene.display ?? {}), title: name.trim() } }))
+      for (const [path, bytes] of await compositeFixes(files.get('scene.json'), (path) => files.get(path))) files.set(path, bytes)
       const record = await store.create(name, files, { taken: sync.remoteIds() })
       sync.touched(record.id, 'scene.json')
       return record.id

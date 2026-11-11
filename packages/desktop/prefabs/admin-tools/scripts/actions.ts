@@ -1,4 +1,4 @@
-// A ~100-line stand-in for the Creator Hub's smart-items Actions interpreter.
+// A ~150-line stand-in for the Creator Hub's smart-items Actions interpreter.
 // The admin panel only ever needs "read the target entity's asset-packs::Actions
 // and run the one the admin picked", so this reads the component, decodes the
 // action's jsonPayload and applies it. The full interpreter (triggers, states
@@ -20,7 +20,8 @@ export enum ActionType {
   PLAY_SOUND = 'play_sound',
   SET_VISIBILITY = 'set_visibility',
   SET_STATE = 'set_state',
-  PLAY_VIDEO_STREAM = 'play_video_stream'
+  PLAY_VIDEO_STREAM = 'play_video_stream',
+  CALL_SCRIPT_METHOD = 'call_script_method'
 }
 
 export const SUPPORTED_ACTIONS: readonly string[] = [
@@ -28,7 +29,8 @@ export const SUPPORTED_ACTIONS: readonly string[] = [
   ActionType.PLAY_SOUND,
   ActionType.SET_VISIBILITY,
   ActionType.SET_STATE,
-  ActionType.PLAY_VIDEO_STREAM
+  ActionType.PLAY_VIDEO_STREAM,
+  ActionType.CALL_SCRIPT_METHOD
 ]
 
 type Listener = (action: ActionEntry) => void
@@ -114,6 +116,9 @@ export function runAction(entity: Entity, action: ActionEntry): void {
       break
     case ActionType.PLAY_VIDEO_STREAM:
       playVideoStream(entity, payload)
+      break
+    case ActionType.CALL_SCRIPT_METHOD:
+      callScriptMethod(entity, payload)
       break
     default:
       console.log(`admin-tools: action type "${action.type}" is not supported by this prefab`)
@@ -203,4 +208,59 @@ function playVideoStream(entity: Entity, payload: Record<string, unknown>): void
   existing.volume = asNumber(payload.volume, existing.volume ?? 1)
   existing.loop = asBoolean(payload.loop, existing.loop ?? false)
   existing.playing = true
+}
+
+interface ScriptEntry {
+  instance: unknown
+  entity: number
+  path: string
+}
+
+// Where the scene's script runner (sdk-commands runtime-script.js, and the
+// spawner for clones) registers every live script instance, keyed
+// `${entity}:${path}`. Read directly so this works on any SDK that runs scripts.
+function scriptInstances(): Map<string, ScriptEntry> | null {
+  const registry = (globalThis as unknown as Record<string, unknown>).__DCL_SCRIPT_INSTANCES__
+  return registry instanceof Map ? (registry as Map<string, ScriptEntry>) : null
+}
+
+const ASSET_PATH = '{assetPath}/'
+
+// The instance a payload's scriptPath names. A payload copied out of a smart
+// item can still hold the `{assetPath}/` placeholder its folder was published
+// with; that one matches the entity's script with the same file name.
+function scriptInstance(entity: Entity, scriptPath: string): unknown {
+  const registry = scriptInstances()
+  if (registry === null) return null
+  const exact = registry.get(`${entity}:${scriptPath}`)
+  if (exact !== undefined) return exact.instance
+  if (!scriptPath.startsWith(ASSET_PATH)) return null
+  const file = `/${scriptPath.slice(ASSET_PATH.length)}`
+  for (const entry of registry.values()) {
+    if (entry.entity === (entity as number) && entry.path.endsWith(file)) return entry.instance
+  }
+  return null
+}
+
+// Creator Hub's smart items (doors, buttons, levers, platforms, seats…) are
+// scripts, and their Actions call a script method (creator-hub#1667): the
+// payload is { scriptPath, methodName, params? }, params passed positionally.
+function callScriptMethod(entity: Entity, payload: Record<string, unknown>): void {
+  const scriptPath = asString(payload.scriptPath)
+  const methodName = asString(payload.methodName)
+  if (scriptPath === '' || methodName === '') return
+  const instance = scriptInstance(entity, scriptPath)
+  // Object.prototype's members (constructor, toString…) are no script's action
+  const own = typeof instance === 'object' && instance !== null && !(methodName in Object.prototype)
+  const method = own ? (instance as Record<string, unknown>)[methodName] : undefined
+  if (typeof method !== 'function') {
+    console.log(`admin-tools: ${scriptPath} on entity ${entity} has no method "${methodName}"`)
+    return
+  }
+  const params = typeof payload.params === 'object' && payload.params !== null ? Object.values(payload.params) : []
+  try {
+    ;(method as (...args: unknown[]) => unknown).apply(instance, params)
+  } catch (error) {
+    console.log(`admin-tools: ${methodName} on ${scriptPath} failed`, error)
+  }
 }

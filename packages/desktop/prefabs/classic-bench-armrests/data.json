@@ -8,8 +8,12 @@
     "furniture",
     "sit"
   ],
-  "version": "1.1.0",
+  "version": "1.2.0",
   "changelog": [
+    {
+      "version": "1.2.0",
+      "notes": "Every player sees which sit spots are taken, a taken seat says so (Taken Message), the hover text is yours to change, and Sit and Mark as free are actions other smart items can call. You stand up by walking away, and a spot left taken by a player who disconnected frees itself. Same seat as the Creator Hub's."
+    },
     {
       "version": "1.1.0",
       "notes": "The seat no longer runs on the Multiplayer Server, where it was walking every sit spot's transform chain each frame for nobody to see."

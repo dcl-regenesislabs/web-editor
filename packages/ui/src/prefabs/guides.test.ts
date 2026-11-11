@@ -29,7 +29,7 @@ const MAX_GUIDE_BYTES = 6144
 // The cap exists to catch RE-GROWTH, not to fight ordinary edits — the vocabulary
 // lint below is what keeps per-prefab content out. Raise deliberately for a new
 // editor CAPABILITY, never as part of adding a prefab.
-const MAX_PROMPT_CHARS = 37000
+const MAX_PROMPT_CHARS = 37500
 
 function hasGuide(folder: string): boolean {
   return existsSync(fileURLToPath(new URL(`${folder}/${GUIDE_FILE}`, PREFABS_ROOT)))
@@ -125,11 +125,15 @@ describe('per-prefab AI guides', () => {
   // Carried runtime modules are exactly what makes a prefab something another
   // script imports and therefore needs documenting. Both directions: the 23 seats
   // and admin-tools expose no API, and a guide nobody is told to read only rots.
+  // The seats' one module, ~runtime/seat, is their shared behaviour, not an API.
+  const exposesApi = (folder: string): boolean =>
+    hasRuntimeModules(folder) && runtimeSpecifiers(folder).some((spec) => spec !== '~runtime/seat')
+
   it('ships a guide iff the prefab carries runtime modules', () => {
     for (const folder of folders) {
       const guided = hasGuide(folder)
       const why = guided ? 'ai.md exists but nothing here is importable' : 'ai.md is missing'
-      expect(guided, `${folder}: ${why}`).toBe(hasRuntimeModules(folder))
+      expect(guided, `${folder}: ${why}`).toBe(exposesApi(folder))
     }
   })
 

@@ -1,4 +1,4 @@
-import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, BROWSER_TOOLS, createToolQueue, isCatalogSearch, object } from '@dcl-editor/contract'
+import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, BROWSER_TOOLS, createToolQueue, editorToolDeadlineMs, editorToolTimeoutMessage, isCatalogSearch, object } from '@dcl-editor/contract'
 import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, AssistantMemoryRef, BrowserToolCall, EditorShell, PhonePreviewState } from '@dcl-editor/contract'
 import { trackCreator } from '@ui/analytics'
 import type { HostFetchInit } from '@ui/engine/hosted'
@@ -115,7 +115,7 @@ export function createBrowserAssistant(options: {
           shown = true
         }
       }
-      text = await turn.execute(call, turn.controller.signal)
+      text = await withDeadline(turn.execute, call, turn.controller.signal)
       if (text.length > 500_000) throw new Error('The tool result is too large. Ask for a smaller part of the project.')
       turn.controller.signal.throwIfAborted()
       ok = true
@@ -313,6 +313,44 @@ export function createBrowserAssistant(options: {
     onAiEvent(listener) { listeners.add(listener); return () => { listeners.delete(listener) } }
   }
   return { shell, reset, dispose() { reset(); listeners.clear() } }
+}
+
+function stuckCause(): string {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return 'the editor tab is in the background, where the engine runs slowly'
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return 'the browser is offline'
+  return 'the editor may have reloaded the scene, or the engine is busy'
+}
+
+const STOP_GRACE_MS = 1000
+
+// A call stuck in the editor would hold the tool queue and the turn until the service gave up: past its deadline it
+// ends with the likely cause, and the work it started is told to stop. A cancelled turn still waits for the work to
+// wind down, so the next turn's tools never run beside it.
+function withDeadline(execute: (call: BrowserToolCall, signal: AbortSignal) => Promise<string>, call: BrowserToolCall, signal: AbortSignal): Promise<string> {
+  const ms = editorToolDeadlineMs(call.tool, call.args)
+  if (ms === undefined) return execute(call, signal)
+  const inner = new AbortController()
+  const forward = (): void => inner.abort(signal.reason)
+  signal.addEventListener('abort', forward, { once: true })
+  if (signal.aborted) forward()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return new Promise<string>((resolve, reject) => {
+    let timedOut: Error | null = null
+    const running = execute(call, inner.signal)
+    running.then(resolve, (error: unknown) => reject(timedOut ?? error))
+    timer = setTimeout(() => {
+      const cause = stuckCause()
+      console.warn('[assistant] gave up on a tool call', call.tool, `after ${ms / 1000} s:`, cause)
+      timedOut = new Error(editorToolTimeoutMessage(call.tool, ms, cause))
+      inner.abort(timedOut)
+      // work that stops when told (a batch between requests) answers with what it did; stuck work does not
+      const stuck = timedOut
+      setTimeout(() => reject(stuck), STOP_GRACE_MS)
+    }, ms)
+  }).finally(() => {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', forward)
+  })
 }
 
 function hex(bytes: Uint8Array): string {

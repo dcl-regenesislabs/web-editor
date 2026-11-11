@@ -13,8 +13,12 @@
     "board"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "changelog": [
+    {
+      "version": "1.8.0",
+      "notes": "The on-screen board names its title, rows and empty line, so the editor's phone check measures them."
+    },
     {
       "version": "1.7.0",
       "notes": "On phones the on-screen board is a compact card of the top 3 with text no smaller than 20, so it fits the right column above the touch buttons and stays readable."

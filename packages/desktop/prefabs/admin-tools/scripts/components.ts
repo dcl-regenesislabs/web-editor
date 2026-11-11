@@ -86,6 +86,8 @@ export const AdminTools = engine.defineComponent('asset-packs::AdminTools', {
       )
     )
   }),
+  // Nothing reads it since the Rewards tab went (creator-hub#1748 dropped it too), but the
+  // schema must keep it: placed items carry it and the bytes decode field by field.
   rewardsControl: Schemas.Map({
     isEnabled: Schemas.Boolean,
     rewardItems: Schemas.Optional(
@@ -103,12 +105,6 @@ export const VideoScreen = engine.defineComponent('asset-packs::VideoScreen', {
   thumbnail: Schemas.String,
   defaultMediaSource: Schemas.EnumNumber<MediaSource>(MediaSource, MediaSource.VideoURL),
   defaultURL: Schemas.String
-})
-
-export const Rewards = engine.defineComponent('asset-packs::Rewards', {
-  campaignId: Schemas.String,
-  dispenserKey: Schemas.String,
-  testMode: Schemas.Boolean
 })
 
 export const TextAnnouncements = engine.defineComponent('asset-packs::TextAnnouncements', {

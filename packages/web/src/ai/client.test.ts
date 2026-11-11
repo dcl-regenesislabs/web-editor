@@ -132,6 +132,33 @@ it('runs each tool call once and refuses requests after the browser project chan
   } finally { assistant.dispose() }
 })
 
+it('gives up on a scene request the editor never finishes, says why, and runs the next call', async () => {
+  const { assistant, scene } = setup()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  scene.mockImplementationOnce(() => new Promise(() => {}))
+  try {
+    const { turnId } = await assistant.shell.aiSend({ provider: 'claude', text: 'Make a door' })
+    vi.useFakeTimers()
+    const ws = Socket.instances[0]
+    const call = { kind: 'call', turnId, tool: 'scene_request', args: { request: { type: 'createEntity', name: 'Door' } } }
+    ws.receive({ ...call, callId: 'stuck' })
+    ws.receive({ ...call, callId: 'next' })
+    await vi.advanceTimersByTimeAsync(239_000)
+    expect(ws.sent.some((message) => message.kind === 'result')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    // it is told to stop and given a moment to answer with what it did; this one never answers
+    expect(ws.sent.some((message) => message.kind === 'result')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ws.sent).toContainEqual(expect.objectContaining({
+      kind: 'result', callId: 'stuck', ok: false,
+      text: expect.stringMatching(/^The scene request did not answer within 240 s; .+\. A batch may have applied part of its requests: check with outline what landed before sending any of it again\.$/)
+    }))
+    expect(scene.mock.calls[0][1].aborted).toBe(true)
+    expect(warn).toHaveBeenCalledWith('[assistant] gave up on a tool call', 'scene_request', 'after 240 s:', expect.any(String))
+    expect(ws.sent).toContainEqual(expect.objectContaining({ kind: 'result', callId: 'next', ok: true }))
+  } finally { vi.useRealTimers(); warn.mockRestore(); assistant.dispose() }
+})
+
 it('cancels queued tools, drains an in-flight action, and ignores messages from the old connection', async () => {
   const { assistant, scene, events } = setup()
   const action = deferred<void>()

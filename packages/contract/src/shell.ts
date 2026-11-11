@@ -211,6 +211,17 @@ export type DeployCapability =
   | { kind: 'destructive' }
   | { kind: 'unknown' }
 
+// What the scene's installed SDK carries, probed from its typings in node_modules.
+export interface SdkCapability {
+  authServer: boolean
+  /** false when the scene has no node_modules yet: unknown, not incapable */
+  installed: boolean
+  /** uiTransform has elementId, without which the explorer measures no screen UI (ui_layout); absent when unknown */
+  uiElementId?: boolean
+  /** the installed @dcl/sdk version */
+  version?: string
+}
+
 // ---- Scene settings (scene.json) ----
 // The editable subset of a project's scene.json. Reading collapses spawn-point
 // axis ranges ([min,max]) to their midpoint; saving writes plain numbers and
@@ -479,8 +490,8 @@ export interface EditorShell {
       reports. Empty array when the project has no composite yet. */
   compositeEntityIds?: (dir: string) => Promise<number[]>
 
-  /** whether the scene's installed SDK carries the auth-server API surface */
-  sdkCapability?: (dir: string) => Promise<{ authServer: boolean; installed: boolean }>
+  /** whether the scene's installed SDK carries the auth-server API surface, and uiTransform's elementId */
+  sdkCapability?: (dir: string) => Promise<SdkCapability>
 
   /** npm install @dcl/sdk@auth-server in the scene */
   installAuthServerSdk?: (dir: string) => Promise<{ ok: boolean; message: string }>

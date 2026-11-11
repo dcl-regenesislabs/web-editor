@@ -109,7 +109,7 @@ port and select it with `?systemScene=http://localhost:<port>` on the editor URL
 
 ## Decentraland SDK skills
 
-The service ships 22 SDK skills and 72 guidance/reference documents from a pinned
+The service ships 22 SDK skills and 82 guidance/reference documents from a pinned
 snapshot of `decentraland/sdk-skills`. The model sees the topic catalog and uses
 `read_skill` to load relevant guidance before writing SDK code. Large documents
 are paginated; asset catalogs support literal text search. No runtime download or
