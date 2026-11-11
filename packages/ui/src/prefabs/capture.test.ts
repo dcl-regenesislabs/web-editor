@@ -195,6 +195,16 @@ describe('captureSelectionAsPrefab', () => {
     ])
   })
 
+  // creator-hub#1287: a Placeholder names the model the editor shows in its place
+  it('bundles the model an asset-packs::Placeholder names', () => {
+    const snapshot: PrefabSnapshot = {
+      '600': { Transform: transform(0), 'asset-packs::Placeholder': { src: 'assets/asset-packs/admin_toolkit/admin_toolkit.glb' } }
+    }
+    const { composite, resources } = captureSelectionAsPrefab(snapshot, ['600'])
+    expect(dataOf(composite, 'asset-packs::Placeholder')['0'].json).toEqual({ src: '{assetPath}/admin_toolkit.glb' })
+    expect(resources).toEqual([{ source: 'assets/asset-packs/admin_toolkit/admin_toolkit.glb', rel: 'admin_toolkit.glb' }])
+  })
+
   it('leaves remote urls alone', () => {
     const snapshot: PrefabSnapshot = {
       '600': { Transform: transform(0), VideoPlayer: { src: 'https://cdn.example/clip.mp4' } }

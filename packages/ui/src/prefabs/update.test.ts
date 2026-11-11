@@ -34,7 +34,8 @@ vi.mock('@scene/inspector', () => ({
 vi.mock('@scene/state', () => ({ state: h.state }))
 vi.mock('../engine/datalayer', () => ({ dataLayerReadFile: async () => '' }))
 vi.mock('../script/parser', () => ({
-  getScriptParams: () => ({ params: [], actions: [] }),
+  getScriptParams: () => ({ params: [], actions: [], events: [] }),
+  layoutOf: (fresh: unknown) => fresh,
   parseLayout: () => undefined,
   mergeLayout: (fresh: unknown) => fresh
 }))

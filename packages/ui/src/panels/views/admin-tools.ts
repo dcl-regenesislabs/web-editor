@@ -10,7 +10,6 @@
 
 export const ADMIN_TOOLS_COMPONENT = 'asset-packs::AdminTools'
 export const ACTIONS_COMPONENT = 'asset-packs::Actions'
-export const REWARDS_COMPONENT = 'asset-packs::Rewards'
 export const VIDEO_PLAYER_COMPONENT = 'VideoPlayer'
 
 export type AdminPermissions = 'PUBLIC' | 'PRIVATE'
@@ -60,6 +59,8 @@ export interface AdminToolsValue {
     linkAllSmartItems: boolean
     smartItems: SmartItemRef[]
   }
+  // no longer edited or read (the panel's Rewards tab is gone, as in creator-hub#1748);
+  // carried through so the stored value and the schema's field order survive a write
   rewardsControl: {
     isEnabled: boolean
     rewardItems: EntityRef[]

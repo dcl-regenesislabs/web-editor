@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { getScriptParams } from '../../script/parser'
 import { state } from '@scene/state'
 import { NAME_COMPONENT } from '@scene/custom-components'
 import { ParamField } from './script-params'
@@ -189,6 +193,86 @@ describe('scene theme and course controls', () => {
     view.click(view.find('.eui-ds-select-field'))
     const rows = view.all('.eui-ds-pop-row').map((e) => e.textContent)
     expect(rows).toEqual(['Choose a Trigger Area', 'Start#512'])
+    view.unmount()
+  })
+})
+
+describe('Creator Hub param shapes (creator-hub#1513, #1667, #1748)', () => {
+  it('edits a slider within its range', () => {
+    const view = mount(<ParamField name="speed" param={{ type: 'slider', value: 2, min: 0, max: 10, step: 0.5 }} onChange={() => {}} />)
+    const range = view.find('input[type="range"]') as HTMLInputElement
+    expect([range.min, range.max, range.step, range.value]).toEqual(['0', '10', '0.5', '2'])
+    view.unmount()
+  })
+
+  it("edits an object's members in place and writes the whole object back", () => {
+    let picked: unknown
+    const param = {
+      type: 'object' as const,
+      value: { label: 'a', on: false },
+      fields: { label: { type: 'string' as const, value: '' }, on: { type: 'boolean' as const, value: false } }
+    }
+    const view = mount(<ParamField name="cfg" param={param} onChange={(v) => { picked = v }} />)
+    expect(view.text()).toContain('2 settings')
+    view.type(view.find('.eui-param-group input'), 'b')
+    expect(picked).toEqual({ label: 'b', on: false })
+    view.unmount()
+  })
+
+  it('adds and removes list rows', () => {
+    let picked: unknown
+    const item = { type: 'object' as const, value: { entity: 0, customName: '' }, fields: { entity: { type: 'entity' as const, value: 0 }, customName: { type: 'string' as const, value: '' } } }
+    const render = (value: { entity: number; customName: string }[]) => (
+      <ParamField name="videoPlayers" param={{ type: 'array', value, item }} onChange={(v) => { picked = v }} />
+    )
+    const view = mount(render([]))
+    expect(view.text()).toContain('none yet')
+    view.click(view.find('[aria-label="add videoPlayers"]'))
+    expect(picked).toEqual([{ entity: 0, customName: '' }])
+    view.render(render([{ entity: 512, customName: 'Screen' }, { entity: 513, customName: 'Other' }]))
+    view.click(view.find('[aria-label="remove videoPlayers 1"]'))
+    expect(picked).toEqual([{ entity: 513, customName: 'Other' }])
+    view.unmount()
+  })
+
+  it('offers only entities with the @components it names', () => {
+    run(() => { state.snapshot = {
+      '512': { [NAME_COMPONENT]: { value: 'Screen' }, 'asset-packs::VideoScreen': {} },
+      '513': { [NAME_COMPONENT]: { value: 'Wall' } }
+    } })
+    const view = mount(<ParamField name="entity" param={{ type: 'entity', value: 0, components: ['asset-packs::VideoScreen'] }} onChange={() => {}} />)
+    view.click(view.find('.eui-ds-select-field'))
+    expect(view.all('.eui-ds-pop-row').map((e) => e.textContent)).toEqual(['none', 'Screen#512'])
+    view.unmount()
+  })
+
+  it('picks a default action among those of the sibling entity (@actionsOf)', () => {
+    run(() => { state.snapshot = { '520': { 'asset-packs::Actions': { id: 520, value: [{ name: 'open' }, { name: 'close' }] } } } })
+    const view = mount(
+      <ParamField name="defaultAction" param={{ type: 'string', value: '', actionsOf: 'entity' }} siblings={{ entity: 520 }} onChange={() => {}} />
+    )
+    view.click(view.find('.eui-ds-select-field'))
+    expect(view.all('.eui-ds-pop-row').map((e) => e.textContent)).toEqual(['none', 'open', 'close'])
+    view.unmount()
+  })
+})
+
+describe("Creator Hub's Admin Tools script (creator-hub#1748)", () => {
+  it('renders every section of its config, down to the list rows', () => {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../script/creator-hub-fixtures/AdminTools.ts.txt')
+    const { params } = getScriptParams(readFileSync(file, 'utf8'))
+    params.videoControl = { ...params.videoControl, value: { ...(params.videoControl.value as object), videoPlayers: [{ entity: 0, customName: 'Stage' }] } }
+    const view = mount(
+      <>
+        {Object.entries(params).map(([name, param]) => (
+          <ParamField key={name} name={name} param={param} onChange={() => {}} />
+        ))}
+      </>
+    )
+    for (const label of ['Admin Permissions', 'Authorized Admin Users', 'Admin Allow List', 'Kick Coordinates', 'Video Players', 'Smart Items']) {
+      expect(view.byText(label, '.plabel')).not.toBeNull()
+    }
+    expect((view.all('.eui-param-group input').map((i) => (i as HTMLInputElement).value))).toContain('Stage')
     view.unmount()
   })
 })

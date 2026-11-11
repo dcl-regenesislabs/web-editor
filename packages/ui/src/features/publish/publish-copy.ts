@@ -11,6 +11,7 @@ import type { Footprint, OccupyingScene } from './publish-conflict'
 
 export const NEEDS_DESKTOP = 'Publishing needs the desktop app'
 export const SIGN_IN_TO_PUBLISH = 'Sign in to publish'
+export const UNSAVED_BEFORE_PUBLISH = 'The scene could not be saved, so publishing now would leave out the latest edits. Try publishing again.'
 export const SIGN_IN_NOTE = 'Publishing proves the world is yours — sign in with Decentraland first.'
 // hosted: the wallet belongs to the page the editor runs in, so there is no sign-in to offer here
 export const GUEST_NOTE =

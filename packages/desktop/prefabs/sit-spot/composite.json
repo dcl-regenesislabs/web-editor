@@ -40,6 +40,29 @@
           }
         }
       }
+    },
+    {
+      "name": "asset-packs::Actions",
+      "data": {
+        "0": {
+          "json": {
+            "id": "{self}",
+            "value": [
+              {
+                "type": "call_script_method",
+                "name": "Sit Here",
+                "jsonPayload": "{\"scriptPath\":\"{assetPath}/scripts/seat.ts\",\"methodName\":\"sit\",\"params\":{}}",
+                "default": true
+              },
+              {
+                "type": "call_script_method",
+                "name": "Mark as free",
+                "jsonPayload": "{\"scriptPath\":\"{assetPath}/scripts/seat.ts\",\"methodName\":\"markAsFree\",\"params\":{}}"
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }
