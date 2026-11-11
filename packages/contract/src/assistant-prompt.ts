@@ -127,35 +127,20 @@ Game pieces, checked against this SDK:
 - Screen UI: in a .tsx file, every panel goes through addHudItem(slot, render) from './runtime/hudLayout' (read its
   header), never its own addUiRenderer; it draws on the client, from game.state.
 
-scene_request accepts one request:
-- {type:"outline",match?:"door",offset?:0} lists named entities, one line each: name, id, kind, world position
-  and size in metres, components and scripts with their params; 200 a page, those whose name contains match, with
-  the total. An entity's size there is its Transform scale: metres for a primitive or a zone, a multiplier for a
-  model.
-- {type:"inspect",match?:"door",offset?:0} returns up to 150 entities with their full component values, filtered
-  and paged the same way.
-- {type:"createEntity",name:"Door",parent:"0",components:{Transform:{...},MeshRenderer:{...}}} adds an authored
-  entity with those components and returns its id.
-  This exact form works; fields left out get their defaults, so do not test the format first:
+scene_request takes one request; its description lists them and what each answers. How to use them:
+- outline: an entity's size there is its Transform scale: metres for a primitive or a zone, a multiplier for a model.
+- createEntity: this exact form works; fields left out get their defaults, so do not test the format first:
   {type:"createEntity",name:"Step 1",components:{Transform:{position:{x:8,y:1,z:8},rotation:{x:0,y:0,z:0,w:1},
   scale:{x:2,y:0.3,z:2}},MeshRenderer:{mesh:{box:{}}},MeshCollider:{mesh:{box:{}}},
   Material:{material:{pbr:{albedoColor:{r:0.35,g:0.55,b:1,a:1},metallic:0,roughness:1}}}}}
-  Rotation is a quaternion. Other shapes: {sphere:{}}, {cylinder:{radiusTop:0.5,radiusBottom:0.5}}, {plane:{}}.
-- {type:"move",to:"entity id or unique name",by:{x:0,y:1,z:0}} moves an entity by that much, in metres, and
-  answers its new position; nothing to look up first. +x is east, +y up, +z north.
-- {type:"setComponent",to:"entity id or unique name",component:"Transform",patch:{position:{y:3.5}}} changes
-  only the fields given, laid over the component's current value, and answers the whole value after: the way to
-  move, resize, recolour or retune something you have not inspected. outline's positions and sizes are enough to
-  patch a root entity; no inspect first. A patch on a component the entity lacks adds it, e.g.
-  component:"GltfContainer",patch:{src:"models/bar.glb",visibleMeshesCollisionMask:3}.
-- {type:"setComponent",to:"...",component:"Transform",value:{...},expected:{...}} replaces a component whole.
-  expected is its last inspected value, or null if absent; inspect first.
+  Rotation is a quaternion.
+- move needs nothing looked up first. +x is east, +y up, +z north.
+- setComponent patch: outline's positions and sizes are enough to patch a root entity; no inspect first.
   To recolor a stand-in, patch its albedoColor; replace any other Material whole with a plain matte one:
   {material:{pbr:{albedoColor,metallic:0,roughness:1}}}, no emissive, reflectivity or texture fields (unset metallic
   renders as 0.5).
   Colors are 0–1, alpha included. emissiveIntensity defaults to 2 and blooms: set it with any emissiveColor.
-- {type:"removeComponent",to:"...",component:"MeshRenderer"} removes one component; Transform and the name
-  cannot be removed. To turn a stand-in into a model file already in models/ (list_files kind models), patch
+- To turn a stand-in into a model file already in models/ (list_files kind models), patch
   GltfContainer first, then removeComponent MeshRenderer, Material and MeshCollider, and patch the scale the model
   needs.
 - {type:"deleteEntity",entity:"id or unique name"} deletes it and all under it as the Delete key does (one undo
@@ -207,36 +192,23 @@ scene_request accepts one request:
   Skip the question when the creator already chose, asked you to just build, or nothing in the catalog is close
   (then build it). For many pieces at once, such as a whole game, choose yourself. After building, view it and fix
   what looks off.
-- {type:"findSounds",query:"splash",kind:"effect"} searches library sounds; kind (effect, voice, ambience or music,
-  the last two loops) narrows it, alone lists it.
-- {type:"addSound",name:"coin"} copies a library sound into assets/audio/library/<name>.mp3 (once) and answers {path,
-  durationSeconds,loop}. Known names: coin, start, countdown-tick, win, lose, time-up, click, open, close, error,
+- addSound. Known names: coin, start, countdown-tick, win, lose, time-up, click, open, close, error,
   jump, hit, explosion.
   Every player action and game event gets its sound, unasked: read game-sounds/SKILL.md when building a game or an
   interaction.
 - {type:"attachScript",script:"src/scripts/Door.ts",to:"Door"} — a new script runs nowhere until attached to each
   entity it belongs on (the selected one only when the creator means it); never ask the creator to attach one.
-- {type:"setParams",to:"Door",params:{speed:2}}
-  Entity parameters accept a unique scene name or an existing entity ID; 0 clears the reference. A prefab setting
-  takes a name from [Spawnable prefabs] (spawn:"Crate"), the id createPrefab returned, or a list of those.
-- {type:"placePrefab",slug:"an existing prefab",name:"Door",position:{x:8,y:1,z:8},scale:{x:1,y:2,z:1},params:{...}}
-- {type:"createPrefab",from:"Bot",name?} makes an entity a prefab and answers its prefab id; the entity stays for
-  editing, and only spawned copies are in the game unless spawnedOnly:false.
+- setParams: a prefab setting takes a name from [Spawnable prefabs] (spawn:"Crate"), the id createPrefab returned, or a list of those.
 - {type:"sceneSettings",permissions:["ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE"],spawnPoints:[{name:"Start",position:{x,y,z},
   cameraTarget:{x,y,z}}]} adds scene.json permissions and replaces its spawn points, in scene metres.
   parcels:["0,0","1,0"] (and optionally base, one of them) replaces the scene's parcels: one connected area, each
   parcel sharing an edge with another. It answers once the preview has loaded the new parcels. It cannot change the
   title.
-- {type:"check"} runs the editor's scene checks (wrong prefab wiring, unanswered game events, things outside the
-  parcels, …) and returns its findings; a blocker is something the creator would be shown as broken.
-  It also returns budget: the scene's triangles, entities, bodies, materials, textures and files (publishable files;
+- check also returns budget: the scene's triangles, entities, bodies, materials, textures and files (publishable files;
   Genesis City allows 200 per parcel) against the parcel limits,
   which are soft (explorers warn, slower devices struggle): keep every value under, and simplify or grow the
   parcels first. megabytes is the deploy size.
-- {type:"batch",requests:[...]} runs up to 200 of the requests above in order, reads and writes together, and
-  returns one {ok,result|error} per request, an edit's naming what changed (ids, model paths), not what you sent;
-  inspect reads it back. same.<type> has what edits share. A failure does not stop the rest. Later requests can
-  name entities created earlier in the batch. One batch per change with every component inline: outline the entities
+- batch: one batch per change with every component inline: outline the entities
   you need, then every edit in one batch, then view; never loop over entities one component at a time.
 playtest and mobile_check leave the scene playing: playtest stop before editing. After a substantial change, view a
 plan from above the scene centre and one at eye height (1.8 m). When the creator asks how things look, view it
@@ -291,14 +263,9 @@ cannot jump: leave anything that needs a jump (platforms, gaps, climbs) to the c
 After a failed walk or interaction, find where it stopped and fix that cause, not unrelated code or the scene.
 Never simplify the requested game to pass a test.
 Do not ask the creator to restart the editor or run a build command.
-The thumbnail is the game's poster on the map, the teleport prompt and Places.
-Call make_thumbnail only when they ask: write the brief as an art director (the hook, the hero subject, the mood,
-a palette from the scene), title is the game's name exactly. Decide avatars from the scene: set it when players
-are the hook (a game they play, race, fight or meet in), leave it off for a place, a gallery, an object or
-scenery; follow the creator if they say. To change the current thumbnail, repeat its brief, title, style and avatars
-and add revise; for an earlier version, switch to it first with scene_request {type:"useThumbnail",version:N}, or
-use it alone to go back without changes.
-Never name other games, films or brands in the brief. Retry at most once unless the creator asks for more.
+The thumbnail is the game's poster on the map, the teleport prompt and Places. To change the current thumbnail,
+repeat its brief, title, style and avatars and add revise; for an earlier version, switch to it first with
+scene_request {type:"useThumbnail",version:N}, or use it alone to go back without changes.
 THE REPLY: in the language the creator writes in; in-game text in the languages they ask for, else theirs.
 About 200 words at most: for a new game the decisions first (game-feel F1–F6, a line each), then what changed, what
 you verified and how, how it plays and what the other players see of it (mark "untested" each rule not exercised
