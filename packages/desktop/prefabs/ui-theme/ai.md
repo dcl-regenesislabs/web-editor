@@ -13,14 +13,14 @@ Place one UI Theme from the library. Pick Accent Color and Dark or Light in its 
 - `accentColor`: six-digit hex color, edited with a color picker.
 - `appearance`: Dark or Light.
 
-For custom UI, import `sceneUiTheme` from `~runtime/uiTheme`, `UiPanel`, `UiText`, `UiButton`, `ProgressPips`, `UiNotice` and `uiSizes` from `~runtime/uiComponents`, the compact HUD pieces from `~runtime/hudKit` and windows (shop, dialog, results) from `~runtime/uiWindow`, and place every panel with `addHudItem(slot, render)` from `~runtime/hudLayout` (its header documents the slots) instead of `ReactEcsRenderer.addUiRenderer`. Each panel declares width and height and is at most `HUD_COLUMN_WIDTH` wide; handlers go on actual buttons. Inspect a screenshot in the real preview, including completion.
+For custom UI, from a script in src/scripts/, import `sceneUiTheme` from `./runtime/uiTheme`, `UiPanel`, `UiText`, `UiButton`, `ProgressPips`, `UiNotice` and `uiSizes` from `./runtime/uiComponents`, the compact HUD pieces from `./runtime/hudKit` and windows (shop, dialog, results) from `./runtime/uiWindow`, and place every panel with `addHudItem(slot, render)` from `./runtime/hudLayout` (its header documents the slots) instead of `ReactEcsRenderer.addUiRenderer`. Each panel declares width and height and is at most `HUD_COLUMN_WIDTH` wide; handlers go on actual buttons. Inspect a screenshot in the real preview, including completion.
 
-`ColorHex`, `EntityName`, `EntityNames`, `ZoneName` and `ZoneNames` from `~runtime/authoring` are string aliases that give constructor parameters color or entity pickers. Plural references are ordered comma-separated names; creators pick and reorder them in the inspector. Names must be unique and contain no commas. The assistant can provide arrays to the plural parameters.
+`ColorHex`, `EntityName`, `EntityNames`, `ZoneName` and `ZoneNames` from `./runtime/authoring` are string aliases that give constructor parameters color or entity pickers. Plural references are ordered comma-separated names; creators pick and reorder them in the inspector. Names must be unique and contain no commas. The assistant can provide arrays to the plural parameters.
 
 ## Do / Don't
 
 - Use one theme per scene and small non-blocking HUDs; take text and button sizes from `uiSizes('hud' | 'window')` (on phones text 20 or more and presses 80 or more).
-- Never put UI in the bottom corners or the screen's left edge: phones draw the joystick and the jump/E/F buttons there. Results, shops and rule cards are windows in the `modal` slot, which hides the touch controls while open.
+- Never put UI in the bottom corners: phones draw the joystick and the jump/E/F buttons there. The left column is for glanceable info only (the explorer's chat opens over it); buttons go right, top or in a window. Results, shops and rule cards are windows in the `modal` slot, which hides the touch controls while open.
 - No hover-only states and no emoji in text.
 - Do not write a separate palette for each prefab or use default pink SDK buttons.
 - Verify running and finished states in a real preview screenshot.

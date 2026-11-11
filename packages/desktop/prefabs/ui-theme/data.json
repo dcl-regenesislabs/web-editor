@@ -11,8 +11,12 @@
     "hud",
     "design"
   ],
-  "version": "1.2.0",
+  "version": "1.2.1",
   "changelog": [
+    {
+      "version": "1.2.1",
+      "notes": "The guide imports from ./runtime/ in src/scripts, and says the left column is for glanceable info instead of keeping UI off the left edge."
+    },
     {
       "version": "1.2.0",
       "notes": "The guide points custom UI at the shared size set (uiSizes), the compact HUD pieces and the ready-made windows, so a HUD stays small and a shop or dialog is comfortable to tap on a phone."

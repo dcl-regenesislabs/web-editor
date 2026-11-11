@@ -13,8 +13,12 @@
     "multiplayer"
   ],
   "requiresSdk": "auth-server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "changelog": [
+    {
+      "version": "1.0.2",
+      "notes": "The guide's example branches with if (isServer()) { …; return }, the way the assistant's prompt asks."
+    },
     {
       "version": "1.0.1",
       "notes": "The assistant's guide says how the phone buttons the item declares combine with the ones a game's own scripts declare."

@@ -86,12 +86,14 @@ import { heldBy, takeItem } from './runtime/carry'
 export class GateKey {
   constructor(public src: string, public entity: Entity) {}
   start(): void {
-    if (!isServer()) return
-    game.onEnterArea('Gate Zone', (player) => {
-      if (heldBy(player)?.kind !== 'Key') return
-      takeItem(player)
-      game.setState({ gateOpen: true })
-    })
+    if (isServer()) {
+      game.onEnterArea('Gate Zone', (player) => {
+        if (heldBy(player)?.kind !== 'Key') return
+        takeItem(player)
+        game.setState({ gateOpen: true })
+      })
+      return
+    }
   }
 }
 ```
