@@ -45,7 +45,7 @@ function node(entity: string, components: Components, feedback: Record<string, u
 }
 
 /** An unmeasured node the layout rules would have checked: it shows text or takes presses. */
-export interface UnmeasuredNode { entity: number; text?: string; pointer?: string[] }
+export interface UnmeasuredNode { entity: number; elementId?: string; text?: string; pointer?: string[] }
 
 /** The visible nodes the engine measured, in draw order; how many UI nodes it could not (no elementId), and which of
  * those show text or take presses, so a check that skipped them is not mistaken for a pass. */
@@ -58,11 +58,11 @@ export function measuredNodes(snapshot: Record<string, Components>): { nodes: Re
     if (!object(transform)) continue
     const feedback = components.UiLayoutFeedback
     if (!object(feedback)) {
-      if (typeof transform.elementId === 'string') continue
-      unnamed++
+      // named but never laid out by the engine is as unchecked as unnamed: only the count differs
+      if (typeof transform.elementId !== 'string') unnamed++
       const text = object(components.UiText) && typeof components.UiText.value === 'string' && components.UiText.value.trim() !== '' ? components.UiText.value : undefined
       const presses = pointer(components, transform)
-      if (text !== undefined || presses.length > 0) skipped.push({ entity: Number(entity), ...(text !== undefined ? { text: text.slice(0, 60) } : {}), ...(presses.length > 0 ? { pointer: presses } : {}) })
+      if (text !== undefined || presses.length > 0) skipped.push({ entity: Number(entity), ...(typeof transform.elementId === 'string' ? { elementId: transform.elementId } : {}), ...(text !== undefined ? { text: text.slice(0, 60) } : {}), ...(presses.length > 0 ? { pointer: presses } : {}) })
       continue
     }
     if (feedback.visible === true) nodes.push(node(entity, components, feedback))

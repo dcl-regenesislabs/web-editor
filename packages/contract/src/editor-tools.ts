@@ -173,8 +173,10 @@ const DEADLINE_SUBJECT: Partial<Record<EditorToolName, string>> = { build: 'The 
 
 // what the model reads when a call ran out of time: why it may have, and what to do next
 export function editorToolTimeoutMessage(tool: EditorToolName, ms: number, cause: string): string {
-  return `${DEADLINE_SUBJECT[tool] ?? 'The tool'} did not answer within ${Math.round(ms / 1000)} s; ${cause}. ` +
-    'Try again once, or carry on and tell the creator what is left.'
+  const next = tool === 'scene_request'
+    ? 'A batch may have applied part of its requests: check with outline what landed before sending any of it again.'
+    : 'Try again once, or carry on and tell the creator what is left.'
+  return `${DEADLINE_SUBJECT[tool] ?? 'The tool'} did not answer within ${Math.round(ms / 1000)} s; ${cause}. ${next}`
 }
 
 export type EditorToolContent =

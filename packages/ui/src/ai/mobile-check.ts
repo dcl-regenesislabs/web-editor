@@ -85,7 +85,7 @@ async function measureState(name: string, controlsShown: boolean, signal: AbortS
   }
   if (skipped.length > 0) {
     const what = skipped.slice(0, 6).map((node) => node.text !== undefined ? `"${node.text}"` : `entity ${node.entity} (${node.pointer?.join(', ')})`).join(', ')
-    issues.push({ rule: 'U1', state: name, detail: `${skipped.length} UI nodes with text or presses have no elementId, so L3/L4 were not checked on them: ${what}${skipped.length > 6 ? ', …' : ''}. Give each a uiTransform elementId and check again` })
+    issues.push({ rule: 'U1', state: name, detail: `${skipped.length} UI nodes with text or presses were not measured (no elementId, or the engine has not laid them out), so L3/L4 were not checked on them: ${what}${skipped.length > 6 ? ', …' : ''}. Give each a uiTransform elementId and check again` })
   }
   const view = await captureView({ entity: null, from: null, lookAt: null }, signal)
   return { result: { state: name, measured: nodes.length, unmeasured: unnamed, view }, issues, snapshot }

@@ -65,7 +65,6 @@ import { publishedSize } from './deploy-size'
 import {
   COMPOSITE_CANDIDATES,
   IMG_MIME,
-  MAIN_COMPOSITE,
   compositeFixes,
   type RawSceneJson,
   applySettings,
@@ -376,7 +375,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     const scene = sceneJsonBytes(edit(raw))
     await writeFile(id, 'scene.json', scene)
     // Rename and Scene settings change the composite's copy of the metadata too
-    for (const [path, bytes] of compositeFixes(scene, await readFile(id, MAIN_COMPOSITE))) await writeFile(id, path, bytes)
+    for (const [path, bytes] of await compositeFixes(scene, (path) => readFile(id, path).catch(() => undefined))) await writeFile(id, path, bytes)
   }
 
   async function thumbnail(id: string, path: string | null | undefined): Promise<string | null> {
@@ -422,7 +421,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       }
       const files = await store.readAll(id).then(async (files) => {
         // a composite whose scene metadata is not scene.json's (the inspector's default) is fixed from it
-        for (const [path, bytes] of [...assetPacksStubUpgrades(files), ...compositeFixes(files.get('scene.json'), files.get(MAIN_COMPOSITE))]) {
+        for (const [path, bytes] of [...assetPacksStubUpgrades(files), ...await compositeFixes(files.get('scene.json'), (path) => files.get(path))]) {
           await writeFile(id, path, bytes)
           files.set(path, bytes)
         }
@@ -695,7 +694,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       const scene = parseSceneJson(files.get('scene.json'))
       if (scene === null) throw new Error(`template not found: ${template}`)
       files.set('scene.json', sceneJsonBytes({ ...scene, display: { ...(scene.display ?? {}), title: name.trim() } }))
-      for (const [path, bytes] of compositeFixes(files.get('scene.json'), files.get(MAIN_COMPOSITE))) files.set(path, bytes)
+      for (const [path, bytes] of await compositeFixes(files.get('scene.json'), (path) => files.get(path))) files.set(path, bytes)
       const record = await store.create(name, files, { taken: sync.remoteIds() })
       sync.touched(record.id, 'scene.json')
       return record.id

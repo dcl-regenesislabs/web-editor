@@ -35,17 +35,35 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 const axis = (v: Axis | undefined): { $case: 'range' | 'single'; value: Axis } =>
   Array.isArray(v) ? { $case: 'range', value: v } : { $case: 'single', value: v ?? 0 }
 
-// What the inspector itself puts in the copy when it reads scene.json (its sceneJson → metadata
-// conversion), for the fields its write-back carries to scene.json.
+// The scene categories the inspector keeps apart from free tags (its SceneCategory enum).
+const CATEGORIES = new Set(['art', 'game', 'casino', 'social', 'music', 'fashion', 'crypto', 'education', 'shop', 'business', 'sports'])
+
+// What the inspector itself puts in the copy when it reads scene.json, field for field: its
+// fromSceneComponent / toSceneComponent pair (@dcl/inspector data-layer/host/utils/component.ts, 7.36.3 as
+// shipped in @dcl/sdk). Its write-back deep-merges every one of these over scene.json, so one left out here
+// would still be reset by a default copy. Keep the two in step when the inspector is upgraded.
 function metadataFrom(scene: SceneJsonMetadata): Record<string, unknown> {
+  const toggles = isRecord(scene.featureToggles) ? scene.featureToggles : {}
+  const tags = Array.isArray(scene.tags) ? scene.tags.filter((t): t is string => typeof t === 'string') : []
+  const sky = isRecord(scene.skyboxConfig) ? scene.skyboxConfig : null
   const out: Record<string, unknown> = {
-    name: scene.display?.title ?? '',
-    description: scene.display?.description ?? '',
-    thumbnail: scene.display?.navmapThumbnail ?? '',
-    author: scene.contact?.name ?? '',
-    email: scene.contact?.email ?? '',
+    name: scene.display?.title || '',
+    description: scene.display?.description || '',
+    thumbnail: scene.display?.navmapThumbnail || '',
+    creator: typeof scene.creator === 'string' ? scene.creator : '',
+    author: scene.contact?.name || '',
+    email: scene.contact?.email || '',
+    categories: tags.filter((t) => CATEGORIES.has(t)),
+    tags: tags.filter((t) => !CATEGORIES.has(t)),
+    silenceVoiceChat: toggles.voiceChat === 'disabled',
+    disablePortableExperiences: toggles.portableExperiences === 'disabled',
+    disableNearbyVoiceChat: toggles.nearbyVoiceChat === 'disabled',
+    hideLandscapeTerrain: scene.landscapeTerrain === false,
+    ageRating: scene.rating,
+    // the write-back sets both fields even when undefined, which clears them: an absent config stays absent
+    skyboxConfig: sky === null ? undefined : { fixedTime: sky.fixedTime, transitionMode: sky.transitionMode },
     spawnPoints: (scene.spawnPoints ?? []).map((p, i) => ({
-      name: p.name ?? `Spawn Point ${i + 1}`,
+      name: p.name || `Spawn Point ${i + 1}`,
       default: p.default,
       position: { x: axis(p.position?.x), y: axis(p.position?.y), z: axis(p.position?.z) },
       cameraTarget: p.cameraTarget
@@ -64,8 +82,10 @@ function metadataFrom(scene: SceneJsonMetadata): Record<string, unknown> {
 
 // the copy's write-back turns a missing field into '' or [], so those compare equal
 const comparable = (v: unknown): string => JSON.stringify(v ?? '') ?? ''
+const LISTS = new Set(['spawnPoints', 'categories', 'tags'])
 function same(key: string, a: unknown, b: unknown): boolean {
-  if (key === 'spawnPoints') return comparable(a ?? []) === comparable(b ?? [])
+  if (LISTS.has(key)) return comparable(a ?? []) === comparable(b ?? [])
+  if (typeof b === 'boolean') return (a === true) === b
   return comparable(a) === comparable(b)
 }
 
@@ -87,7 +107,8 @@ export function alignCompositeMetadata(compositeText: string, scene: SceneJsonMe
     if (!isRecord(root)) continue
     for (const [key, value] of Object.entries(target)) {
       if (same(key, root[key], value)) continue
-      root[key] = value
+      if (value === undefined) delete root[key]
+      else root[key] = value
       changed = true
     }
   }

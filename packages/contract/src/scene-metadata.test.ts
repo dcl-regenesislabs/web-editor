@@ -51,8 +51,36 @@ describe('composite scene metadata', () => {
     expect(meta.spawnPoints).toEqual([
       { name: 'Start', default: true, position: { x: { $case: 'range', value: [4, 6] }, y: { $case: 'single', value: 0 }, z: { $case: 'single', value: 8 } } }
     ])
-    // fields scene.json does not hold stay as they were
-    expect(meta.skyboxConfig).toEqual(DEFAULT_METADATA.skyboxConfig)
+    // what scene.json leaves out is left out: the write-back would otherwise put the default's values there
+    expect(meta.skyboxConfig).toBeUndefined()
+    expect(meta.ageRating).toBeUndefined()
+  })
+
+  it('carries every field the inspector writes back, so a default copy resets none of them', () => {
+    const scene: SceneJsonMetadata = {
+      ...SCENE,
+      creator: '0xabc',
+      tags: ['game', 'parkour', 'social'],
+      featureToggles: { voiceChat: 'disabled', portableExperiences: 'enabled', nearbyVoiceChat: 'disabled' },
+      landscapeTerrain: false,
+      rating: 'A',
+      skyboxConfig: { fixedTime: 43200 },
+      spawnPoints: [{ name: '', position: { x: 1, y: 0, z: 1 } }]
+    }
+    const meta = metadataOf(alignCompositeMetadata(composite(DEFAULT_METADATA), scene)!)
+    expect(meta).toMatchObject({
+      creator: '0xabc',
+      categories: ['game', 'social'],
+      tags: ['parkour'],
+      silenceVoiceChat: true,
+      disableNearbyVoiceChat: true,
+      hideLandscapeTerrain: true,
+      ageRating: 'A',
+      skyboxConfig: { fixedTime: 43200 }
+    })
+    // an empty spawn point name gets the inspector's own fallback, so the next open finds nothing to change
+    expect((meta.spawnPoints as Array<{ name: string }>)[0].name).toBe('Spawn Point 1')
+    expect(alignCompositeMetadata(composite(meta), scene)).toBeNull()
   })
 
   it('leaves a composite that already matches, or has no metadata, alone', () => {

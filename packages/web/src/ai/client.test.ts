@@ -146,9 +146,12 @@ it('gives up on a scene request the editor never finishes, says why, and runs th
     await vi.advanceTimersByTimeAsync(239_000)
     expect(ws.sent.some((message) => message.kind === 'result')).toBe(false)
     await vi.advanceTimersByTimeAsync(1000)
+    // it is told to stop and given a moment to answer with what it did; this one never answers
+    expect(ws.sent.some((message) => message.kind === 'result')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(ws.sent).toContainEqual(expect.objectContaining({
       kind: 'result', callId: 'stuck', ok: false,
-      text: expect.stringMatching(/^The scene request did not answer within 240 s; .+\. Try again once, or carry on and tell the creator what is left\.$/)
+      text: expect.stringMatching(/^The scene request did not answer within 240 s; .+\. A batch may have applied part of its requests: check with outline what landed before sending any of it again\.$/)
     }))
     expect(scene.mock.calls[0][1].aborted).toBe(true)
     expect(warn).toHaveBeenCalledWith('[assistant] gave up on a tool call', 'scene_request', 'after 240 s:', expect.any(String))

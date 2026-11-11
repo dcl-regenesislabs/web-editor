@@ -12,6 +12,8 @@ export interface BatchAnswer {
   results: Array<BatchOutcome | { ok: true }>
   /** per request type, the fields most of its results share; a result lists such a field only where it differs */
   same?: Record<string, Record<string, unknown>>
+  /** set when the batch was stopped before its end: what ran is in results, the rest never started */
+  cutShort?: string
 }
 
 function isEdit(type: string): boolean {
@@ -23,12 +25,12 @@ function requestOutcomes(value: Record<string, unknown>): string[] | null {
   return value.outcomes.flatMap((o) => object(o) && typeof o.tool === 'string' && typeof o.detail === 'string' ? [`${o.tool} ${o.detail}`] : [])
 }
 
-// echoing back the components written, a moved entity's new position or empty lists filled the
-// conversation with the assistant's own input; inspect and outline read them when needed
+// echoing back the components written or empty lists filled the conversation with the assistant's own
+// input; inspect and outline read them when needed. A move keeps its position: it may have been sent as a
+// relative step, and the answer is the only place the result is said.
 function brief(type: string, result: unknown): unknown {
   if (!object(result)) return result
   const { components: _components, value: _value, ...rest } = result
-  if (type === 'move') delete rest.position
   const done = requestOutcomes(rest)
   if (done !== null) {
     delete rest.outcomes

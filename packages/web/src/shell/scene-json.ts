@@ -138,17 +138,20 @@ export function spawnWorldPosition(raw: RawSceneJson): string {
 
 export const COMPOSITE_CANDIDATES = ['assets/scene/main.composite', 'main.composite', 'assets/main.composite']
 
-// the composite the inspector's data layer keeps its copy of the scene metadata in
-export const MAIN_COMPOSITE = 'assets/scene/main.composite'
-
 // scene.json is the source of truth: the composite's copy of its metadata (inspector::SceneMetadata),
 // which the Creator Hub and the desktop editor write back over scene.json, made to match it.
 // The files to write: none when there is nothing to change.
-export function compositeFixes(sceneJson: Uint8Array | undefined, composite: Uint8Array | undefined): Array<[string, Uint8Array]> {
+// `read` gives a project file's bytes, or undefined when it has none.
+export async function compositeFixes(sceneJson: Uint8Array | undefined, read: (path: string) => Promise<Uint8Array | undefined> | Uint8Array | undefined): Promise<Array<[string, Uint8Array]>> {
   const scene = parseSceneJson(sceneJson)
-  if (scene === null || composite === undefined) return []
-  const aligned = alignCompositeMetadata(new TextDecoder().decode(composite), scene)
-  return aligned === null ? [] : [[MAIN_COMPOSITE, new TextEncoder().encode(aligned)]]
+  if (scene === null) return []
+  for (const path of COMPOSITE_CANDIDATES) {
+    const composite = await read(path)
+    if (composite === undefined) continue
+    const aligned = alignCompositeMetadata(new TextDecoder().decode(composite), scene)
+    return aligned === null ? [] : [[path, new TextEncoder().encode(aligned)]]
+  }
+  return []
 }
 
 // The entities authored into a main.composite, from its text.

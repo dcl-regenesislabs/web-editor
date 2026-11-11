@@ -324,6 +324,8 @@ function stuckCause(): string {
   return 'the editor may have reloaded the scene, or the engine is busy'
 }
 
+const STOP_GRACE_MS = 1000
+
 // A call stuck in the editor would hold the tool queue and the turn until the service gave up: past its deadline it
 // ends with the likely cause, and the work it started is told to stop. A cancelled turn still waits for the work to
 // wind down, so the next turn's tools never run beside it.
@@ -335,16 +337,20 @@ function withDeadline(execute: (call: BrowserToolCall, signal: AbortSignal) => P
   signal.addEventListener('abort', forward, { once: true })
   if (signal.aborted) forward()
   let timer: ReturnType<typeof setTimeout> | undefined
-  const ended = new Promise<never>((_resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
+    let timedOut: Error | null = null
+    const running = execute(call, inner.signal)
+    running.then(resolve, (error: unknown) => reject(timedOut ?? error))
     timer = setTimeout(() => {
       const cause = stuckCause()
       console.warn('[assistant] gave up on a tool call', call.tool, `after ${ms / 1000} s:`, cause)
-      const error = new Error(editorToolTimeoutMessage(call.tool, ms, cause))
-      inner.abort(error)
-      reject(error)
+      timedOut = new Error(editorToolTimeoutMessage(call.tool, ms, cause))
+      inner.abort(timedOut)
+      // work that stops when told (a batch between requests) answers with what it did; stuck work does not
+      const stuck = timedOut
+      setTimeout(() => reject(stuck), STOP_GRACE_MS)
     }, ms)
-  })
-  return Promise.race([execute(call, inner.signal), ended]).finally(() => {
+  }).finally(() => {
     clearTimeout(timer)
     signal.removeEventListener('abort', forward)
   })

@@ -103,6 +103,15 @@ describe('assistant scene requests', () => {
     expect(answer).toEqual({ results: [{ ok: true, result: { id: '512', component: 'Transform' } }] })
   })
 
+  it('answers a batch stopped part way with what ran, instead of dropping it', async () => {
+    state.snapshot['512'] = { Transform: { position: { x: 1, y: 0, z: 1 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 }, parent: 0 } }
+    const controller = new AbortController()
+    const stopping = { type: 'move', to: '512', get by() { controller.abort(new Error('the deadline passed')); return { y: 1 } } }
+    const answer = await browserSceneRequest({ type: 'batch', requests: [{ type: 'move', to: '512', by: { y: 1 } }, stopping, { type: 'move', to: '512', by: { y: 1 } }] }, controller.signal) as { results: unknown[]; cutShort: string }
+    expect(answer.results).toHaveLength(2)
+    expect(answer.cutShort).toBe('Stopped after 2 of 3 requests (the deadline passed): those are in the scene now, the rest never ran. Check with outline before sending the rest.')
+  })
+
   it('moves an entity by an offset in one request', async () => {
     state.snapshot['512'] = { Transform: { position: { x: 1, y: 0.5, z: 1 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 }, parent: 0 } }
     expect(await browserSceneRequest({ type: 'move', to: '512', by: { y: 2 } }, new AbortController().signal)).toEqual({ id: '512', position: { x: 1, y: 2.5, z: 1 } })
@@ -227,13 +236,14 @@ describe('a batch that edits many entities', () => {
       ...Array.from({ length: 10 }, (_, i) => ({ type: 'move', to: String(600 + i), by: { x: 0.1, y: 0, z: -0.3 } }))
     ]
     const answer = await browserSceneRequest({ type: 'batch', requests }, new AbortController().signal) as { results: unknown[]; same: unknown }
-    // 7,141 chars when every result repeated the model, its size and its texture cost
-    expect(JSON.stringify(answer).length).toBeLessThan(2200)
+    // 7,141 chars when every result repeated the model, its size and its texture cost; a move keeps the position it
+    // ended at, since it was sent as an offset
+    expect(JSON.stringify(answer).length).toBeLessThan(2600)
     expect(answer.results).toHaveLength(50)
     expect(answer.same).toEqual({ placeModel: { model: 'models/catalog/pine-tree-02.glb', size: { x: 2.1, y: 6.4, z: 2.3 }, textures: 2, materials: 2, sceneTexturesLeft: 26 } })
     expect(answer.results[0]).toEqual({ ok: true, result: { id: '700', sceneTexturesLeft: 28 } })
     expect(answer.results[1]).toEqual({ ok: true, result: { id: '701' } })
-    expect(answer.results[45]).toEqual({ ok: true, result: { id: '605' } })
+    expect(answer.results[45]).toMatchObject({ ok: true, result: { id: '605', position: { z: 4.4 } } })
     vi.mocked(sceneTextures).mockReset()
   })
 })

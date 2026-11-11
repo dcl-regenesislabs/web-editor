@@ -105,6 +105,11 @@ export type SceneSettingsEditor = (settings: AssistantSceneSettings) => Promise<
 
 const MAX_BATCH = 200
 
+function cutShort(ran: number, of: number, reason: unknown): string {
+  const why = reason instanceof Error && reason.name !== 'AbortError' ? ` (${reason.message})` : ''
+  return `Stopped after ${ran} of ${of} requests${why}: those are in the scene now, the rest never ran. Check with outline before sending the rest.`
+}
+
 export async function browserSceneRequest(request: unknown, signal: AbortSignal, settings?: SceneSettingsEditor): Promise<unknown> {
   signal.throwIfAborted()
   if (!object(request)) throw new Error('Invalid scene request.')
@@ -113,15 +118,16 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       throw new Error(`A batch needs 1–${MAX_BATCH} requests.`)
     }
     // one failure doesn't stop the rest: each later request may not depend on it
+    if (request.requests.some((item) => object(item) && item.type === 'batch')) throw new Error('Batches do not nest.')
     const results: Array<{ type: string; outcome: BatchOutcome }> = []
     for (const item of request.requests) {
-      if (object(item) && item.type === 'batch') throw new Error('Batches do not nest.')
+      // stopped part way: the edits that ran are already in the scene, so say which, not just that it failed
+      if (signal.aborted) return { ...batchAnswer(results), cutShort: cutShort(results.length, request.requests.length, signal.reason) }
       const type = object(item) && typeof item.type === 'string' ? item.type : ''
       try {
         results.push({ type, outcome: { ok: true, result: await browserSceneRequest(item, signal, settings) } })
       } catch (e) {
-        signal.throwIfAborted()
-        results.push({ type, outcome: { ok: false, error: e instanceof Error ? e.message : String(e) } })
+        results.push({ type, outcome: { ok: false, error: signal.aborted ? 'Stopped while running; it may have applied in part.' : e instanceof Error ? e.message : String(e) } })
       }
     }
     return batchAnswer(results)

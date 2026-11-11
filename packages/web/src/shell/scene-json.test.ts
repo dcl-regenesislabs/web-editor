@@ -14,18 +14,21 @@ it('lets the assistant grow the scene into one connected area, keeping its base 
   expect(() => applyAssistantSettings(raw, { parcels: 'everything' })).toThrow('parcels')
 })
 
-it('fixes a composite holding the inspector default metadata from scene.json, not the other way round', () => {
+it('fixes a composite holding the inspector default metadata from scene.json, not the other way round', async () => {
   const scene = new TextEncoder().encode(JSON.stringify({ display: { title: 'Tower' }, scene: { parcels: ['0,0', '1,0'], base: '0,0' } }))
   const composite = new TextEncoder().encode(JSON.stringify({
     version: 1,
     components: [{ name: 'inspector::SceneMetadata-v5', jsonSchema: {}, data: { '0': { json: { name: 'Test Scene', layout: { base: { x: 0, y: 0 }, parcels: [{ x: 0, y: 0 }] } } } } }]
   }))
-  const fixes = compositeFixes(scene, composite)
+  const at = (path: string, bytes: Uint8Array | undefined) => (p: string) => p === path ? bytes : undefined
+  const fixes = await compositeFixes(scene, at('assets/scene/main.composite', composite))
   expect(fixes.map(([path]) => path)).toEqual(['assets/scene/main.composite'])
   const meta = JSON.parse(new TextDecoder().decode(fixes[0][1])).components[0].data['0'].json
   expect(meta.name).toBe('Tower')
   expect(meta.layout.parcels).toEqual([{ x: 0, y: 0 }, { x: 1, y: 0 }])
-  expect(compositeFixes(scene, fixes[0][1])).toEqual([])
-  expect(compositeFixes(undefined, composite)).toEqual([])
-  expect(compositeFixes(scene, undefined)).toEqual([])
+  expect(await compositeFixes(scene, at('assets/scene/main.composite', fixes[0][1]))).toEqual([])
+  expect(await compositeFixes(undefined, at('assets/scene/main.composite', composite))).toEqual([])
+  expect(await compositeFixes(scene, () => undefined)).toEqual([])
+  // a project with its composite at a legacy path is fixed there
+  expect((await compositeFixes(scene, at('main.composite', composite))).map(([path]) => path)).toEqual(['main.composite'])
 })

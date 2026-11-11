@@ -141,7 +141,9 @@ describe('assistant tool bridge', () => {
       expect(toolError).toBe('')
       await vi.advanceTimersByTimeAsync(1)
       expect(toolError).toBe(`Error: The ${{ build: 'build', scene_request: 'scene request', playtest: 'playtest' }[tool]} did not answer within ${limit / 1000} s; ` +
-        'the editor may have reloaded, or it is stuck on the scene. Try again once, or carry on and tell the creator what is left.')
+        'the editor may have reloaded, or it is stuck on the scene. ' + (tool === 'scene_request'
+        ? 'A batch may have applied part of its requests: check with outline what landed before sending any of it again.'
+        : 'Try again once, or carry on and tell the creator what is left.'))
       expect(events.some((e) => e.kind === 'event' && e.event.kind === 'error')).toBe(false)
       expect(info).toHaveBeenCalledWith(`assistant tool timeout turn=one n=1 tool=${tool} limit=${limit}ms`)
       const read = events.filter((e) => e.kind === 'call')[1]

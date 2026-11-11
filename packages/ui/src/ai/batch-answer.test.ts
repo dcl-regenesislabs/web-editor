@@ -30,7 +30,7 @@ describe('batchAnswer', () => {
       results: [
         { ok: true, result: { done: ['Placed Door'] } },
         { ok: true, result: { problems: ['there is no entity called "Gate", so its settings were left alone'] } },
-        { ok: true, result: { id: '600' } },
+        { ok: true, result: { id: '600', position: { x: 2, y: 0, z: 2 } } },
         { ok: true, result: outline }
       ]
     })

@@ -9,6 +9,8 @@ import {
   EDITOR_TOOL_DESCRIPTIONS,
   EDITOR_TOOL_SCHEMAS,
   editorToolContent,
+  editorToolDeadlineMs,
+  editorToolTimeoutMessage,
   isEditorTool,
   type EditorToolCall,
   type EditorToolName,
@@ -16,6 +18,8 @@ import {
 } from '@dcl-editor/contract'
 
 export const EDITOR_MCP_SERVER = 'editor'
+
+const STOP_GRACE_MS = 1000
 
 export interface EditorMcp {
   url: string
@@ -56,6 +60,21 @@ export function createPageForwarder(send: (call: EditorToolCall) => boolean): { 
         send({ id, cancel: true })
         settle({ ok: false, message: 'Stopped.' })
       }, { once: true })
+      // the same deadline the web editor keeps: a stuck call is told to stop, and one that stops when told (a batch
+      // between requests) still answers with what it did
+      const ms = editorToolDeadlineMs(name, args)
+      if (ms === undefined) return
+      const timer = setTimeout(() => {
+        if (!pending.has(id)) return
+        send({ id, cancel: true })
+        setTimeout(() => {
+          if (pending.has(id)) settle({ ok: false, message: editorToolTimeoutMessage(name, ms, 'the editor window may have reloaded, or it is stuck on the scene') })
+        }, STOP_GRACE_MS)
+      }, ms)
+      pending.set(id, (result) => {
+        clearTimeout(timer)
+        settle(result)
+      })
     }),
     answer: (id, result) => pending.get(id)?.(result)
   }

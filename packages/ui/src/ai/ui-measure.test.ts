@@ -14,6 +14,7 @@ describe('measuredNodes', () => {
     })
     expect(nodes.map((node) => node.elementId)).toEqual(['hud:top:0'])
     expect(unnamed).toBe(4)
-    expect(skipped).toEqual([{ entity: 514, text: 'Score 0' }, { entity: 516, pointer: ['pointer_events'] }])
+    // a named node the engine never laid out is as unchecked as an unnamed one
+    expect(skipped).toEqual([{ entity: 514, text: 'Score 0' }, { entity: 516, pointer: ['pointer_events'] }, { entity: 517, elementId: 'not-laid-out-yet', text: 'Later' }])
   })
 })
