@@ -11,9 +11,13 @@ the content changes. Then run `npm run validate` and the service Docker smoke te
 
 The bundle contains Markdown guidance and references only, without executable scripts
 or symlinks. Scaffolding, deployment, migration, desktop MCP, issue submission, avatar
-authoring and the standalone scene workflow are excluded from the skill catalog:
-those workflows need tools this assistant does not have or conflict with the editor.
-Their supporting references remain available for cross-skill links.
+and wearable authoring, the standalone scene workflow, marketing kits (`promote-scene`),
+session retrospectives (`scene-retro`), playtest surveys (`scene-feedback`, installed by
+copying a module from GitHub) and design records (`dcl-gdd` and `dcl-prototype`, which keep
+them under `design/`, a path the assistant cannot write) are excluded from the skill catalog:
+those workflows need tools this assistant does not have, files it cannot write, or conflict
+with the editor. An excluded skill's references stay in the bundle only while a catalogued or
+editor skill links into them (`{baseDir}/../sdk-scenes/references/…`); the rest are dropped.
 
 `read_skill` reads only documents in this bundle, with bounded paging and literal search.
 It cannot read arbitrary service files, download assets or access project storage.
