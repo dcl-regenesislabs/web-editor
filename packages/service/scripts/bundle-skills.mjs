@@ -4,11 +4,12 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const revision = '5774ec52b3804b7b7421a54c72a9ccdca5ecd74b'
+const revision = '5bfec62d8a72ea25de187d861a64b16e62c0fbf2'
 const repository = 'https://github.com/decentraland/sdk-skills'
 const excluded = new Set([
   'create-scene', 'deploy-scene', 'deploy-worlds', 'migrate-sdk6-to-sdk7', 'sdk-scenes',
-  'creator-hub-mcp', 'unity-explorer-mcp', 'report-sdk-issue', 'avatar-animations'
+  'creator-hub-mcp', 'unity-explorer-mcp', 'report-sdk-issue', 'avatar-animations',
+  'wearables', 'smart-wearables', 'promote-scene', 'scene-retro', 'scene-feedback', 'dcl-prototype'
 ])
 const destination = new URL('../skills/', import.meta.url)
 const work = await mkdtemp(join(tmpdir(), 'editor-sdk-skills-'))
