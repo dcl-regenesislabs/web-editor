@@ -19,6 +19,7 @@ import { announceThumbnail, announceThumbnailUsed } from '../features/ai/built-t
 import { buildCodeModel, overBudget, MODEL_BUDGET } from './code-model'
 import { previewCodeModel } from './model-preview'
 import { fitModelHeight } from './model-placement'
+import { modelScriptExclusion } from './model-scripts'
 import { previewCatalogModels } from './catalog-preview'
 import { log } from '../log'
 import { MATERIAL_MAPS, materialFile } from '../three/materials'
@@ -457,8 +458,6 @@ async function placeGltf(request: Record<string, unknown>, rel: string, fallback
   }
 }
 
-const MODEL_SCRIPTS = 'models/src/'
-
 // model scripts are for editing, not for players: keep them out of the published scene
 async function ignoreModelScripts(): Promise<void> {
   // only a missing file counts as empty: any other read error must not overwrite the creator's list
@@ -466,6 +465,6 @@ async function ignoreModelScripts(): Promise<void> {
     if ((await dataLayerListFiles()).includes('.dclignore')) throw error
     return ''
   })
-  if (current.split('\n').some((line) => line.trim() === MODEL_SCRIPTS)) return
-  await dataLayerSaveFile('.dclignore', `${current}${current === '' || current.endsWith('\n') ? '' : '\n'}${MODEL_SCRIPTS}\n`)
+  const next = modelScriptExclusion(current)
+  if (next !== current) await dataLayerSaveFile('.dclignore', next)
 }

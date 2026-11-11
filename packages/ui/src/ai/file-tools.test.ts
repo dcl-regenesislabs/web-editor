@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createFileTools, sameBytes } from './file-tools'
+import { publishableFiles } from '../../../scene-compiler/src/preview-entity'
 
 const encode = (text: string) => new TextEncoder().encode(text)
 
@@ -19,6 +20,28 @@ function fixture() {
 }
 
 describe('editing saved model scripts', () => {
+  it.each(['write_file', 'edit_file'] as const)('excludes scripts from publishing after %s, before any model build', async (tool) => {
+    const { files, run } = fixture()
+    files.set('models/chair.glb', new Uint8Array([1]))
+    files.set('.dclignore', encode('drafts/'))
+    const args = tool === 'write_file'
+      ? { path: 'models/src/table.js', content: 'root.add(table)', revision: null }
+      : { path: 'models/src/chair.js', old: '0.9', new: '1.1' }
+    await run(tool, args)
+    const ignored = new TextDecoder().decode(files.get('.dclignore'))
+    expect(ignored).toContain('drafts/')
+    expect(publishableFiles(files.keys(), ignored)).toContain('models/chair.glb')
+    expect(publishableFiles(files.keys(), ignored).filter((path) => path.startsWith('models/src/'))).toEqual([])
+  })
+
+  it('refuses a script write when its publish exclusion cannot be saved', async () => {
+    const write = vi.fn(async (path: string) => { if (path === '.dclignore') throw new Error('Write conflict') })
+    const run = createFileTools({ paths: async () => [], read: async () => undefined, write })
+    await expect(run('write_file', { path: 'models/src/chair.js', content: 'code', revision: null }, new AbortController().signal)).rejects.toThrow('Write conflict')
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(write.mock.calls[0][0]).toBe('.dclignore')
+  })
+
   it('edits a generated script with the same revision safeguards as scene code', async () => {
     const { files, run, written } = fixture()
     const read = JSON.parse(await run('read_file', { path: 'models/src/chair.js' }))
