@@ -44,21 +44,31 @@ function node(entity: string, components: Components, feedback: Record<string, u
   }
 }
 
-/** The visible nodes the engine measured, in draw order, and how many UI nodes it could not (no elementId). */
-export function measuredNodes(snapshot: Record<string, Components>): { nodes: Record<string, unknown>[]; unnamed: number } {
+/** An unmeasured node the layout rules would have checked: it shows text or takes presses. */
+export interface UnmeasuredNode { entity: number; text?: string; pointer?: string[] }
+
+/** The visible nodes the engine measured, in draw order; how many UI nodes it could not (no elementId), and which of
+ * those show text or take presses, so a check that skipped them is not mistaken for a pass. */
+export function measuredNodes(snapshot: Record<string, Components>): { nodes: Record<string, unknown>[]; unnamed: number; skipped: UnmeasuredNode[] } {
   const nodes: Record<string, unknown>[] = []
+  const skipped: UnmeasuredNode[] = []
   let unnamed = 0
   for (const [entity, components] of Object.entries(snapshot)) {
-    if (!object(components.UiTransform)) continue
+    const transform = components.UiTransform
+    if (!object(transform)) continue
     const feedback = components.UiLayoutFeedback
     if (!object(feedback)) {
-      if (typeof components.UiTransform.elementId !== 'string') unnamed++
+      if (typeof transform.elementId === 'string') continue
+      unnamed++
+      const text = object(components.UiText) && typeof components.UiText.value === 'string' && components.UiText.value.trim() !== '' ? components.UiText.value : undefined
+      const presses = pointer(components, transform)
+      if (text !== undefined || presses.length > 0) skipped.push({ entity: Number(entity), ...(text !== undefined ? { text: text.slice(0, 60) } : {}), ...(presses.length > 0 ? { pointer: presses } : {}) })
       continue
     }
     if (feedback.visible === true) nodes.push(node(entity, components, feedback))
   }
   nodes.sort((a, b) => Number(a.order) - Number(b.order))
-  return { nodes, unnamed }
+  return { nodes, unnamed, skipped }
 }
 
 /** What the scene's installed SDK carries, when the editor can tell (desktop probes the scene's node_modules). */

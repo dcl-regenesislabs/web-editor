@@ -18,13 +18,15 @@ function measure(snapshot: Record<string, Components>, sdk: SceneSdk | null): Re
   const root = snapshot['0'] ?? {}
   const blocked = unmeasurable(snapshot, sdk)
   if (blocked !== null) return { canvas: root.UiCanvasInformation, measured: false, unmeasurable: blocked.reason, why: blocked.why, instead: blocked.instead }
-  const { nodes, unnamed } = measuredNodes(snapshot)
+  const { nodes, unnamed, skipped } = measuredNodes(snapshot)
   return {
     canvas: root.UiCanvasInformation,
     measured: true,
     nodes,
     ...(nodes.length === 0 ? { note: 'no measured node is on screen now: open the panel or dialog (playtest click or input) and measure again' } : {}),
-    ...(unnamed > 0 ? { unmeasured: `${unnamed} UI nodes have no elementId and were not measured` } : {})
+    ...(unnamed > 0 ? { unmeasured: `${unnamed} UI nodes have no elementId and were not measured` } : {}),
+    // text and press targets are what the layout rules check: name them so a short node list is not read as a pass
+    ...(skipped.length > 0 ? { notChecked: skipped } : {})
   }
 }
 

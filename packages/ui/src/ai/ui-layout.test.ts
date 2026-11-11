@@ -53,7 +53,7 @@ describe('ui_layout', () => {
       { entity: 512, parent: 0, elementId: 'hud', order: 3, rect: [0, 0, 1500, 675] },
       { entity: 513, parent: 512, elementId: 'dash', order: 4, zIndex: 2, rect: [1300, 500, 90, 90], clipped: true, visibleRect: [1300, 500, 90, 80], pointer: ['pointer_events'], text: 'DASH', fontSize: 24 }
     ])
-    expect(result).toMatchObject({ platform: 'mobile', canvas: CANVAS, unmeasured: '1 UI nodes have no elementId and were not measured', view: { image: 'AAAA' } })
+    expect(result).toMatchObject({ platform: 'mobile', canvas: CANVAS, unmeasured: '1 UI nodes have no elementId and were not measured', notChecked: [{ entity: 515, text: 'no id' }], view: { image: 'AAAA' } })
     expect(mock.calls).toEqual(['snapshot', 'view'])
   })
 
