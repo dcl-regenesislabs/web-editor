@@ -9,9 +9,17 @@ const repository = 'https://github.com/decentraland/sdk-skills'
 const excluded = new Set([
   'create-scene', 'deploy-scene', 'deploy-worlds', 'migrate-sdk6-to-sdk7', 'sdk-scenes',
   'creator-hub-mcp', 'unity-explorer-mcp', 'report-sdk-issue', 'avatar-animations',
-  'wearables', 'smart-wearables', 'promote-scene', 'scene-retro', 'scene-feedback', 'dcl-prototype'
+  'wearables', 'smart-wearables', 'promote-scene', 'scene-retro', 'scene-feedback', 'dcl-prototype', 'dcl-gdd'
 ])
 const destination = new URL('../skills/', import.meta.url)
+async function readTexts(directory) {
+  const texts = []
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) texts.push(...await readTexts(new URL(`${entry.name}/`, directory)))
+    else if (/\.(md|mdc)$/.test(entry.name)) texts.push(await readFile(new URL(entry.name, directory), 'utf8'))
+  }
+  return texts
+}
 const work = await mkdtemp(join(tmpdir(), 'editor-sdk-skills-'))
 try {
   const response = await fetch(`https://codeload.github.com/decentraland/sdk-skills/tar.gz/${revision}`, {
@@ -46,6 +54,27 @@ try {
     const description = raw.startsWith('"') ? JSON.parse(raw) : raw
     catalog.push({ name: entry.name, description })
   }
+  // An excluded skill ships its documents only while something the assistant can read links into it
+  // (`{baseDir}/../sdk-scenes/references/…`); the rest would sit in memory unreachable.
+  const editorTexts = {}
+  for (const entry of await readdir(destination, { withFileTypes: true })) {
+    const directory = new URL(`${entry.name}/`, destination)
+    if (entry.isDirectory() && (await readdir(directory)).includes('SKILL.md')) editorTexts[entry.name] = await readTexts(directory)
+  }
+  const texts = (name) => editorTexts[name] ?? Object.entries(files).filter(([path]) => path.startsWith(`${name}/`)).map(([, text]) => text)
+  const reachable = new Set([...catalog.map((skill) => skill.name), ...Object.keys(editorTexts)])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const name of excluded) {
+      if (reachable.has(name)) continue
+      const link = new RegExp(`(?:^|[^\\w-])${name}/[\\w./-]+\\.mdc?`)
+      if ([...reachable].some((from) => texts(from).some((text) => link.test(text)))) {
+        reachable.add(name)
+        grew = true
+      }
+    }
+  }
+  for (const path of Object.keys(files)) if (!reachable.has(path.split('/')[0])) delete files[path]
   const bundle = { repository, revision, archiveSha256: createHash('sha256').update(archive).digest('hex'), catalog, files }
   await mkdir(destination, { recursive: true })
   await writeFile(new URL('sdk-skills.json', destination), `${JSON.stringify(bundle, null, 2)}\n`)
