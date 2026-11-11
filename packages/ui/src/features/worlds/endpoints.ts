@@ -72,6 +72,15 @@ export function signedServicesOutOfReach(): boolean {
 export function chainId(): number {
   return zone() ? 11155111 : 1
 }
+// The mobile explorer, opened from a phone (a QR on the publish success): its /open
+// page takes the world's full name, `.dcl.eth` included, and the scene's base parcel.
+export function mobileJumpInUrl(world: string, base: string | null): string {
+  const query = new URLSearchParams()
+  if (base !== null) query.set('position', base)
+  query.set('realm', world.toLowerCase())
+  return `https://mobile.dclexplorer.com/open?${query}`
+}
+
 // Hosted, into the editor's own page like a publish's link (realm = name on
 // Decentraland's servers, the world's url elsewhere); else production bevy-web.
 export function jumpInUrl(name: string): string {

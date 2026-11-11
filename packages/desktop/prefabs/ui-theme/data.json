@@ -11,8 +11,12 @@
     "hud",
     "design"
   ],
-  "version": "1.1.0",
+  "version": "1.2.0",
   "changelog": [
+    {
+      "version": "1.2.0",
+      "notes": "The guide points custom UI at the shared size set (uiSizes), the compact HUD pieces and the ready-made windows, so a HUD stays small and a shop or dialog is comfortable to tap on a phone."
+    },
     {
       "version": "1.1.0",
       "notes": "Custom HUDs are placed through the shared HUD layout, which keeps them clear of the phone touch controls and of each other."

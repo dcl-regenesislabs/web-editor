@@ -6,7 +6,7 @@ import { useUnusedFiles } from '../../unused-files'
 import { REVIEW_UNUSED_ACTION, reviewUnusedFiles, unusedFilesFinding } from './unused-finding'
 import { useStore } from '../../core/store'
 import { revealPrefab } from '../../panels/prefab-store'
-import { prefillAssistant } from '../../panels/ai-store'
+import { askAssistant, canAskAssistant, prefillAssistant } from '../../panels/ai-store'
 import { THUMBNAIL_FIX_ACTION } from './scene-check-thumbnail'
 import { uiFocusEntity, uiSelectEntity } from '../../actions/selection'
 import { uiPlay } from '../../actions/playback'
@@ -14,6 +14,7 @@ import css from './scene-checks.css?inline'
 import { registerCss } from '../../ds/styles/registry'
 import { useSceneHealth } from './scene-health'
 import { scheduleSceneChecks } from './scene-check-context'
+import { advancedOffered } from './entry-mode'
 import {
   allowBlockedPlay,
   findingIdentity,
@@ -28,6 +29,7 @@ registerCss('features/editor/scene-checks', 'features', css)
 
 const IDLE_REFRESH_MS = 15_000
 
+const PANEL_ACTIONS = new Set(['reveal-prefab', REVIEW_UNUSED_ACTION])
 const FIX_ICON: Record<string, JSX.Element> = {
   [THUMBNAIL_FIX_ACTION]: <IconBot />,
   'select-entity': <IconFrame />,
@@ -52,6 +54,18 @@ function findingKey(finding: SceneFinding, index: number): string {
 // What "dismiss until this changes" compares. It has to be the same identity the
 // list renders by: two findings of one rule on two entities share an id and can
 // share a detail, and folding them together dismissed both at once.
+// Findings the assistant can fix by editing the scene: the thumbnail already goes to it with
+// a style for the creator to fill in, and which unused files to delete is the creator's call.
+function assistantFixable(finding: SceneFinding): boolean {
+  const action = finding.fix?.action
+  return action !== THUMBNAIL_FIX_ACTION && action !== REVIEW_UNUSED_ACTION
+}
+
+export function fixRequest(findings: SceneFinding[]): string {
+  if (findings.length === 1) return `Fix this problem the scene check found: ${findings[0].title}. ${findings[0].detail}`
+  return `Fix these problems the scene check found:\n${findings.map((f) => `- ${f.title}. ${f.detail}`).join('\n')}`
+}
+
 function signatureOf(findings: SceneFinding[]): string {
   return findings.map((finding, index) => findingKey(finding, index)).join('&')
 }
@@ -99,7 +113,11 @@ export function SceneChecksCard(): JSX.Element | null {
   if (findings.length === 0 || signature === dismissed) return null
 
   const summary = findingsSummary(findings)
+  const fixable = canAskAssistant() ? findings.filter(assistantFixable) : []
 
+  // these open a panel of the whole editor; where it isn't offered they would do nothing
+  const ownFix = (finding: SceneFinding): SceneFinding['fix'] =>
+    finding.fix !== undefined && (advancedOffered() || !PANEL_ACTIONS.has(finding.fix.action)) ? finding.fix : undefined
   const runFix = (finding: SceneFinding): void => {
     const action = finding.fix?.action
     if (action === 'reveal-prefab' && finding.folder !== undefined) revealPrefab(finding.folder)
@@ -123,6 +141,17 @@ export function SceneChecksCard(): JSX.Element | null {
             {open ? '▾' : '▸'}
           </span>
         </button>
+        {fixable.length > 0 && (
+          <Button
+            variant="primary"
+            size="xs"
+            tip={fixable.length > 1 ? 'Ask the assistant to fix all of these' : 'Ask the assistant to fix it'}
+            onClick={() => askAssistant(fixRequest(fixable))}
+          >
+            <IconBot />
+            {fixable.length > 1 ? 'Fix all' : 'Fix'}
+          </Button>
+        )}
         {summary.blocking > 0 && (
           <button
             className="eui-link"
@@ -146,25 +175,36 @@ export function SceneChecksCard(): JSX.Element | null {
       </div>
       {open && (
         <ul className="eui-checks-list">
-          {findings.map((finding, index) => (
-            <li key={findingKey(finding, index)} className={finding.level}>
-              <div className="top">
-                <Chip size="xs" tone={finding.level === 'warning' ? 'warning' : 'danger'}>
-                  {LEVEL_LABEL[finding.level]}
-                </Chip>
-                <b>{finding.title}</b>
-                {finding.fix !== undefined && (
-                  <span className="act">
-                    <Button variant="primary" size="xs" onClick={() => runFix(finding)}>
-                      {FIX_ICON[finding.fix.action]}
-                      {finding.fix.label}
-                    </Button>
-                  </span>
-                )}
-              </div>
-              <p>{finding.detail}</p>
-            </li>
-          ))}
+          {findings.map((finding, index) => {
+            const fix = ownFix(finding)
+            return (
+              <li key={findingKey(finding, index)} className={finding.level}>
+                <div className="top">
+                  <Chip size="xs" tone={finding.level === 'warning' ? 'warning' : 'danger'}>
+                    {LEVEL_LABEL[finding.level]}
+                  </Chip>
+                  <b>{finding.title}</b>
+                  {(fix !== undefined || fixable.includes(finding)) && (
+                    <span className="act">
+                      {fix !== undefined && (
+                        <Button variant={fixable.includes(finding) ? 'secondary' : 'primary'} size="xs" onClick={() => runFix(finding)}>
+                          {FIX_ICON[fix.action]}
+                          {fix.label}
+                        </Button>
+                      )}
+                      {fixable.includes(finding) && (
+                        <Button variant="primary" size="xs" tip="Ask the assistant to fix it" onClick={() => askAssistant(fixRequest([finding]))}>
+                          <IconBot />
+                          Fix
+                        </Button>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <p>{finding.detail}</p>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

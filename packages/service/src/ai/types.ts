@@ -26,7 +26,27 @@ export interface TurnUsage {
   responseModel?: string
 }
 
-export type BrowserCall = (tool: BrowserToolName, args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>
+/** Every Claude account the service holds is at its plan's limit. */
+export class ProviderLimited extends Error {
+  /** When the first one frees up; null when none will on its own. */
+  readonly until: string | null
+  constructor(until: string | null) {
+    super('Provider limited')
+    this.until = until
+  }
+}
+
+/** The agent summarized older messages to keep its context small. */
+export interface CompactionStep {
+  ms: number
+  ok: boolean
+  /** Estimated context tokens before and after; absent when the summary failed. */
+  tokensBefore?: number
+  tokensAfter?: number
+  summaryChars: number
+}
+
+export type BrowserCall =(tool: BrowserToolName, args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>
 
 export interface AgentFactory {
   providers(): Promise<AiProviderInfo[]>
@@ -35,10 +55,11 @@ export interface AgentFactory {
     call: BrowserCall,
     emit: (event: Pick<Extract<AiEvent, { kind: 'text' }>, 'text'>) => void,
     restore?: unknown[],
-    images?: WalletImages
+    images?: WalletImages,
+    onCompaction?: (step: CompactionStep) => void
   ): Promise<AssistantAgent>
 }
 
 export interface AssistantService {
-  handle(request: Request, path: string, wallet: string): Promise<Response>
+  handle(request: Request, path: string, wallet: string, client?: string): Promise<Response>
 }

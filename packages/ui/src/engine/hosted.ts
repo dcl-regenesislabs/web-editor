@@ -73,6 +73,14 @@ export interface DclEditorHostV1 extends Omit<DclEditorHostV0, 'version'> {
   // contract v1.4: the explorer's Segment pipeline, which adds its common fields and waits for the terms to be accepted;
   // without it, analytics.ts falls back to the engine console's `/track`
   track?(event: string, properties?: Record<string, unknown>): void
+  // contract v1.5: what the entry url's `editor-features` turned on; a feature left out, or a host
+  // without the field, is off
+  features?: EditorFeatures
+}
+
+export interface EditorFeatures {
+  // the whole editor (hierarchy, inspector, assets, logs) beside the assistant
+  advanced?: boolean
 }
 
 export interface ServerLogLine {

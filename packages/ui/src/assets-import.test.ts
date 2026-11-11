@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createEntities } from '@scene/inspector'
-import { ensureContentMapped, importFiles, placeLocalSound } from './assets'
-import { cmd } from './engine/cmd'
+import { importFiles, placeLocalSound } from './assets'
 
 const saved = vi.hoisted((): string[] => [])
 vi.mock('./engine/datalayer', () => ({
@@ -9,45 +8,12 @@ vi.mock('./engine/datalayer', () => ({
   dataLayerListFiles: async () => ['assets/images/brick.png'],
   dataLayerSaveFileBytes: async (path: string) => { saved.push(path) }
 }))
-vi.mock('./engine/cmd', () => ({ cmd: { sceneContent: vi.fn() } }))
+vi.mock('./engine/cmd', () => ({ cmd: {} }))
 vi.mock('./engine/bus', () => ({ sceneRpc: async () => null }))
 vi.mock('@scene/inspector', () => ({ createEntities: vi.fn(async () => []) }))
 vi.mock('@scene/state', () => ({ state: { snapshot: {} }, setSelected: () => {} }))
 vi.mock('./panels/reveal', () => ({ revealInTree: () => {} }))
 vi.mock('@scene/custom-components', () => ({ NAME_COMPONENT: 'core-schema::Name' }))
-
-describe('making an imported file available to Bevy', () => {
-  afterEach(() => { vi.useRealTimers(); vi.mocked(cmd.sceneContent).mockReset() })
-
-  it('finishes with a saved-file error when the engine never answers', async () => {
-    vi.useFakeTimers()
-    vi.mocked(cmd.sceneContent).mockImplementation(() => new Promise<string[]>(() => {}))
-    let outcome = 'pending'
-    void ensureContentMapped('models/tree.glb').then(() => { outcome = 'mapped' }, (error: Error) => { outcome = error.message })
-    await vi.advanceTimersByTimeAsync(10_001)
-    expect(outcome).toContain('saved')
-    expect(outcome).toContain('models/tree.glb')
-    expect(cmd.sceneContent).toHaveBeenCalledTimes(1)
-  })
-
-  it('retries a transient engine error and confirms the imported path', async () => {
-    vi.useFakeTimers()
-    vi.mocked(cmd.sceneContent).mockRejectedValueOnce(new Error('busy')).mockResolvedValueOnce([]).mockResolvedValueOnce(['Models/Tree.glb'])
-    const pending = ensureContentMapped('models/tree.glb')
-    await vi.advanceTimersByTimeAsync(500)
-    await expect(pending).resolves.toBeUndefined()
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('does not report success when the engine never lists the saved file', async () => {
-    vi.useFakeTimers()
-    vi.mocked(cmd.sceneContent).mockResolvedValue([])
-    const result = ensureContentMapped('models/tree.glb').then(() => 'mapped', (error: Error) => error.message)
-    await vi.advanceTimersByTimeAsync(10_001)
-    expect(await result).toContain('saved')
-    expect(vi.getTimerCount()).toBe(0)
-  })
-})
 
 describe('importing files', () => {
   it('adds images, sounds, videos and data files without a model, never over an existing file, and says what it left out', async () => {

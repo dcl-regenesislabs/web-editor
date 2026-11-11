@@ -4,6 +4,7 @@ import { Chip, labelTip, useOutsideClose } from '../../ds'
 import { relTime } from '../../lib/format'
 import { canPublish } from '../publish/publish-preflight'
 import { SceneSettingsModal } from '../scene-settings/SceneSettingsModal'
+import { ShareSceneModal } from './ShareSceneModal'
 import { syncLabel } from '../sync/sync'
 
 export const FolderIcon = (): JSX.Element => (
@@ -32,6 +33,7 @@ export function SceneCard(props: {
   const [menu, setMenu] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [settings, setSettings] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const synced = syncLabel(props.sync)
   // a scene that is only on the account has nothing here to rename, copy or delete yet
   const here = p.missing !== true && p.remoteOnly !== true
@@ -144,6 +146,10 @@ export function SceneCard(props: {
             setMenu(false)
             setSettings(true)
           }}
+          onShare={() => {
+            setMenu(false)
+            setSharing(true)
+          }}
           onPublish={() => {
             setMenu(false)
             props.onPublish()
@@ -155,6 +161,7 @@ export function SceneCard(props: {
           after={after}
         />
       )}
+      {sharing && <ShareSceneModal shell={shell} dir={p.path} title={p.title} onClose={() => setSharing(false)} />}
       {settings && (
         <SceneSettingsModal
           dir={p.path}
@@ -173,6 +180,8 @@ export function SceneMenu(props: {
   onOpen: () => void
   onRename: () => void
   onSettings: () => void
+  // where the list can show the share dialog
+  onShare?: () => void
   onPublish: () => void
   onRemove: () => void
   after: (op?: Promise<unknown>) => void
@@ -204,6 +213,9 @@ export function SceneMenu(props: {
           <button className="eui-menu-item" onClick={() => after(shell.duplicateProject?.(p.path))}>Duplicate</button>
           {shell.exportProject !== undefined && (
             <button className="eui-menu-item" onClick={() => after(shell.exportProject?.(p.path))}>Export as .zip</button>
+          )}
+          {props.onShare !== undefined && shell.setProjectShared !== undefined && props.sync?.otherAccount !== true && (
+            <button className="eui-menu-item" onClick={props.onShare}>Share a copy…</button>
           )}
           {shell.sceneSettings !== undefined && (
             <button className="eui-menu-item" onClick={props.onSettings}>Scene settings…</button>

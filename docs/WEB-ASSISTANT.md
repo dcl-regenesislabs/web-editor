@@ -54,10 +54,15 @@ Claude's credential; restarting with the same token preserves its recorded expir
 A setup token has no refresh token: replace it when it expires or is revoked.
 The provider controls actual expiry; redeploying does not renew the token.
 
+More Claude accounts take over when one reaches its plan's limit: paste a `claude setup-token` from
+each under *Claude accounts* on the operations dashboard, no restart needed. Running turns move to the
+next ready account on their own ([how it works](../packages/service/README.md#operations-dashboard-and-telemetry)).
+
 Keep that file out of the project data: pass `--ai-auth` (or `AI_AUTH_PATH`) pointing at a
 secret mount, or the service warns at startup. In production (`NODE_ENV=production`) the service
 refuses to start the assistant without `ASSISTANT_WALLETS` (a wallet list, or `*`), and caps turns
-with `ASSISTANT_TURNS_PER_MINUTE` (all wallets) and `ASSISTANT_TURNS_PER_DAY` (per wallet).
+with `ASSISTANT_TURNS_PER_MINUTE` (all wallets), `ASSISTANT_TURNS_PER_DAY` (per wallet),
+`ASSISTANT_TURNS_PER_IP_PER_DAY` and `ASSISTANT_TURNS_PER_DAY_TOTAL`.
 
 Thumbnails use a second OAuth file, a ChatGPT (Codex) session: run
 `npm run -w @dcl-editor/service image-login -- --out /absolute/path/image-auth.json` where a browser
@@ -166,6 +171,17 @@ components; see the [service README](../packages/service/README.md).
   the assistant play them with an AudioSource: created once, retriggered with `AudioSource.playSound`.
   `packages/ui/scripts/pack-sounds.mjs` regenerates them; the packs have no wind, crowd, water or
   music loop, so the library has none.
+  `findIcons` searches an icon catalog of about 14,000 free icons (game-icons.net, Tabler, Lucide,
+  Pixelarticons and Kenney's input prompts; licenses and counts in `packages/ui/src/icon-library/CREDITS.md`)
+  by whole words in the icon's name, and `addIcon` draws one as a white PNG of 64, 128 or 256 px into
+  `assets/images/icons/<set>-<name>.png`, rewriting `assets/images/icons/CREDITS.md` from the icons the folder
+  holds: each one's set, license and, for game-icons.net (CC BY 3.0), its author, plus each license's text once.
+  The catalog ships as `icons.index.json` (~0.5 MB, ~115 KB gzipped, fetched against its hash) and
+  `icons.pack` (~3 MB): SVGs in deflate-raw blocks of 64, each fetched by HTTP Range only when a search or an
+  `addIcon` needs it and checked against the sha256 the index holds (desktop reads the same byte ranges from
+  its resources). Blocks, not one entry per icon: tiny SVGs compressed one by one take twice the space.
+  `packages/ui/scripts/pack-icons.mjs` regenerates both; it leaves out brand icons and game-icons.net's
+  `abstract-N` filler.
   `check` also returns the scene's budget against the parcel limits and its deploy size.
 - `build`: compile the current browser project, run the bundle once and return compiler
   diagnostics plus scene/client/server errors. This does not simulate a full playthrough.

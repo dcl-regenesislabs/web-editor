@@ -1,9 +1,12 @@
 import { fromNativeResponse, Router } from '@dcl/http-server'
 import { createMobilePreviewHandler } from '@dcl-editor/mobile-preview/server'
+import { clientAddress } from '../client-ip.ts'
+import { clientIpHeader } from '../config.ts'
 import type { GlobalContext } from '../types.ts'
 
 export async function setupRouter({ components }: GlobalContext): Promise<Router<GlobalContext>> {
   const base = (await components.config.getString('BASE_PATH') ?? '').replace(/\/$/, '')
+  const ipHeader = clientIpHeader(await components.config.getString('CLIENT_IP_HEADER'))
   const router = new Router<GlobalContext>()
   const mobile = createMobilePreviewHandler(undefined, `${base}/mobile-preview/`)
   router.all(`${base}/mobile-preview/:path(.*)`, async ({ request }) => {
@@ -16,15 +19,18 @@ export async function setupRouter({ components }: GlobalContext): Promise<Router
     router.all(base + path, async ({ request, components }) =>
       fromNativeResponse(await components.admin.handle(request) ?? new Response(null, { status: 404 })))
   }
-  router.get(`${base}/assistant/socket`, async ({ request, components }) => components.assistant.upgrade(request))
+  router.get(`${base}/assistant/socket`, async ({ request, components, remoteAddress }) =>
+    components.assistant.upgrade(request, clientAddress(request, remoteAddress, ipHeader)))
   const paths = [
     '/health', '/projects', '/projects/:id', '/projects/:id/manifest',
-    '/projects/:id/uploads', '/projects/:id/restore', '/projects/:id/files/:hash',
+    '/projects/:id/uploads', '/projects/:id/restore', '/projects/:id/share', '/projects/:id/files/:hash',
+    '/shared/:token', '/shared/:token/files/:hash',
     '/prefabs', '/prefabs/:name', '/prefabs/:name/manifest', '/prefabs/:name/uploads', '/prefabs/:name/files/:hash',
     '/blobs/:hash', '/assistant/:action', '/:path(.*)'
   ]
   for (const path of paths) {
-    router.all(base + path, async ({ request, components }) => fromNativeResponse(await components.projectStorage.handle(request)))
+    router.all(base + path, async ({ request, components, remoteAddress }) =>
+      fromNativeResponse(await components.projectStorage.handle(request, clientAddress(request, remoteAddress, ipHeader))))
   }
   return router
 }

@@ -19,7 +19,7 @@ export async function createTestService(options: Pick<ComponentOptions, 'store' 
       config: createConfigComponent({
         HTTP_SERVER_HOST: '127.0.0.1', HTTP_SERVER_PORT: '0',
         ALLOWED_ORIGINS: TEST_ORIGIN, BASE_PATH: '/svc',
-        TICKET_SECRET: 'test-secret-test-secret-test-secret', LOG_LEVEL: 'OFF',
+        TICKET_SECRET: 'test-secret-test-secret-test-secret', LOG_LEVEL: 'OFF', ASSISTANT_DRAIN_SECONDS: '0',
         ...options.vars
       })
     })

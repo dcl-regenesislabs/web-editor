@@ -243,6 +243,8 @@ describe('mobile preview lifecycle', () => {
 
 it('resolves runtime hosting entirely through the editor', () => {
   expect(mobilePreviewEntry('http://localhost:5173/', null)).toBe('http://127.0.0.1:8788/mobile-preview/index.html')
+  expect(mobilePreviewEntry('http://localhost:5273/', null, '?editor&editor-mobile=http://127.0.0.1:8888')).toBe('http://127.0.0.1:8888/mobile-preview/index.html')
+  expect(mobilePreviewEntry('http://localhost:5273/', null, '?editor-mobile=https://evil.example')).toBe('http://127.0.0.1:8788/mobile-preview/index.html')
   expect(mobilePreviewEntry('https://play.example/', 'https://editor.example/api/')).toBe('https://editor.example/api/mobile-preview/index.html')
   expect(mobilePreviewEntry('https://play.example/', null)).toBeNull()
 })

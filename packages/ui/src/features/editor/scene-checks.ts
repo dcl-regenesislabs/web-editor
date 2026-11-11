@@ -17,6 +17,7 @@ import type { PrefabComposite, PrefabData, PrefabSnapshot } from '../../prefabs/
 import type { GameConfigValue } from '../../gameconfig/normalize'
 import { BUILTIN_SCENE_CHECKS } from './scene-check-rules'
 import type { ParcelCoord } from '@scene/bridge-protocol'
+import type { SceneBudget } from '../../scene-budget'
 
 // 'blocker'      — the scene is wired wrong; it also blocks Play
 // 'play-blocker' — correct to author, wrong to run right now (unsaved drift)
@@ -29,6 +30,8 @@ export interface SceneCheckPrefab {
   composite: PrefabComposite
 }
 
+export type SceneCheckBudget = Pick<SceneBudget, 'parcels' | 'used' | 'limits' | 'over'>
+
 export interface SceneCheckContext {
   /** authored scene entities; runtime-spawned ones are filtered out upstream */
   snapshot: PrefabSnapshot
@@ -39,6 +42,8 @@ export interface SceneCheckContext {
   parcels?: ParcelCoord[]
   /** scene.json's navmap thumbnail when that file exists, null when there is none, undefined when unread */
   thumbnailPath?: string | null
+  /** the scene against its parcel limits; undefined when it could not be counted */
+  budget?: SceneCheckBudget
 }
 
 export interface SceneFinding {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserToolName } from '@dcl-editor/contract'
+import type { FileReads } from '@ui/ai/file-tools'
 import { createBrowserTools, sameBytes } from './tools'
 
 function setup() {
@@ -26,6 +27,25 @@ function setup() {
 }
 
 describe('assistant browser tools', () => {
+  it('lets a later turn of the same conversation write a file an earlier one read', async () => {
+    const files = new Map<string, Uint8Array>([['src/scripts/Door.ts', new TextEncoder().encode('original')]])
+    const project = {
+      files: () => files, scene: vi.fn(), view: vi.fn(), build: vi.fn(),
+      write: async (path: string, bytes: Uint8Array, expected: Uint8Array | null) => {
+        if (!sameBytes(files.get(path), expected)) throw new Error('This file changed.')
+        files.set(path, bytes)
+      }
+    }
+    const turn = (execute: ReturnType<typeof createBrowserTools>, tool: BrowserToolName, args: Record<string, unknown>) =>
+      execute({ kind: 'call', turnId: 'turn', callId: crypto.randomUUID(), tool, args }, new AbortController().signal)
+    const reads: FileReads = new Map()
+    const { revision } = JSON.parse(await turn(createBrowserTools(project, reads), 'read_file', { path: 'src/scripts/Door.ts' }))
+    await turn(createBrowserTools(project, reads), 'write_file', { path: 'src/scripts/Door.ts', revision, content: 'next turn' })
+    expect(new TextDecoder().decode(files.get('src/scripts/Door.ts'))).toBe('next turn')
+    // a new chat holds none of the old reads
+    await expect(turn(createBrowserTools(project), 'write_file', { path: 'src/scripts/Door.ts', revision, content: 'stale' })).rejects.toThrow('Read')
+  })
+
   it('rejects an edit when the creator changed the file after the read', async () => {
     const { run, files, encoder } = setup()
     const { revision } = JSON.parse(await run('read_file', { path: 'src/scripts/Door.ts' }))

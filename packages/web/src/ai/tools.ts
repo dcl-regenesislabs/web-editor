@@ -1,4 +1,4 @@
-import { createFileTools, isFileTool, sameBytes } from '@ui/ai/file-tools'
+import { createFileTools, isFileTool, sameBytes, type FileReads } from '@ui/ai/file-tools'
 import type { BrowserToolCall } from '@dcl-editor/contract'
 import { viewRequest, type ViewRequest } from '@ui/ai/view-request'
 
@@ -8,8 +8,9 @@ export interface BrowserProject {
   scene(request: unknown, signal: AbortSignal): Promise<unknown>
   build(signal: AbortSignal): Promise<unknown>
   playtest?(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown>
-  // the screen UI as laid out on the desktop canvas or a phone's, with a picture
-  uiLayout?(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown>
+  // the screen UI as laid out on the desktop canvas or a phone's, with a picture; with check, every
+  // screen state measured on a phone and checked against the layout and touch rules
+  uiLayout?(request: Record<string, unknown>, signal: AbortSignal, sources?: () => Promise<ReadonlyMap<string, Uint8Array>>): Promise<unknown>
   assets?(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown>
   // a picture of the viewport: from the free camera placed at `from`, or framed on an entity, or as is
   view(request: ViewRequest, signal: AbortSignal): Promise<unknown>
@@ -29,13 +30,13 @@ function parseRequest(text: string): unknown {
   }
 }
 
-export function createBrowserTools(project: BrowserProject) {
+export function createBrowserTools(project: BrowserProject, reads?: FileReads) {
   const files = createFileTools({
     paths: async () => [...project.files().keys()],
     read: async (path) => project.files().get(path),
     write: (path, bytes, expected, signal) => project.write(path, bytes, expected, signal),
     ...(project.written === undefined ? {} : { written: project.written })
-  })
+  }, reads)
   return async (call: BrowserToolCall, signal: AbortSignal): Promise<string> => {
     signal.throwIfAborted()
     const { tool, args } = call
@@ -46,6 +47,10 @@ export function createBrowserTools(project: BrowserProject) {
     if (tool === 'ui_layout') {
       if (project.uiLayout === undefined) throw new Error('Measuring the UI requires an updated editor.')
       return JSON.stringify(await project.uiLayout(args, signal))
+    }
+    if (tool === 'mobile_check') {
+      if (project.uiLayout === undefined) throw new Error('The mobile check requires an updated editor.')
+      return JSON.stringify(await project.uiLayout({ check: true }, signal, async () => project.files()))
     }
     if (tool === 'asset_request') {
       if (project.assets === undefined) throw new Error('Asset tools require an updated editor.')

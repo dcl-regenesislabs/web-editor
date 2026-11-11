@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "name": "core-schema::Name",
+      "data": {
+        "512": { "json": { "value": "Work Station" } },
+        "513": { "json": { "value": "Work Station Top" } }
+      }
+    },
+    {
+      "name": "core::Transform",
+      "data": {
+        "513": {
+          "json": {
+            "position": { "x": 0, "y": 0.45, "z": 0 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "scale": { "x": 1, "y": 0.9, "z": 0.8 },
+            "parent": 512
+          }
+        }
+      }
+    },
+    { "name": "core::MeshRenderer", "data": { "513": { "json": { "mesh": { "$case": "box", "box": { "uvs": [] } } } } } },
+    { "name": "core::MeshCollider", "data": { "513": { "json": { "mesh": { "$case": "box", "box": {} } } } } },
+    {
+      "name": "core::Material",
+      "data": {
+        "513": {
+          "json": {
+            "material": {
+              "$case": "pbr",
+              "pbr": { "albedoColor": { "r": 0.55, "g": 0.4, "b": 0.27, "a": 1 } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "asset-packs::Script",
+      "data": {
+        "512": {
+          "json": {
+            "value": [
+              { "path": "{assetPath}/scripts/work-station.ts", "priority": 0, "layout": "{\"params\":{},\"actions\":[]}" }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

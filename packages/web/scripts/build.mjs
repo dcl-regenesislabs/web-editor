@@ -57,6 +57,12 @@ for (const [folder, source, ext] of [['materials', 'packages/ui/src/three/materi
     integrity[rel] = sri(fs.readFileSync(path.join(dist, rel)))
   }
 }
+// the icon catalog findIcons searches and addIcon copies from: the index whole, the pack by byte range
+fs.mkdirSync(path.join(dist, 'icons'), { recursive: true })
+for (const file of ['icons.index.json', 'icons.pack']) {
+  fs.copyFileSync(path.join(repo, 'packages/ui/src/icon-library', file), path.join(dist, 'icons', file))
+  integrity[`icons/${file}`] = sri(fs.readFileSync(path.join(dist, 'icons', file)))
+}
 
 const pinFetchedFiles = {
   name: 'pin-fetched-files',

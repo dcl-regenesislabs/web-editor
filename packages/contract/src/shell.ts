@@ -149,6 +149,16 @@ export interface AiImageAttachment {
   dataUrl: string
 }
 
+export interface AiTurnUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  /** USD at the model's API rates, not the plan's bill. */
+  cost: number
+  calls: number
+}
+
 // Streamed over the `ai-event` channel while a turn runs. `turnId` correlates
 // events to the send() that started them. Text arrives incrementally (`text`);
 // `tool` marks a file the assistant read/edited; `done` ends the turn.
@@ -158,7 +168,8 @@ export type AiEvent =
   | { kind: 'tool'; turnId: string; tool: string; detail: string; label?: string }
   // resumable: a limit paused the turn and the same conversation can continue (hosted only)
   | { kind: 'error'; turnId: string; message: string; resumable?: boolean }
-  | { kind: 'done'; turnId: string; ok: boolean }
+  // usage: what the turn's model calls cost, when the provider reported it
+  | { kind: 'done'; turnId: string; ok: boolean; usage?: AiTurnUsage }
 
 // One wallet's assistant chat on one project, kept for display only; `owner` names that pair.
 export interface AiTranscript {
@@ -401,6 +412,11 @@ export interface EditorShell {
   importProject?: (kind: 'zip' | 'folder') => Promise<ProjectImportResult | null>
   // false where the browser cannot pick a folder
   canImportFolder?: boolean
+  // ---- Sharing a copy (web, signed in) ----
+  // the link another account opens to make its own copy of the scene; null while it is not shared
+  projectShareLink?: (dir: string) => Promise<string | null>
+  // on: answers the link, the same one each time; off: null, and that link stops working for good
+  setProjectShared?: (dir: string, shared: boolean) => Promise<string | null>
   // ---- npm packages (see ProjectPackages) ----
   // where the project's packages stand; null when it asks for none
   projectPackages?: (dir: string) => Promise<ProjectPackages | null>
@@ -449,6 +465,9 @@ export interface EditorShell {
   publishScene?: (dir: string, world: string, onProgress: (progress: PublishProgress) => void) => Promise<ScenePublishResult>
   // the worlds the signed-in wallet can publish to, where the shell is the one that knows
   publishWorlds?: () => Promise<PublishWorld[]>
+  // publish to a shared world, for a wallet without a NAME: the shell's service lends a
+  // zone of one of its pool NAMEs and signs there (ScenePublishResult.published.world names it)
+  publishShared?: (dir: string, onProgress: (progress: PublishProgress) => void) => Promise<ScenePublishResult>
   // can this scene's sdk-commands publish next to a world's existing scenes?
   // resolves `unknown` while the scene has no node_modules — publishStart
   // installs them first, so the answer can change after a publish is started.
@@ -511,6 +530,9 @@ export interface EditorShell {
   // false while nobody here can use the assistant (a guest, no service, an account not let in),
   // which hides it; absent means it is always offered
   aiOffered?: () => boolean
+  // false until the shell has asked whether the assistant is offered: aiOffered is false meanwhile,
+  // which says nothing yet; absent means the answer is known from the start
+  aiAnswered?: () => boolean
   aiSend?: (params: AiSendParams) => Promise<{ turnId: string }>
   aiStop?: () => Promise<void>
   aiReset?: () => Promise<void>
@@ -525,8 +547,10 @@ export interface EditorShell {
   // the editor's MCP server here, the page runs it on the engine and answers
   onEditorToolCall?: (cb: (call: EditorToolCall) => void) => () => void
   editorToolResult?: (id: string, result: EditorToolResult) => Promise<void>
-  // a shared library file the assistant copies into a project (materials/…jpg, sounds/…mp3)
+  // a shared library file the assistant copies into a project (materials/…jpg, sounds/…mp3, icons/icons.index.json)
   libraryFile?: (file: string) => Promise<Uint8Array>
+  // `length` bytes of a library file from `offset`: one block of icons/icons.pack
+  libraryFileRange?: (file: string, offset: number, length: number) => Promise<Uint8Array>
   // ---- Prefab library ----
   // every builtin + user-library prefab, newest tree read on each call
   prefabLibraryList?: () => Promise<PrefabLibraryEntry[]>

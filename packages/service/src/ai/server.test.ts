@@ -1,4 +1,7 @@
 import { once } from 'node:events'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { WebSocket } from 'ws'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AssistantServerMessage, BrowserToolCall } from '../../../contract/src/assistant.ts'
@@ -32,7 +35,7 @@ async function setup(vars?: Record<string, string>) {
     await once(ws, 'open')
     return { ws, ready }
   }
-  return { base, wallet, ticket, socket }
+  return { base, wallet, ticket, socket, stop: program.stop }
 }
 
 describe('assistant connection authorization', () => {
@@ -103,6 +106,32 @@ describe('assistant connection authorization', () => {
     expect((await started).kind).toBe('call')
   })
 
+  it('lets a running turn finish when the service stops, and refuses new ones meanwhile', async () => {
+    const { ticket, socket, stop } = await setup({ ASSISTANT_DRAIN_SECONDS: '30' })
+    const a = await socket(await ticket()); await a.ready
+    const b = await socket(await ticket()); await b.ready
+    const next = (ws: WebSocket, kinds: string[]) => new Promise<AssistantServerMessage>((resolve) => {
+      const on = (raw: unknown) => { const m = JSON.parse(String(raw)) as AssistantServerMessage; if (kinds.includes(m.kind)) { ws.off('message', on); resolve(m) } }
+      ws.on('message', on)
+    })
+    const prompt = (ws: WebSocket, turnId: string) => ws.send(JSON.stringify({ kind: 'prompt', turnId, projectId: 'project', params: { provider: 'claude', text: 'Read my file' } }))
+    const call = next(a.ws, ['call'])
+    prompt(a.ws, 'turn-a')
+    const first = await call as BrowserToolCall
+
+    let stopped = false
+    const stopping = stop().then(() => { stopped = true })
+    const refused = next(b.ws, ['failure'])
+    prompt(b.ws, 'turn-b')
+    expect(await refused).toMatchObject({ message: expect.stringContaining('restarting') })
+    expect(stopped).toBe(false)
+
+    const done = new Promise<boolean>((resolve) => a.ws.on('message', (raw: unknown) => { const m = JSON.parse(String(raw)); if (m.event?.kind === 'done') resolve(m.event.ok) }))
+    a.ws.send(JSON.stringify({ kind: 'result', callId: first.callId, turnId: first.turnId, ok: true, text: 'file' }))
+    expect(await done).toBe(true)
+    await stopping
+  })
+
   it('serves only the listed wallets when ASSISTANT_WALLETS is set', async () => {
     const { base, wallet } = await setup({ ASSISTANT_WALLETS: '0x0000000000000000000000000000000000000001' })
     const response = await wallet.signedFetch(base + '/assistant/connect', { method: 'POST' })
@@ -154,5 +183,56 @@ describe('assistant connection authorization', () => {
     const closed = once(ws, 'close')
     for (let i = 0; i < 4097; i++) ws.send('x', { fin: false })
     expect((await closed)[0]).toBe(1008)
+  })
+})
+
+describe('assistant prompt limits', () => {
+  // the factory answers at once, so a turn either ends or is refused
+  const quick: AgentFactory = {
+    providers: async () => [{ id: 'claude', label: 'Test', available: true, models: ['test'], defaultModel: 'test' }],
+    create: async () => ({ prompt: async () => {}, abort: async () => {}, dispose: () => {}, snapshot: () => [], takeUsage: () => ({ cost: 0 }) })
+  }
+
+  async function start(vars: Record<string, string>) {
+    const program = await createTestService({ agentFactory: quick, vars: { CLIENT_IP_HEADER: 'x-real-ip', ...vars } })
+    cleanup.push(program.stop)
+    return program
+  }
+
+  async function promptOnce(base: string, wallet: Awaited<ReturnType<typeof createTestWallet>>, ip: string): Promise<string> {
+    const response = await wallet.signedFetch(base + '/assistant/connect', { method: 'POST', headers: { 'x-real-ip': ip } })
+    const { token } = await response.json() as { token: string }
+    const ws = new WebSocket(base.replace('http:', 'ws:') + '/assistant/socket', [ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX + token],
+      { origin: TEST_ORIGIN, headers: { 'x-real-ip': ip } })
+    await once(ws, 'message')
+    const outcome = new Promise<string>((resolve) => ws.on('message', (raw) => {
+      const message = JSON.parse(String(raw)) as AssistantServerMessage
+      if (message.kind === 'failure') resolve(message.message)
+      if (message.kind === 'event' && message.event.kind === 'done') resolve('done')
+    }))
+    ws.send(JSON.stringify({ kind: 'prompt', turnId: 'turn', projectId: 'project', params: { provider: 'claude', text: 'Make a game' } }))
+    const result = await outcome
+    ws.close()
+    return result
+  }
+
+  it('counts the address a proxy reports, whichever wallet signs in from it', async () => {
+    const { base } = await start({ ASSISTANT_TURNS_PER_IP_PER_DAY: '1' })
+    const [one, two] = await Promise.all([createTestWallet({ origin: TEST_ORIGIN }), createTestWallet({ origin: TEST_ORIGIN })])
+    expect(await promptOnce(base, one, '203.0.113.7')).toBe('done')
+    expect(await promptOnce(base, two, '203.0.113.7')).toContain('Your network has used')
+    expect(await promptOnce(base, two, '198.51.100.1')).toBe('done')
+  })
+
+  it('keeps the day count across a restart', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'assistant-counts-'))
+    cleanup.push(() => rm(dir, { recursive: true, force: true }))
+    const vars = { AI_AUTH_PATH: join(dir, '.auth.json'), STORAGE_DIR: join(dir, 'projects'), ASSISTANT_TURNS_PER_DAY: '1' }
+    const wallet = await createTestWallet({ origin: TEST_ORIGIN })
+    const first = await start(vars)
+    expect(await promptOnce(first.base, wallet, '203.0.113.7')).toBe('done')
+    await first.stop()
+    const second = await start(vars)
+    expect(await promptOnce(second.base, wallet, '198.51.100.1')).toContain("today's 1 prompts")
   })
 })

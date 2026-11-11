@@ -42,7 +42,7 @@ import {
   AUTOPAUSE_INTERVAL_MS
 } from '../config'
 import { startBusPolling, stopBus, onSceneMessage, sendToScene, sceneRpc } from '../engine/bus'
-import { isHosted } from '../engine/hosted'
+import { hostedRoute, isHosted } from '../engine/hosted'
 import { DEBUG, log } from '../log'
 import { pageTrace, pageTraced, recordSceneTrace, printBootTimeline } from '../engine/boot-trace'
 import {
@@ -55,7 +55,7 @@ import {
   snapshotValue,
   type HistoryEntry
 } from '../core/history'
-import { initAutoSave, markDirty, clearDirty, flushPendingSave, hasPendingSave } from '../core/autosave'
+import { initAutoSave, markDirty, clearDirty, flushPendingSave, hasPendingSave, bindSavesTo } from '../core/autosave'
 import { noteCodeOrigin, refreshCodeMove, resetCodeOrigins } from '../panels/code-move-offer'
 import { clearPendingCodeMove, runStudioChord } from '../panels/ai-store'
 import { revealInTree } from '../panels/reveal'
@@ -140,6 +140,10 @@ function resetSession(): void {
   state.scene = undefined
   state.status = 'logging-in'
   state.snapshot = {}
+  // a save starts from savedBaseline: one left from the last project writes its
+  // entities, scripts and all, into the next project's main.composite
+  state.savedBaseline = null
+  state.initialBaseline = null
   setSelectionAndActive([], null)
   resetSaveChangelog()
   clearDirty()
@@ -152,6 +156,13 @@ function resetSession(): void {
 }
 
 let stopThemePreview: (() => void) | undefined
+
+// Hosted, after the last save of a project that is closing: the next one opens in
+// this page, and until its boot it would show (and save) this one's scene.
+export function endSession(): void {
+  bindSavesTo(null)
+  resetSession()
+}
 
 // Leave the project without leaving the page: stop announcing, stop listening.
 export function stopBoot(): void {
@@ -181,6 +192,7 @@ async function announce(run: number): Promise<void> {
 export async function boot(): Promise<void> {
   const run = ++bootRun
   if (wired) resetSession()
+  bindSavesTo(hostedRoute.project)
   setSceneBaseCorner(baseParcelCorner())
   stopThemePreview?.()
   stopThemePreview = startThemePreview()

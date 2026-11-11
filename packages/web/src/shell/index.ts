@@ -30,10 +30,11 @@ import { browserSceneRequest } from '@ui/ai/scene'
 import { sameBytes } from '../ai/tools'
 import { captureView } from '@ui/ai/view'
 import { createAssetRequests } from '@ui/ai/assets'
-import { materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
+import { iconBlockBytes, iconIndexBytes, materialBytes, setLibraryBase, soundBytes } from '../ai/library-files'
 import { setLibraryBytes } from '@ui/ai/library-bytes'
-import { runFreshBuild } from '@ui/actions/verify-build'
+import { runFreshBuild, saveBeforeBuild } from '@ui/actions/verify-build'
 import { flushPendingSave } from '@ui/core/autosave'
+import { ensureScriptRuntime } from '@ui/prefabs/generate'
 import { updateSpawnPoints } from '@ui/spawn-points'
 import { leavePhone, playtest } from '@ui/ai/playtest'
 import { uiLayout } from '@ui/ai/ui-layout'
@@ -46,6 +47,9 @@ import { BIDI, type ProjectRecord, ProjectStore } from '../store/project-store'
 import { createPrefabsApi, createProjectsApi } from '../sync/api'
 import { createSyncEngine } from '../sync/engine'
 import { canPickFolder, downloadZip, importProject, pickFile } from './archive'
+import { createBuildTool } from './build-tool'
+import { createSharing } from './share'
+import { createAssistantOffer } from './assistant-offer'
 import { createBuiltinPrefabs } from './builtin-prefabs'
 import { runtimeTypes, sceneTemplates, templateFiles } from './bundled'
 import { type ProjectFiles, createPrefabLibrary, parseRef } from './prefab-library'
@@ -117,7 +121,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     if (logs.length > MAX_LOG_LINES) logs.splice(0, logs.length - MAX_LOG_LINES)
     for (const listener of logListeners) listener(line)
   }
-  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId), previewEnvironment(services?.services.worldsContent ?? null))
+  const phone = createPhonePreview(mobilePreviewEntry(host.pageDir, services?.services.projects ?? null, location.search), previewIdOf, async (realmId) => previewMachineId(await secret, wallet() ?? 'guest', realmId), previewEnvironment(services?.services.worldsContent ?? null))
   const emit = (event: SceneBuildEvent): void => {
     for (const listener of buildListeners) listener(event)
     if (event.type === 'bundleSaved' && current !== null) phone.built(current.id).catch((error: unknown) => console.error('[editor] mobile preview reload failed', error))
@@ -233,17 +237,14 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
           written: refreshWrittenScript,
           view: (request, signal) => captureView(request, signal),
           playtest, uiLayout, turnEnded: leavePhone,
-          build: async (signal) => {
-            signal.throwIfAborted()
-            await fileWrites
-            const result = await previews.build(open.id, new Map(open.files))
-            signal.throwIfAborted()
-            if (!result.ok) return { ok: false, diagnostics: result.diagnostics, mobilePreview: phone.status() }
-            // compiled is not working: run it once and report what it printed
-            const run = await runFreshBuild()
-            signal.throwIfAborted()
-            return { ok: true, diagnostics: result.diagnostics, run, mobilePreview: phone.status() }
-          }
+          build: createBuildTool({
+            saveScene: saveBeforeBuild,
+            fileWrites: () => fileWrites,
+            vendorRuntime: ensureScriptRuntime,
+            compile: () => previews.build(open.id, new Map(open.files)),
+            run: runFreshBuild,
+            mobilePreview: phone.status
+          })
         }
       }
     }
@@ -345,17 +346,9 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       return copy
     }
   })
-  // hidden until the service says this account may use it
-  let aiOffered = false
-  let aiProbe = 0
-  async function probeAssistant(): Promise<void> {
-    const probe = ++aiProbe
-    const offered = wallet() !== null && (await assistant.shell.aiProviders()).some((provider) => provider.available)
-    if (probe !== aiProbe || offered === aiOffered) return
-    aiOffered = offered
-    notify()
-  }
-  void probeAssistant()
+  const sharing = services?.services.projects == null ? null : createSharing({ base: services.services.projects, signedFetch: (url, init) => services.signedFetch(url, init), store, sync, wallet, install: (id, files) => previews.install(id, files) })
+  const assistantOffer = createAssistantOffer({ wallet, providers: () => assistant.shell.aiProviders(), changed: notify })
+  void assistantOffer.probe()
   // signing in or out changes whose copy the projects are compared with
   let signedInAs = wallet()
   const accountPoll = setInterval(() => {
@@ -364,7 +357,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     signedInAs = now
     assistant.reset()
     notify()
-    void probeAssistant()
+    void assistantOffer.probe()
     void sync.refresh(true)
     void clearPreviews(currentRealm).catch((error: unknown) => console.warn('[editor] could not clear the previews', error))
   }, ACCOUNT_POLL_MS)
@@ -552,7 +545,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       : createUserPrefabs(createPrefabsApi(services.services.projects, (url, init) => services.signedFetch(url, init)), contentCid)
   setThreeWorker(threeWorkerSource(host.editorBase))
   setLibraryBase(host.editorBase)
-  setLibraryBytes({ material: materialBytes, sound: soundBytes })
+  setLibraryBytes({ material: materialBytes, sound: soundBytes, iconIndex: iconIndexBytes, iconBlock: iconBlockBytes })
   setPublishedSize(async () => publishedSize(await projects.files(project().id)))
   const prefabs = createPrefabLibrary({
     builtin: createBuiltinPrefabs(host.editorBase, fileIntegrity('prefabs/catalog.json'), fetchVerified),
@@ -562,7 +555,8 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
   const shell: EditorShell = {
     ...(services?.services.projects == null ? {} : {
       ...assistant.shell,
-      aiOffered: () => aiOffered,
+      aiOffered: assistantOffer.offered,
+      aiAnswered: assistantOffer.answered,
       // read on every store notify, so it uses the polled account rather than asking the host
       aiTranscript: () => {
         const signedIn = signedInAs
@@ -681,15 +675,13 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
       ? {}
       : {
           publishScene: (id, world, onProgress) => publisher.publish(id, world, onProgress),
+          ...(publisher.publishShared === undefined ? {} : { publishShared: publisher.publishShared }),
           publishStop: async () => publisher.stop(),
-          publishWorlds: async () => {
-            const signedIn = wallet()
-            return signedIn === null ? [] : publishWorlds(signedIn, services.services.worldsContent.replace(/\/+$/, ''))
-          }
+          publishWorlds: async () => publishWorlds(wallet(), services.services.worldsContent)
         }),
     canImportFolder: canPickFolder(),
-    renameProject: (id, title) =>
-      editSceneJson(id, (raw) => ({ ...raw, display: { ...(raw.display ?? {}), title: title.trim() } })),
+    ...(sharing?.shell ?? {}),
+    renameProject: (id, title) => editSceneJson(id, (raw) => ({ ...raw, display: { ...(raw.display ?? {}), title: title.trim() } })),
     duplicateProject: (id) => duplicate(id, 'copy'),
     sceneTemplates: async () => sceneTemplates(),
     createScene: async (_parent, name, template) => {
@@ -785,6 +777,7 @@ export const createWebShell: CreateWebShell = ({ host, sceneCompiler }) => {
     shell,
     projects,
     dataLayer,
+    ...(sharing === null ? {} : { copyShared: sharing.copyShared }),
     dispose: () => {
       phone.dispose()
       assistant.dispose()

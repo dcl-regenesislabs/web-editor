@@ -38,4 +38,4 @@
   margin: 0; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.eui-checks-list li .top .act { display: flex; flex: none; margin-left: auto; }
+.eui-checks-list li .top .act { display: flex; flex: none; gap: 6px; margin-left: auto; }

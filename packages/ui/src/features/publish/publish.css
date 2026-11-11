@@ -62,3 +62,9 @@
    is not a thing to hit by muscle memory: with no primary to trail, the
    destructive holds the leading edge instead. */
 .eui-publish-foot-lead { display: inline-flex; margin-right: auto; }
+
+/* the published scene on a phone: scan the QR, or copy the link */
+/* side by side, so the success state still fits a short window without scrolling */
+.eui-publish-mobile { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; }
+.eui-publish-mobile-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.eui-publish-qr { flex: none; width: 128px; height: 128px; border-radius: var(--r-control); background: #fff; }

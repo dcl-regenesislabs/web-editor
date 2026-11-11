@@ -91,6 +91,8 @@ it('reports a Stop after a service error as stopped, and an unstopped one by its
     const first = await assistant.shell.aiSend({ provider: 'claude', text: 'Make a door' })
     Socket.instances[0].receive({ kind: 'event', event: { kind: 'error', turnId: first.turnId, message: 'Hit a limit', resumable: true } })
     await assistant.shell.aiStop()
+    // the service keeps a stopped conversation: a Stop is not a new chat
+    expect(Socket.instances[0].sent.filter((message) => message.kind !== 'prompt')).toEqual([{ kind: 'stop', turnId: first.turnId }])
     const second = await assistant.shell.aiSend({ provider: 'claude', text: 'Make a door' })
     const ws = Socket.instances[1]
     ws.receive({ kind: 'event', event: { kind: 'error', turnId: second.turnId, message: 'Hit a limit', resumable: true } })

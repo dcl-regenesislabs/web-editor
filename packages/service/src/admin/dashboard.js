@@ -1,5 +1,8 @@
-// Read-only: polls the service's in-memory status every five seconds while the page is visible.
+// Polls the service's in-memory status every five seconds while the page is visible; its only writes add and
+// remove Claude accounts.
 const POLL_MS = 5000
+// listing sessions reads every recorded conversation's turns, so it refreshes less often than the status
+const SESSIONS_MS = 30000
 const STALE_MS = 15000
 const $ = (id) => document.getElementById(id)
 
@@ -8,6 +11,7 @@ let lastAt = 0
 let clockOffset = 0
 let timer = null
 let signedOut = false
+let sessionsAt = 0
 
 const time = (iso) => iso === null ? '—' : new Date(iso).toLocaleString()
 const count = (n) => typeof n === 'number' ? n.toLocaleString() : '—'
@@ -108,11 +112,112 @@ function renderQuota(quota) {
   $('quota-note').textContent = `${QUOTA_NOTES[quota.state] ?? quota.state}${checked}${quota.stale ? ' No reply since, so it may be out of date.' : ''}`
 }
 
+const ACCOUNT_STATES = { active: 'In use', ready: 'Ready', limited: 'At its limit', rejected: 'Token refused', 'signed-out': 'Not signed in' }
+let confirming = null
+
+function windowPercent(quota, name) {
+  const window = quota.windows.find((entry) => entry.name === name)
+  return window === undefined ? '—' : `${window.percent}%`
+}
+
+async function removeAccount(id) {
+  const response = await fetch(`api/accounts/${id}`, { method: 'DELETE', credentials: 'same-origin' })
+  confirming = null
+  if (!response.ok) message(`Could not remove it (${(await response.json().catch(() => ({}))).error ?? response.status}).`, 'error')
+  await poll()
+}
+
+function renderAccounts(accounts) {
+  // no assistant credential, no account pool to add to
+  $('add-account').hidden = last.quota.state === 'disabled'
+  rows('accounts', 7, accounts.map((account) => {
+    const limited = account.limitedUntil === null ? '' : ` · until ${time(account.limitedUntil)}`
+    const state = el('td', 'state', `${ACCOUNT_STATES[account.state] ?? account.state}${limited}`)
+    state.dataset.state = account.state
+    if (account.limitedUntil !== null) state.title = `Until ${time(account.limitedUntil)}`
+    const actions = el('td', 'num')
+    if (account.removable) {
+      const button = el('button', 'btn quiet', confirming === account.id ? 'Confirm' : 'Remove')
+      button.type = 'button'
+      button.addEventListener('click', () => {
+        if (confirming !== account.id) { confirming = account.id; renderAccounts(last.accounts); return }
+        button.disabled = true
+        void removeAccount(account.id)
+      })
+      actions.append(button)
+    }
+    return [
+      el('td', '', account.label), state, el('td', 'num', windowPercent(account.quota, 'five_hour')), el('td', 'num', windowPercent(account.quota, 'seven_day')),
+      el('td', 'mono', account.hint === null ? '—' : `…${account.hint}`), el('td', '', account.addedAt === null ? 'configured' : time(account.addedAt)), actions
+    ]
+  }), 'No Claude account is configured.')
+}
+
+function message(text, tone) {
+  const note = $('account-message')
+  note.textContent = text
+  note.dataset.tone = tone ?? ''
+}
+
+const ADD_ERRORS = {
+  'invalid-token': 'That is not a token from claude setup-token.', 'invalid-label': 'Give it a name of up to 60 characters.',
+  duplicate: 'That token is already added.', 'too-many': 'Remove an account before adding another.', 'rate-limited': 'Too many changes; wait a minute.'
+}
+
+$('add-account').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const button = event.target.querySelector('button')
+  button.disabled = true
+  message('Adding…')
+  try {
+    const response = await fetch('api/accounts', {
+      method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: $('account-label').value, token: $('account-token').value })
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) { message(ADD_ERRORS[body.error] ?? `Could not add it (${body.error ?? response.status}).`, 'error'); return }
+    $('account-token').value = ''
+    $('account-label').value = ''
+    message(`Added "${body.account.label}". It is checked on the first reply it serves.`)
+    await poll()
+  } catch {
+    message('Could not reach the service.', 'error')
+  } finally {
+    button.disabled = false
+  }
+})
+
 function allowanceCell(percent) {
   const cell = el('td')
   if (typeof percent !== 'number') { cell.textContent = '—'; return cell }
   cell.append(bar(percent), el('span', '', `${percent}%`))
   return cell
+}
+
+const mb = (bytes) => typeof bytes === 'number' ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '—'
+
+function renderPool(pool) {
+  $('pool-card').hidden = pool === null
+  if (pool === null) return
+  const wallet = (address) => {
+    const cell = el('td', 'mono', shortWallet(address))
+    cell.title = address
+    return cell
+  }
+  rows('pool-names', 5, pool.names.map((name) => [
+    el('td', 'mono', name.name), el('td', 'num', `${count(name.leases)} / ${count(pool.limits.leasesPerName)}`),
+    el('td', 'num', name.whitelisted ? `${mb(name.usedSpace)} · exempt` : `${mb(name.usedSpace)} / ${mb(name.allowedSpace)}`),
+    el('td', '', name.canDeploy === null ? '—' : name.canDeploy ? 'Yes' : 'Not granted'), name.owner === null ? el('td', '', '—') : wallet(name.owner)
+  ]), 'No pool NAMEs.')
+  rows('pool-leases', 5, pool.leases.map((lease) => [
+    wallet(lease.wallet), el('td', 'mono', `${lease.name} ${lease.zone.x},${lease.zone.y}`),
+    el('td', '', lease.scene?.title || (lease.scene === null ? 'No scene yet' : '—')), el('td', 'num', mb(lease.scene?.bytes)),
+    el('td', '', time(lease.scene?.publishedAt ?? lease.leasedAt))
+  ]), 'Nobody holds a shared world.')
+  list('pool-service', [
+    ['Pool wallet', pool.signer], ['Worlds server', pool.worldsContent], ['Uploads pending', `${count(pool.pending)} / ${count(pool.limits.pendingDeploys)}`],
+    ['Largest scene', mb(pool.limits.maxSceneBytes)], ['Blocked wallets', pool.blocked.length === 0 ? 'None' : pool.blocked.map((b) => `${shortWallet(b.wallet)}: ${b.reason}`).join('; ')]
+  ])
 }
 
 function render(status) {
@@ -133,6 +238,7 @@ function render(status) {
     : 'Session % is estimated from how the plan\'s 5-hour reading moved with this service\'s use; other use of the account inflates it.'
   renderTurns()
   renderQuota(status.quota)
+  renderAccounts(status.accounts)
 
   rows('users', 10, status.users.map((user) => {
     const wallet = el('td', 'mono', shortWallet(user.wallet))
@@ -169,9 +275,43 @@ function render(status) {
     ['Last delivery', time(tel.lastDeliveryAt)], ['Last failure', tel.lastFailure === null ? '—' : `${tel.lastFailure} · ${time(tel.lastFailureAt)}`]
   ])
 
+  renderPool(status.pool)
+
   const history = $('history')
   history.hidden = status.historyUrl === null
   if (status.historyUrl !== null) history.href = status.historyUrl
+}
+
+function link(href, text, download) {
+  const a = el('a', '', text)
+  a.href = href
+  if (download) a.download = ''
+  return a
+}
+
+async function pollSessions() {
+  if (Date.now() - sessionsAt < SESSIONS_MS) return
+  sessionsAt = Date.now()
+  const response = await fetch('api/sessions', { credentials: 'same-origin', cache: 'no-store', redirect: 'manual' })
+  if (!response.ok) return
+  const { enabled, sessions } = await response.json()
+  $('sessions-card').hidden = !enabled
+  if (!enabled) return
+  rows('session-rows', 10, sessions.map((s) => {
+    const wallet = el('td', 'mono', shortWallet(s.wallet))
+    wallet.title = s.wallet
+    const prompt = el('td', '', s.firstPrompt.length > 60 ? `${s.firstPrompt.slice(0, 60)}…` : s.firstPrompt)
+    prompt.title = s.firstPrompt
+    const base = `api/sessions/${s.wallet}/${s.conversation}`
+    const open = el('td')
+    open.append(link(base, 'turns'), ' · ', link(`${base}/session.jsonl`, 'transcript', true))
+    const t = s.tokens
+    return [
+      el('td', '', time(s.updatedAt)), wallet, el('td', 'mono', s.projectId), prompt, el('td', 'num', count(s.turns)),
+      el('td', 'num', count(s.steps)), el('td', 'num', compact(t.input + t.cacheRead + t.cacheWrite)), el('td', 'num', compact(t.output)),
+      el('td', 'num', usd(s.cost)), open
+    ]
+  }), 'No sessions recorded yet.')
 }
 
 async function poll() {
@@ -192,6 +332,8 @@ async function poll() {
     clockOffset = Date.parse(status.now) - Date.now()
     setState('live', 'Live')
     render(status)
+    // the session list is extra: failing it must not mark the dashboard disconnected
+    await pollSessions().catch((error) => { console.warn('Recorded sessions could not be listed', error) })
   } catch {
     if (last === null) setState('disconnected', 'Cannot reach the service')
     else setState('disconnected', `Disconnected — last update ${time(new Date(lastAt).toISOString())}`)

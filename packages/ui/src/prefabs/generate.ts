@@ -36,6 +36,7 @@ import { isRecord, substituteAssetPath, type PrefabComposite } from './format'
 import { prefabFoldersIn, readPrefabFolder } from './storage'
 import { healInertArtifacts } from './heal-inert'
 import { runtimeMaster, runtimeMasterPath } from './runtime-masters'
+import { vendorActionIcons } from './action-icons'
 import {
   importSpecifiers,
   isVendoredCopy,
@@ -317,7 +318,9 @@ export async function vendorScriptRuntime(files: string[]): Promise<ScriptRuntim
   const entries = await creatorRuntimeEntries(files)
   if (entries.length === 0) return noModules()
   const masters = shippedMasters(entries)
-  return await vendorModules(Object.keys(masters).sort(), (rel) => masters[rel])
+  const result = await vendorModules(Object.keys(masters).sort(), (rel) => masters[rel])
+  const icons = await vendorActionIcons(Object.keys(masters), files)
+  return { ...result, vendored: [...result.vendored, ...icons] }
 }
 
 // The generate pass runs on composite edits and at open — neither of which a

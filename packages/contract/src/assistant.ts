@@ -7,7 +7,7 @@ export const ASSISTANT_ID = /^[a-zA-Z0-9-]{1,80}$/
 export const ASSISTANT_PROTOCOL = 'dcl-assistant-v1'
 export const ASSISTANT_TICKET_PREFIX = 'dcl-ticket.'
 
-export const BROWSER_TOOLS = ['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout'] as const
+export const BROWSER_TOOLS = ['list_files', 'search_files', 'read_file', 'edit_file', 'write_file', 'scene_request', 'asset_request', 'build', 'view', 'playtest', 'ui_layout', 'mobile_check'] as const
 export type BrowserToolName = (typeof BROWSER_TOOLS)[number]
 export interface BrowserToolCall {
   kind: 'call'
@@ -20,7 +20,8 @@ export interface BrowserToolCall {
 }
 
 export function isCatalogSearch(tool: BrowserToolName, args: Record<string, unknown>): boolean {
-  return tool === 'scene_request' && object(args.request) && args.request.type === 'findModels'
+  return tool === 'scene_request' && object(args.request) &&
+    (args.request.type === 'findModels' || args.request.type === 'findIcons' || args.request.type === 'findSounds')
 }
 
 /** A conversation the service keeps encrypted between sessions; only the browser holds `key`. */

@@ -1,6 +1,6 @@
 ---
 name: game-sounds
-description: "Give every player action and game event its sound, unasked, from the editor's bundled sound library (coin, power-up, win, lose, time-up, click, open, close, hit, jump, door, explosion, ambient loops). Use whenever you build or change a game or an interaction: pickups, scoring, timers, rounds, buttons and menus, doors, levers, hits, power-ups, teleports, win and lose — even when the request never mentions sound. For music, radio streams and video, see audio-video."
+description: "Give every player action and game event its sound, unasked, from the editor's bundled sound library: effects (coin, power-up, win, lose, click, hit, jump, footsteps, splash, laser, doors), an announcer voice, ambience loops (rain, wind, birds, waves, city) and background music loops. Use whenever you build or change a game or an interaction: pickups, scoring, timers, rounds, buttons and menus, doors, levers, hits, power-ups, teleports, win and lose — even when the request never mentions sound — and when a scene needs ambience or music. For radio streams and video, see audio-video."
 ---
 
 # Game sounds — every action answers with a sound
@@ -20,11 +20,23 @@ from the library below, wire them, and say which sound each event got.
 3. **Wire it** (code below), next to the code that makes the event happen.
 4. **Pair it with something to see**: a scale pop (`Tween`), a flash, a number. Sound and sight
    land on the same frame.
-5. **Report** the events and their sounds in one line each.
+5. **Report** the events and their sounds in one line.
 
 ## The library
 
-Kenney's CC0 sounds, mp3, short and normalised. `loop` ones are ambient beds.
+Over a hundred CC0 sounds, free to publish without credit, mp3, short and normalised, in four kinds:
+
+- **effect**: pickups, score, rounds, UI (hover, select, toggle, back, notify, typing), footsteps on grass, wood,
+  stone, snow and carpet, water (splash, bubble), fights (punch, sword, laser, zap, spell, fireball, cannon,
+  monsters), doors, locks, glass, metal, wood, bell, mining, books, cards, dice, thunder, fireworks, applause.
+- **voice**: an announcer saying ready, set, go, three, two, one, fight, final round, hurry up, time over,
+  correct, wrong, level up, new highscore, congratulations, you win, you lose, game over.
+- **ambience**: loops that set a place: rain, wind, birds, night crickets, river, waves, city traffic, crowd,
+  campfire, fire, machine, rumble, alarm, bubbles, sci-fi city, dungeon, horror.
+- **music**: background loops of 20–70 s: tavern, happy, cave, mystery, battle, action, adventure, island,
+  retro, carnival, sad, winter, sci-fi.
+
+These are always there; take them without searching:
 
 | Sound | What it is | Use it for |
 |---|---|---|
@@ -44,17 +56,22 @@ Kenney's CC0 sounds, mp3, short and normalised. `loop` ones are ambient beds.
 | jump | springy zip, 0.39 s | jump, bounce pad, launch |
 | land | soft heavy thud, 0.55 s | landing, something dropped or placed |
 | hit | punch impact, 0.26 s | hit, damage taken |
-| splat | wet squelch, 0.52 s | slime, goo, the closest to a splash |
+| splash | big water splash, 0.84 s | falling into water, dive |
 | teleport | rising phaser, 0.42 s | teleport, portal, respawn |
 | door-open / door-close | wooden creak / shut | doors, chests, gates |
 | lever | metal clack, 0.21 s | lever, switch, latch, lock |
 | explosion | deep boom, 2.04 s | explosion, cannon, big impact |
-| fire-loop | roaring flame (loop) | fire, lava, furnace, jet |
-| rumble-loop | low rumble (loop) | machinery, cave, earthquake |
-| machine-loop | electronic chatter (loop) | computer room, lab, generator |
 
-When nothing fits, use the closest one and say so in the report; the creator can import their own
-file into `assets/audio/` later.
+For anything else, look it up:
+
+- **Decentraland editor (web)**: `scene_request {type:"findSounds",query:"footstep wood"}` answers the
+  matching names with their description and length; add `kind:"music"` (or effect, voice, ambience) to narrow
+  it, or send only a kind to list all of it.
+- **Decentraland Studio (desktop)**: `{baseDir}/sounds/properties.json` is the index: every name with its
+  description, kind, length and loop flag.
+
+Use only names the index has. When nothing fits, use the closest and say so in the report; the creator can
+import their own file into `assets/audio/` later.
 
 ## Getting a sound into the project
 
@@ -98,8 +115,15 @@ play('coin', 0.95 + Math.random() * 0.1) // repeated sounds vary their pitch a l
 - **Where it comes from**: a sound that belongs to a thing in the world (a door, a fire, a machine)
   goes on that thing's entity with `global: false`, so it gets louder as the player walks up. HUD,
   menus and game flow (score, timer, win) are `global: true`.
-- **Loops**: on the entity they belong to, `loop: true, playing: true`, volume 0.3–0.5, so they sit
-  under the effects. Stop them when the thing goes away or the round ends.
+- **Ambience**: on the entity they belong to, `loop: true, playing: true`, volume 0.3–0.5, so they sit
+  under the effects: a campfire on the fire, a river on the river, `global: false`. Stop them when the thing
+  goes away or the round ends.
+- **Music**: one track for the whole scene, on one entity made for it, `global: true, loop: true,
+  playing: true`, volume 0.25–0.4, started once when the scene starts. One track plays at a time: to change it (calm
+  lobby, then battle), stop the first before starting the next. Pick it from the game's mood, and say which in
+  the report; the creator may want another.
+- **Voice**: the announcer says what the screen shows (ready, go, you win) and goes with its effect, not
+  instead: `voice-go` and `start` together, `voice-you-win` after `win`.
 - **Volumes**: effects 0.7–1, clicks 0.5, loops 0.3–0.5. The win sound may be the loudest thing in
   the game; a click never is.
 - **Timing**: the sound fires on the frame the event happens. A thing that vanishes waits ~0.1 s so
@@ -111,6 +135,6 @@ play('coin', 0.95 + Math.random() * 0.1) // repeated sounds vary their pitch a l
 
 ## Report
 
-One line per event: `coin pickup → coin (pitch varied) · gold coin → gem · last 5 s → countdown-tick ·
+One line for all events: `coin pickup → coin (pitch varied) · gold coin → gem · last 5 s → countdown-tick ·
 time up → time-up · button → click`. Then what could only be judged by ear: the mix and whether a sound
 fits. That is for the creator to try in Preview.

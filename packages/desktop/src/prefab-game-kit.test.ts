@@ -324,7 +324,8 @@ const GLOBAL_KEYS = [
   '__dclServerState_v1',
   '__dclPlayerStoreKeys_v1',
   '__dclSpawner_v1',
-  '__dclOutcomes_v1'
+  '__dclOutcomes_v1',
+  '__dclCarry_v1'
 ]
 
 // Every deadline in the kit is `game.now()`, which is Date.now() on the server —
@@ -844,6 +845,104 @@ describe('Run Progress', () => {
     expect(runs.runOf('race', '0xada')).toMatchObject({ attempt: 2, phase: 'ready', checkpoint: 0, collected: [], bestMs: finished.bestMs })
     expect(game.state.respawnPoints).toEqual({ '0xada': { x: 2, y: 0, z: 4 } })
     expect(game.state['run:race:leaderboard']).toEqual(board)
+  })
+})
+
+interface CarryModule {
+  heldBy(player: string): { item: string; kind: string } | null
+  stationItem(station: string): { item: string; kind: string } | null
+  onCarry(fn: (event: { type: string; kind: string; station?: string; player?: string }) => void): () => void
+  takeFromStation(station: string): string | null
+}
+
+interface PickupModule {
+  PickupItem: new (src: string, entity: number, kind?: string, supply?: 'one item' | 'endless' | 'look only') => Script
+}
+
+interface StationModule {
+  WorkStation: new (src: string, entity: number, mode?: 'counter' | 'hold to work' | 'timed', turns?: string, seconds?: number) => Script
+}
+
+describe('Pickup Item and Work Station', () => {
+  let call = 0
+
+  function placeAt(entity: number, name: string, x: number): void {
+    const names = host.engine.getComponentOrNull('core-schema::Name') ?? host.engine.defineComponent('core-schema::Name')
+    names.create(entity, { value: name })
+    host.transform.create(entity, { position: { x, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 } })
+  }
+
+  // The reply body is the handler's return, JSON-encoded once by the game module
+  // and once more by the rpc envelope.
+  async function act(from: string, action: Record<string, unknown>): Promise<{ ok: boolean; message?: string }> {
+    const id = `carry-${++call}`
+    host.deliver('game.rpc.req', { id, method: 'carry.act', body: JSON.stringify(JSON.stringify(action)) }, { from })
+    await settle()
+    await settle()
+    const res = host.sent.find((message) => message.name === 'game.rpc.res' && (message.value as { id: string }).id === id)
+    let body: unknown = (res?.value as { body?: unknown } | undefined)?.body
+    while (typeof body === 'string') body = JSON.parse(body)
+    return body as { ok: boolean; message?: string }
+  }
+
+  async function kitchen(): Promise<{ game: GameHandle & { newRound(): { number: number } }; carry: CarryModule }> {
+    host.setServer(true)
+    const game = await sharedGame()
+    const carry = await vi.importActual<CarryModule>('../runtime-modules/carry')
+    const { PickupItem } = await vi.importActual<PickupModule>('../prefabs/pickup-item/scripts/pickup-item')
+    const { WorkStation } = await vi.importActual<StationModule>('../prefabs/work-station/scripts/work-station')
+    placeAt(820, 'Tomato Crate', 1)
+    placeAt(821, 'Ball', 1.5)
+    placeAt(822, 'Chopping Board', 2)
+    placeAt(823, 'Far Stove', 40)
+    new PickupItem('', 820, 'Tomato', 'endless').start()
+    new PickupItem('', 821, 'Ball').start()
+    new WorkStation('', 822, 'hold to work', 'Tomato > Chopped Tomato', 1).start()
+    new WorkStation('', 823, 'timed', 'Rice > Cooked Rice', 1).start()
+    await boot()
+    join(700, '0xAda')
+    join(701, '0xBob')
+    host.transform.create(700, { position: { x: 0, y: 0, z: 0 } })
+    host.transform.create(701, { position: { x: 0, y: 0, z: 0 } })
+    await pump(3)
+    return { game, carry }
+  }
+
+  it('lets the server pick one holder, and refuses a full hand or a far station', async () => {
+    const { game, carry } = await kitchen()
+    expect(await act('0xAda', { type: 'pick', item: 'tomato crate' })).toEqual({ ok: true })
+    expect(carry.heldBy('0xada')).toEqual({ item: 'tomato crate#1', kind: 'Tomato' })
+    expect(await act('0xBob', { type: 'pick', item: 'ball' })).toEqual({ ok: true })
+    expect(await act('0xAda', { type: 'pick', item: 'ball' })).toEqual({ ok: false, message: 'Your hands are full' })
+    expect(await act('0xAda', { type: 'put', station: 'far stove' })).toEqual({ ok: false, message: 'Move closer' })
+    expect((game.state.carry as { items: Record<string, { who?: string }> }).items.ball.who).toBe('0xbob')
+  })
+
+  it('turns a held-work item on the server tick and tells every client', async () => {
+    const { carry } = await kitchen()
+    const heard: string[] = []
+    carry.onCarry((event) => heard.push(`${event.type}:${event.kind}:${event.station ?? ''}`))
+    await act('0xAda', { type: 'pick', item: 'tomato crate' })
+    expect(await act('0xAda', { type: 'put', station: 'chopping board' })).toEqual({ ok: true })
+    expect(carry.stationItem('Chopping Board')?.kind).toBe('Tomato')
+    host.sent.length = 0
+    expect(await act('0xAda', { type: 'work', station: 'chopping board', on: true })).toEqual({ ok: true })
+    await pump(6)
+    expect(carry.stationItem('Chopping Board')?.kind).toBe('Chopped Tomato')
+    expect(heard).toContain('done:Chopped Tomato:Chopping Board')
+    const told = host.sent.filter((message) => message.name === 'game.broadcast' && (message.value as { name: string }).name === 'carry.event')
+    expect(told.some((message) => String((message.value as { body: string }).body).includes('"type":"done"'))).toBe(true)
+    expect(carry.takeFromStation('Chopping Board')).toBe('Chopped Tomato')
+    expect(carry.stationItem('Chopping Board')).toBeNull()
+  })
+
+  it('empties every hand when a round starts', async () => {
+    const { game, carry } = await kitchen()
+    await act('0xBob', { type: 'pick', item: 'ball' })
+    expect(carry.heldBy('0xbob')?.kind).toBe('Ball')
+    game.newRound()
+    await pump(2)
+    expect(carry.heldBy('0xbob')).toBeNull()
   })
 })
 

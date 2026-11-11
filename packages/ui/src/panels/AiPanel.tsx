@@ -35,9 +35,11 @@ import { ensurePrefabsLoaded } from './prefab-store'
 import { isPrimaryMod } from '../lib/keys'
 import { projectFiles } from '../assets'
 
-export function AiPanel(props: { shown: boolean; fill: boolean; height: number }): JSX.Element | null {
+export function AiPanel(props: { shown: boolean; fill: boolean; height: number; entry?: boolean }): JSX.Element | null {
   const shell = window.editorShell
-  const collapsed = useStore(() => aiStore.collapsed)
+  const entry = props.entry === true
+  // in entry mode the chat is all there is on screen: it cannot shrink to a title bar
+  const collapsed = useStore(() => aiStore.collapsed) && !entry
   const mode = useStore(() => aiStore.mode)
   // Mounted is not visible: minimized to its title bar, or inside a hidden dock,
   // the chat is still alive (transcript, CLI session, a turn mid-flight) — it
@@ -157,9 +159,13 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
     })
   }, [])
 
+  // Again when the account or project arrives: hosted, the panel can mount before the wallet does,
+  // and a list asked for then says "unavailable" for good.
   useEffect(() => {
     if (shell?.aiProviders === undefined) return
+    let live = true
     void shell.aiProviders().then((list) => {
+      if (!live) return
       setProviders(list)
       const first = list.find((p) => p.available) ?? list[0]
       if (first !== undefined) {
@@ -167,7 +173,10 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
         setModel(first.defaultModel)
       }
     })
-  }, [])
+    return () => {
+      live = false
+    }
+  }, [owner])
 
   useEffect(() => {
     kept.current = null
@@ -485,6 +494,14 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
     setMessages((prev) => prev.map((m) => (m.role === 'assistant' && !m.done ? { ...m, done: true } : m)))
   }
   stopRef.current = stop
+
+  const ask = useStore(() => aiStore.ask)
+  useEffect(() => {
+    if (ask === null) return
+    aiStore.ask = null
+    if (busy || !available || input.trim() !== '' || attachments.length > 0) aiStore.prefill = ask
+    else send(ask)
+  }, [ask])
   const doWipe = (): void => {
     if (shell.aiForget !== undefined) void shell.aiForget()
     else {
@@ -609,20 +626,22 @@ export function AiPanel(props: { shown: boolean; fill: boolean; height: number }
         style={collapsed || props.fill ? undefined : { height: props.height, flex: '0 0 auto' }}
       >
       <header className="eui-ai-head">
-        <button
-          className={`eui-ai-headbtn icon${collapsed ? ' min' : ''}`}
-          onClick={toggleAssistantCollapsed}
-          data-tip={collapsed ? 'Expand the assistant' : 'Minimize to the title bar'}
-          aria-label={collapsed ? 'Expand the assistant' : 'Minimize the assistant'}
-        >
-          <IconChevron />
-        </button>
+        {!entry && (
+          <button
+            className={`eui-ai-headbtn icon${collapsed ? ' min' : ''}`}
+            onClick={toggleAssistantCollapsed}
+            data-tip={collapsed ? 'Expand the assistant' : 'Minimize to the title bar'}
+            aria-label={collapsed ? 'Expand the assistant' : 'Minimize the assistant'}
+          >
+            <IconChevron />
+          </button>
+        )}
         <span className="eui-ai-title">
           <IconBot /> Assistant
         </span>
         <span style={{ flex: 1 }} />
         {!collapsed && newChat}
-        {!collapsed && (
+        {!collapsed && !entry && (
           <button
             className="eui-ai-headbtn eui-ai-studiobtn"
             onClick={() => {

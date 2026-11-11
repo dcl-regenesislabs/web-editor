@@ -13,7 +13,7 @@ export function createProjectStorageComponent(
     logError: () => logger.error('Project request failed')
   }
   return {
-    handle: (request) => handle(request, environment),
+    handle: (request, client) => handle(request, environment, client),
     purge: () => purge(environment)
   }
 }

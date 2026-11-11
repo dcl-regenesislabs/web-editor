@@ -34,7 +34,7 @@ cd dcl-editor
 ```
 
 That's it — the engine is a dependency, not a sibling checkout. (A sibling
-`../bevy-explorer` is only needed if you're doing engine development; see step 3
+`../dcl-one` is only needed if you're doing engine development; see step 3
 and the `BEVY_WEB_DIR` override.)
 
 ## 3. The engine (no build needed)
@@ -51,7 +51,7 @@ The engine web build is resolved at runtime in this order:
 
 1. `BEVY_WEB_DIR` (if set) — a local engine build, for **engine development**.
 2. the installed `@dcl-regenesislabs/bevy-explorer-web` npm package (the default).
-3. a local `../bevy-explorer/deploy/web` sibling, as a fallback.
+3. a local `../dcl-one/rendering/bevy-explorer/source/deploy/web` sibling, as a fallback.
 
 To bump the engine, change the `@dcl-regenesislabs/bevy-explorer-web` version in
 the root `package.json` — the package tracks the `next` dist-tag.
@@ -64,11 +64,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo install wasm-pack
 rustup target add wasm32-unknown-unknown
 
-cd ../bevy-explorer
-wasm-pack build --target web --out-dir ./deploy/web/pkg \
-  --no-default-features --features "livekit,social"
+(cd ../dcl-one/rendering/bevy-explorer/source && just wasm)
 # then point the editor at it:
-export BEVY_WEB_DIR=../bevy-explorer/deploy/web
+export BEVY_WEB_DIR=../dcl-one/rendering/bevy-explorer/source/deploy/web
 ```
 
 ## 4. Build & run the editor
@@ -93,7 +91,7 @@ All optional — the defaults work for the sibling layout above.
 
 | Var | Default | Purpose |
 |---|---|---|
-| `BEVY_WEB_DIR` | _(unset)_ | override the engine web build with a local one (engine dev). Unset → the installed `@dcl-regenesislabs/bevy-explorer-web` package, then a `../bevy-explorer/deploy/web` sibling fallback |
+| `BEVY_WEB_DIR` | _(unset)_ | override the engine web build with a local one (engine dev). Unset → the installed `@dcl-regenesislabs/bevy-explorer-web` package, then a `../dcl-one/rendering/bevy-explorer/source/deploy/web` sibling fallback |
 | `BEVY_WEB_PORT` | `3010` | the same-origin web server (UI + engine) |
 | `SCENE_PORT` | `8004` | the edited scene's dev-server |
 | `EDITOR_SCENE_PORT` | `8005` | the editor system scene's dev-server |

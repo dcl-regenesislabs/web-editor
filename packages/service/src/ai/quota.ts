@@ -26,6 +26,8 @@ export interface QuotaMonitor {
   view(): QuotaView
   /** A Claude response's headers; responses without plan headers are ignored. */
   record(headers: Record<string, string>): void
+  /** Spend from now on is this account's again: forget the reading the next one would be compared with. */
+  rebase(): void
 }
 
 export const DISABLED_QUOTA: QuotaView = { state: 'disabled', windows: [], checkedAt: null, stale: false, sessionPercentPerUsd: null }
@@ -86,6 +88,9 @@ export function createQuotaMonitor(options: {
       calibrate(parsed.find((window) => window.name === 'five_hour'))
       windows = parsed
       checkedAt = now()
+    },
+    rebase() {
+      previous = null
     },
     view() {
       return {

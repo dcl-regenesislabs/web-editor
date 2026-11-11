@@ -23,7 +23,7 @@ The web system prompt adapts examples to `src/scripts/`, browser tools and edito
 
 ## Editor skills
 
-Every folder here with a `SKILL.md` (including `scene-ui/`, `game-sounds/` and `model-building/`) is the editor's own skill, written in this
+Every folder here with a `SKILL.md` (including `scene-ui/`, `game-sounds/`, `game-feel/` and `model-building/`) is the editor's own skill, written in this
 repository. Both assistants read it: the web service layers it over the bundle at startup, and the
 desktop app copies it over the downloaded SDK skills (`packages/desktop/src/skills.ts`, shipped as the
 `editor-skills` resource). An editor skill can replace an SDK skill: `build-ui` loses its `SKILL.md` in

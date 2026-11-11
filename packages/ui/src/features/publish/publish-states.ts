@@ -42,7 +42,8 @@ export const IDLE_JOB: PublishState = {
   review: null,
   blocked: null,
   signing: false,
-  retry: true
+  retry: true,
+  shared: false
 }
 
 export const job = (over: Partial<PublishState>): PublishState => ({ ...IDLE_JOB, ...over })

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { browserSceneRequest } from './scene'
 import { state } from '@scene/state'
-import { importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
+import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
 import { inspectModel } from '../model-info'
 import { sceneTextures } from '../scene-budget'
 import { buildCodeModel } from './code-model'
@@ -30,7 +30,7 @@ vi.mock('../engine/cmd', () => ({ cmd: { componentSchema: () => Promise.reject(n
 vi.mock('@scene/allowed-components', () => ({ isAllowedComponent: () => true }))
 vi.mock('../actions/entities', () => ({ uiAddEntity: vi.fn() }))
 vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiDeleteComponent: deleteValue }))
-vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn() }))
+vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn(async () => true) }))
 vi.mock('./catalog-preview', () => ({ previewCatalogModels: vi.fn(async () => undefined) }))
 vi.mock('../engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
 vi.mock('./library-bytes', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() }))
@@ -39,7 +39,7 @@ vi.mock('./code-model', () => ({ buildCodeModel: vi.fn(async () => { throw new E
 vi.mock('./requests', () => ({ runRequestText: vi.fn() }))
 vi.mock('../actions/prefabs', () => ({ createPrefabFrom: vi.fn(async (_: string[], name: string) => ({ id: 'p-bot', folder: 'custom/bot', name, warnings: [] })) }))
 vi.mock('../actions/spawned-only', () => ({ uiSetSpawnedOnly: vi.fn() }))
-vi.mock('../core/autosave', () => ({ flushPendingSave: vi.fn(async () => ({ pending: true, ok: true })) }))
+vi.mock('../core/autosave', () => ({ asAssistant: <T>(work: () => Promise<T>) => work(), flushPendingSave: vi.fn(async () => ({ pending: true, ok: true })) }))
 vi.mock('../panels/prefab-store', () => ({ prefabStore: { items: [] }, refreshPrefabs: vi.fn(async () => [{ folder: 'custom/zombie', data: { id: 'p-zombie', name: 'Zombie' } }]) }))
 vi.mock('../model-info', async (real) => ({ ...(await real<object>()), inspectModel: vi.fn() }))
 vi.mock('../scene-budget', async (real) => ({ ...(await real<object>()), sceneTextures: vi.fn() }))
@@ -155,7 +155,16 @@ describe('assistant scene requests', () => {
     }
   })
 
-  it('adds a library sound to its own folder once, never over an unreadable project, and names the sounds when asked for one it lacks', async () => {
+  it('finds library sounds by words and kind, and refuses a kind it does not have', async () => {
+    const steps = await browserSceneRequest({ type: 'findSounds', query: 'footstep snow', kind: 'effect' }, new AbortController().signal) as { sounds: Array<{ name: string; kind: string }>; total: number }
+    expect(steps.sounds[0]?.name).toBe('step-snow')
+    expect(steps.sounds.every((s) => s.kind === 'effect')).toBe(true)
+    const music = await browserSceneRequest({ type: 'findSounds', kind: 'music' }, new AbortController().signal) as { sounds: unknown[]; total: number }
+    expect(music.sounds.length).toBe(music.total)
+    await expect(browserSceneRequest({ type: 'findSounds', query: 'x', kind: 'songs' }, new AbortController().signal)).rejects.toThrow('effect, voice, ambience, music')
+  })
+
+  it('adds a library sound to its own folder once, never over an unreadable project, and points to findSounds when asked for one it lacks', async () => {
     const mp3 = new Uint8Array([0xff, 0xfb])
     vi.mocked(soundBytes).mockResolvedValue(mp3)
     const path = 'assets/audio/library/fire-loop.mp3'
@@ -166,7 +175,14 @@ describe('assistant scene requests', () => {
     await expect(browserSceneRequest({ type: 'addSound', name: 'fire-loop' }, new AbortController().signal)).rejects.toThrow('offline')
     expect(dataLayerSaveFileBytes).toHaveBeenCalledTimes(1)
     expect(dataLayerSaveFileBytes).toHaveBeenCalledWith(path, mp3)
-    await expect(browserSceneRequest({ type: 'addSound', name: 'banjo' }, new AbortController().signal)).rejects.toThrow('one of: coin, gem,')
+    await expect(browserSceneRequest({ type: 'addSound', name: 'banjo' }, new AbortController().signal)).rejects.toThrow('findSounds lists them')
+  })
+
+  it('says when the running scene cannot play a sound yet, instead of waiting for it', async () => {
+    vi.mocked(dataLayerListFiles).mockResolvedValueOnce(['assets/audio/library/coin.mp3'])
+    vi.mocked(ensureContentMapped).mockResolvedValueOnce(false)
+    await expect(browserSceneRequest({ type: 'addSound', name: 'coin' }, new AbortController().signal))
+      .resolves.toMatchObject({ path: 'assets/audio/library/coin.mp3', mapped: false, note: expect.stringContaining('next build') })
   })
 
   it('places a catalog model that takes the scene past its texture limit, and says so, counting a file the scene has once', async () => {

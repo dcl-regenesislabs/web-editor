@@ -12,6 +12,7 @@ function stem(word: string): string {
 
 // letters and digits apart: names run them together ("Rock01", "Track7Structure3")
 const words = (text: string | undefined) => (text ?? '').toLowerCase().match(/[a-z]+|[0-9]+/g)?.map(stem) ?? []
+export const searchWords = words
 
 type Indexed = { fields: [string[], number][], flat: boolean }
 const index = new WeakMap<ModelAsset, Indexed>()

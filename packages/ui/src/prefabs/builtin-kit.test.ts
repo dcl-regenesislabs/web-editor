@@ -163,6 +163,68 @@ describe('the spawner', () => {
   })
 })
 
+// The carry pair share one runtime module and meet only through it: a station
+// refers to items by kind, a script to both by Name.
+describe('the pickup item and the work station', () => {
+  const CARRY = ['pickup-item', 'work-station']
+
+  it('runs on the Multiplayer Server, needs no permission, and sits beside the other cards', () => {
+    for (const folder of CARRY) {
+      const value = data(folder)
+      expect(value.requiresSdk, folder).toBe('auth-server')
+      expect(value.requiredPermissions ?? [], folder).toEqual([])
+      expect(value.group, folder).toBeUndefined()
+      const source = read(`${folder}/scripts/${folder}.ts`)
+      expect(source, folder).toContain("from '~runtime/carry'")
+      // the buttons are declared in the runtime module, so a prefab that leaves F off never names it to the phone check
+      expect(source, folder).toContain("declareInteractButtons(")
+      expect(source, folder).not.toContain('IA_SECONDARY')
+    }
+    // E is the phone's main button for both; jump stays, since declaring hides every undeclared button
+    const prompt = read('../runtime-modules/interactPrompt.ts')
+    expect(prompt).toContain('declareTouchButtons(buttons, { main: InputAction.IA_PRIMARY })')
+    expect(prompt).toContain("{ action: InputAction.IA_JUMP, icon: actionIcon('jump') }")
+  })
+
+  it('is one entity whose own model is the look a hand, a station and the floor copy', () => {
+    const layout = prefabLayout(composite('pickup-item'))
+    expect(layout.entities.map((entity) => entity.localId)).toEqual(['0'])
+    const names = composite('pickup-item').components.map((component) => component.name)
+    expect(names).toContain('core::MeshRenderer')
+    expect(names).toContain('core::Material')
+    expect(scriptPath('pickup-item', '0')).toBe(`${ASSET_PATH_TOKEN}/scripts/pickup-item.ts`)
+  })
+
+  it('exposes the item settings its guide is written against', () => {
+    const { params, error } = getScriptParams(read('pickup-item/scripts/pickup-item.ts'))
+    expect(error).toBeUndefined()
+    expect(Object.keys(params)).toEqual([
+      'kind', 'supply', 'pickVerb', 'dropVerb', 'throwable', 'throwVerb', 'range', 'heldScale', 'returnSeconds'
+    ])
+    expect(params.supply.options).toEqual(['one item', 'endless', 'look only'])
+    expect(params.supply.value).toBe('one item')
+    expect(params.pickVerb.value).toBe('Pick up')
+  })
+
+  it('keeps the station script on the root and its solid look on a child', () => {
+    const layout = prefabLayout(composite('work-station'))
+    expect(layout.roots).toEqual(['512'])
+    expect(scriptPath('work-station', '512')).toBe(`${ASSET_PATH_TOKEN}/scripts/work-station.ts`)
+    const top = composite('work-station').components.filter((component) => component.data['513'] !== undefined).map((component) => component.name)
+    expect(top).toEqual(expect.arrayContaining(['core::Transform', 'core::MeshRenderer', 'core::MeshCollider', 'core::Material']))
+  })
+
+  it('exposes the station settings its guide is written against', () => {
+    const { params, error } = getScriptParams(read('work-station/scripts/work-station.ts'))
+    expect(error).toBeUndefined()
+    expect(Object.keys(params)).toEqual([
+      'mode', 'turns', 'seconds', 'accepts', 'combines', 'putVerb', 'takeVerb', 'workVerb', 'range', 'itemHeight'
+    ])
+    expect(params.mode.options).toEqual(['counter', 'hold to work', 'timed'])
+    expect(params.mode.value).toBe('counter')
+  })
+})
+
 // Which built-ins say how a creator drives them, and which say nothing.
 //
 // The complaint that produced the field: an Announcer offers hold seconds and
@@ -179,7 +241,7 @@ describe('the line a placed item says it is driven by', () => {
   // an empty row on every one of these cards. Furniture is the bulk of it — you
   // sit on a chair; there is no line to write.
   const SELF_DRIVING = [
-    'run-progress', 'announcer', 'ui-theme',
+    'run-progress', 'announcer', 'ui-theme', 'camera-rig', 'pickup-item', 'work-station',
     'game-flow', 'server-clock', 'leaderboard', 'spawner', 'admin-tools', 'video-screen',
     'black-chair', 'classic-bench', 'classic-bench-armrests', 'classroom-chair', 'court-chair',
     'curved-couch', 'high-stool', 'large-couch', 'loveseat', 'modern-sofa', 'outdoor-chair',

@@ -2,7 +2,7 @@
 import ReactEcs from '@dcl/sdk/react-ecs'
 import type { Entity } from '@dcl/sdk/ecs'
 import { sceneUiTheme } from './uiTheme'
-import { UiPanel, UiText } from './uiComponents'
+import { UiPanel, UiText, uiSizes } from './uiComponents'
 import { addHudItem, type HudSlot } from './hudLayout'
 
 export type HudPosition = 'top' | 'top left' | 'top right' | 'bottom'
@@ -19,10 +19,11 @@ export function mountStatusHud(...args: [HudPosition, () => StatusHudValue] | [E
   return addHudItem(SLOTS[where] ?? 'top', () => {
     const theme = sceneUiTheme()
     const content = read()
+    const small = uiSizes('hud').small
     return <UiPanel theme={theme} uiTransform={{ width: 300, height: content.detail ? 150 : 120, padding: 20 }}>
-      <UiText value={content.label} color={theme.accentText} size={16} height={24} align="middle-center" />
+      <UiText value={content.label} color={theme.accentText} size={small} height={28} align="middle-center" />
       <UiText value={content.value} color={theme.text} size={36} height={52} align="middle-center" mono />
-      {content.detail && <UiText value={content.detail} color={theme.muted} size={16} height={30} align="middle-center" />}
+      {content.detail && <UiText value={content.detail} color={theme.muted} size={small} height={30} align="middle-center" />}
     </UiPanel>
   }, { order: 0 })
 }

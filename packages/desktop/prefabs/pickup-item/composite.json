@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "components": [
+    { "name": "core-schema::Name", "data": { "0": { "json": { "value": "Pickup Item" } } } },
+    {
+      "name": "core::Transform",
+      "data": {
+        "0": {
+          "json": {
+            "position": { "x": 0, "y": 0, "z": 0 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "scale": { "x": 0.3, "y": 0.3, "z": 0.3 }
+          }
+        }
+      }
+    },
+    { "name": "core::MeshRenderer", "data": { "0": { "json": { "mesh": { "$case": "box", "box": { "uvs": [] } } } } } },
+    {
+      "name": "core::Material",
+      "data": {
+        "0": {
+          "json": {
+            "material": {
+              "$case": "pbr",
+              "pbr": { "albedoColor": { "r": 0.96, "g": 0.55, "b": 0.2, "a": 1 } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "asset-packs::Script",
+      "data": {
+        "0": {
+          "json": {
+            "value": [
+              { "path": "{assetPath}/scripts/pickup-item.ts", "priority": 0, "layout": "{\"params\":{},\"actions\":[]}" }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

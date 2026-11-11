@@ -43,9 +43,9 @@ function fromResources(...rel: string[]): string {
 
 // The engine ships as an npm package (@dcl-regenesislabs/bevy-explorer-web) whose
 // tarball INCLUDES the wasm — so `npm install` yields a runnable engine with no
-// Rust compile. Default to it; fall back to a local bevy-explorer build when the
-// package isn't installed. BEVY_WEB_DIR overrides both (point it at
-// ../bevy-explorer/deploy/web to test a local engine build / new engine feature).
+// Rust compile. Default to it; fall back to a local build in a dcl-one checkout beside this one
+// when the package isn't installed. BEVY_WEB_DIR overrides both (point it at
+// ../dcl-one/rendering/bevy-explorer/source/deploy/web to test a local engine build).
 function defaultBevyWebDir(): string {
   if (process.env.BEVY_WEB_DIR !== undefined) return process.env.BEVY_WEB_DIR
   if (app.isPackaged) return fromResources('engine-web')
@@ -53,7 +53,7 @@ function defaultBevyWebDir(): string {
   // engine/boot.js marks the react-web-era layout our engine.html boots against
   // (older packages had a self-booting index.html instead)
   if (fs.existsSync(path.join(pkg, 'engine', 'boot.js'))) return pkg
-  return fromMonoRoot('..', 'bevy-explorer', 'deploy', 'web')
+  return fromMonoRoot('..', 'dcl-one', 'rendering', 'bevy-explorer', 'source', 'deploy', 'web')
 }
 
 // sdk-commands installs deps into and writes build output (bin/) inside the

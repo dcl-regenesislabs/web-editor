@@ -1,6 +1,6 @@
 import { isModelScriptPath, isReservedEntity, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
-import { buildFromSchema, getSchema, type ComponentSchema } from '@scene/schema'
+import { buildFromSchema, getSchema, toEngineValue, type ComponentSchema } from '@scene/schema'
 import { cmd } from '../engine/cmd'
 import { entityName, NAME_COMPONENT } from '@scene/custom-components'
 import { isAllowedComponent } from '@scene/allowed-components'
@@ -8,7 +8,7 @@ import { uiAddEntity } from '../actions/entities'
 import { uiDeleteComponent, uiSetComponentValue } from '../actions/components'
 import { createPrefabFrom } from '../actions/prefabs'
 import { uiSetSpawnedOnly } from '../actions/spawned-only'
-import { flushPendingSave } from '../core/autosave'
+import { asAssistant, flushPendingSave } from '../core/autosave'
 import { prefabStore, refreshPrefabs } from '../panels/prefab-store'
 import { prefabAssetId } from '../prefabs/provenance'
 import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
@@ -23,14 +23,17 @@ import { previewCatalogModels } from './catalog-preview'
 import { log } from '../log'
 import { MATERIAL_MAPS, materialFile } from '../three/materials'
 import { materialBytes, soundBytes } from './library-bytes'
-import { SOUNDS, isSoundName, soundInfo, soundProjectPath } from '../sounds'
+import { SOUND_KINDS, findSounds, isSoundKind, isSoundName, soundInfo, soundProjectPath } from '../sounds'
 import { modelImagePath, sceneBudget, sceneTextures } from '../scene-budget'
 import { isFlatModel, searchModels } from './model-search'
+import { ICON_DIR, iconCredit, iconCredits, iconPath, iconSvg, loadIconIndex, searchIcons } from './icon-library'
+import { ICON_SIZES, iconPng } from './icon-png'
 import { uiResyncScene } from '../actions/assets'
 import { runRequestText } from './requests'
 import { resolveEntityRef } from './request-format'
 import { sceneOutline } from './roster'
 import { invalidateSceneCheckCache, refreshSceneChecks } from '../features/editor/scene-check-context'
+import { materialsGrowthWarning } from '../features/editor/scene-check-budget'
 import { readThumbnail, saveThumbnail, THUMBNAIL_VERSION, thumbnailPath } from './thumbnail'
 
 function entity(ref: unknown): string {
@@ -38,14 +41,6 @@ function entity(ref: unknown): string {
   const id = resolveEntityRef(state.snapshot, ref)
   if (id === null || isReservedEntity(id) || isUiEntity(state.snapshot, id)) throw new Error('No editable entity matches that reference.')
   return id
-}
-
-// The engine reads a protobuf oneof as `{ pbr: {...} }`; models often write the SDK's `{ $case: 'pbr', pbr: {...} }`
-function toEngineValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toEngineValue)
-  if (!object(value)) return value
-  if (typeof value.$case === 'string') return { [value.$case]: toEngineValue(value[value.$case]) }
-  return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, toEngineValue(field)]))
 }
 
 const schemas = new Map<string, Promise<ComponentSchema | null>>()
@@ -86,6 +81,9 @@ async function setComponent(id: string, name: unknown, value: unknown, expected:
 }
 
 const MAX_MODEL_MATCHES = 20
+const MAX_ICON_MATCHES = 40
+// the whole effect list fits one answer
+const MAX_SOUND_MATCHES = 100
 const metre = (n: number | undefined) => Math.round((n ?? 0) * 10) / 10
 const sizeOf = (a: ModelAsset) => ({ x: metre(a.width), y: metre(a.height), z: metre(a.depth) })
 const describe = (a: ModelAsset) => ({
@@ -205,6 +203,14 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       }))
     }
   }
+  if (request.type === 'findSounds') {
+    const query = typeof request.query === 'string' ? request.query : ''
+    const kind = request.kind
+    if (kind !== undefined && !isSoundKind(kind)) throw new Error(`findSounds kind is one of: ${SOUND_KINDS.join(', ')}.`)
+    const sounds = findSounds(query, kind)
+    if (sounds.length === 0) return { sounds, note: 'Nothing matched. Try other words, or findSounds with only a kind to list it all.' }
+    return { sounds: sounds.slice(0, MAX_SOUND_MATCHES).map(({ name, kind, description, durationSeconds }) => ({ name, kind, description, durationSeconds })), total: sounds.length }
+  }
   if (request.type === 'findModels') {
     if (typeof request.query !== 'string') throw new Error('findModels needs query: a few words.')
     const limit = Math.min(MAX_MODEL_MATCHES, Math.max(1, Number(request.limit ?? 8) || 8))
@@ -219,14 +225,47 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     }
     return { models: models.map(describe), total: assets.length, ...(preview ? { preview } : {}) }
   }
-  if (!state.frozen) throw new Error('Stop Play before changing the scene.')
+  if (request.type === 'findIcons') {
+    if (typeof request.query !== 'string') throw new Error('findIcons needs query: a few words.')
+    const limit = Math.min(MAX_ICON_MATCHES, Math.max(1, Number(request.limit ?? 12) || 12))
+    const index = await loadIconIndex()
+    const set = typeof request.set === 'string' ? request.set : undefined
+    if (set !== undefined && index.sets[set] === undefined) throw new Error(`findIcons set is one of: ${Object.keys(index.sets).join(', ')}.`)
+    return { icons: searchIcons(index, request.query, limit, set), total: index.icons.length }
+  }
+  // edits made while it runs would be the running instance's only, gone on Stop
+  if (!state.frozen) throw new Error('The scene is playing. Run playtest stop, then make this change again.')
+  return asAssistant(() => editScene(request, signal, settings))
+}
+
+async function editScene(request: Record<string, unknown>, signal: AbortSignal, settings?: SceneSettingsEditor): Promise<unknown> {
+  if (request.type === 'addIcon') {
+    if (typeof request.id !== 'string') throw new Error('addIcon needs id, as findIcons answered it.')
+    const size = ICON_SIZES.find((s) => s === (request.size ?? 128))
+    if (size === undefined) throw new Error(`addIcon size is one of: ${ICON_SIZES.join(', ')}.`)
+    const index = await loadIconIndex()
+    const { svg, entry } = await iconSvg(index, request.id)
+    const path = iconPath(request.id)
+    if (!(await dataLayerListFiles()).includes(path)) await dataLayerSaveFileBytes(path, await iconPng(svg, size))
+    signal.throwIfAborted()
+    // listed again after the save: another addIcon running alongside may have added its icon meanwhile
+    const files = await dataLayerListFiles()
+    const credits = `${ICON_DIR}/CREDITS.md`
+    await dataLayerSaveFile(credits, iconCredits(index, files.includes(path) ? files : [...files, path]))
+    const mapped = await ensureContentMapped(path)
+    const credit = iconCredit(index, entry)
+    return {
+      path, size, credits, ...(credit === undefined ? {} : { credit }),
+      ...(mapped ? {} : { mapped, note: 'The file is saved; the running scene shows it after the next build.' })
+    }
+  }
   if (request.type === 'addSound') {
-    if (!isSoundName(request.name)) throw new Error(`addSound needs name, one of: ${SOUNDS.join(', ')}.`)
+    if (!isSoundName(request.name)) throw new Error('addSound needs the name of a library sound. findSounds lists them.')
     const path = soundProjectPath(request.name)
     if (!(await dataLayerListFiles()).includes(path)) await dataLayerSaveFileBytes(path, await soundBytes(request.name))
-    await ensureContentMapped(path)
+    const mapped = await ensureContentMapped(path)
     const { durationSeconds, loop } = soundInfo(request.name)
-    return { path, durationSeconds, loop }
+    return { path, durationSeconds, loop, ...(mapped ? {} : { mapped, note: 'The file is saved; the running scene plays it after the next build.' }) }
   }
   if (request.type === 'placeModel') {
     if (typeof request.id !== 'string') throw new Error('placeModel needs the id of a findModels result.')
@@ -275,6 +314,8 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       throw new Error(`The scene has ${Math.max(0, textures.limit - textures.used)} of its ${textures.limit} textures left and this model would add ${adds}. ` +
         'Reuse materials the scene already has, give parts seen from afar relief:false, use fewer materials, or grow the parcels.')
     }
+    // materials are not refused like textures, but a build that spends them past the limit says so
+    const before = await sceneBudget()
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
     // a rebuild gets a new path, so the engine loads it instead of a cached copy
     const rel = `models/${slug}-${[...digest.slice(0, 4)].map((b) => b.toString(16).padStart(2, '0')).join('')}.glb`
@@ -299,8 +340,10 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
       log.warn('built model preview failed', error)
       warnings.push('The model was saved, but its studio preview failed. Use view to inspect the placed entity; do not rebuild just to get a preview.')
     }
-    return { ...placed, script: `models/src/${slug}.js`, stats, clips, materials: library, modelBuildMs, preview,
-      ...(warnings.length > 0 ? { warnings } : {}), budget: MODEL_BUDGET, kb: Math.round(bytes.length / 1024), scene: await sceneBudget() }
+    const scene = await sceneBudget()
+    const overMaterials = materialsGrowthWarning(before, scene)
+    const told = overMaterials === null ? warnings : [...warnings, overMaterials]
+    return { ...placed, script: `models/src/${slug}.js`, stats, clips, materials: library, modelBuildMs, preview, ...(told.length > 0 ? { warnings: told } : {}), budget: MODEL_BUDGET, kb: Math.round(bytes.length / 1024), scene }
   }
   if (request.type === 'createEntity') {
     if (typeof request.name !== 'string' || !request.name.trim() || request.name.length > 100) throw new Error('Choose an entity name of 1–100 characters.')

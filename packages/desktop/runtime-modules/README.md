@@ -70,10 +70,19 @@ Rules for modules in this folder:
 | `pure/runState` | the run rules: start, ordered checkpoints, pickups, finish and restart, with forged or repeated actions refused |
 | `pure/runBoard` | best time per player for a course leaderboard, recovered and bounded from storage |
 | `uiTheme`, `pure/uiTheme` | the scene's UI Theme palette and `UI_CANVAS`, which keeps HUDs clear of the Explorer's reserved screen space |
-| `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices; `.tsx` |
-| `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls, and modals that hide them; `.tsx` |
+| `uiComponents` | themed React-ECS panels, text, buttons, progress pips and notices, and `uiSizes`: the one size set per surface (HUD or window) and platform; `.tsx` |
+| `hudKit` | the compact HUD set (timer, score, objective line, status, icon button) and `mountCompactHud`, for what stays on screen during play; `.tsx` |
+| `uiWindow` | windows for the moments the player interacts (shop, choice, dialog, results): `UiWindow`, a thumb-sized choice grid and action row, and `mountWindow` in the modal slot; `.tsx` |
+| `hudLayout` | the one screen layout every HUD shares: stacking columns clear of the phone touch controls (the right one ends above the action buttons), full-screen windows that hide them, the touch buttons the scene declares, and an elementId on every item for the mobile check; `.tsx` |
+| `actionIcons` | the action-icon set (`actionIcon(name)`, `ActionIcon`, `ActionHint`) for touch buttons and HUD hints; its PNGs live in `../runtime-assets/action-icons/` and are copied into a scene's `assets/images/action-icons/` only when a script imports this module; `.tsx` |
 | `statusHud` | a one-line themed status readout in the shared HUD layout; `.tsx` |
+| `pure/cameraRig` | the Camera Rig's fixed-camera framing: heading and pitch to a pose, and the distance that fits a box on a canvas of a given aspect (phone 1600x720 included) |
 | `authoring` | `ColorHex`, `EntityName(s)` and `ZoneName(s)` parameter types that get pickers in the inspector |
+| `carry` | what players carry: one server-decided holder per item, right-hand display, drop/throw, stations that hold and turn items, and the script API (`heldBy`, `giveItem`, `onStation`…); Pickup Item and Work Station register into it |
+| `pure/carryRules` | the carry rules both sides run: pick, drop, throw, put, take, hold-to-work, timed turns, combines, used-up items coming home |
+| `pure/carryPrediction` | this player's carry actions shown before the server answers, replayed over server state and rolled back on refusal or expiry |
+| `interactPrompt`, `interactHint` | one floating "[E] Verb" label over the nearest usable thing (the bare verb on phones), E/F press and hold dispatch, and the bottom-slot hint and notice; `interactHint` is `.tsx` |
+| `pure/interactPick` | nearest candidate within range, prompt text per device, and where a kind goes in a verb |
 
 `spawner.ts` reproduces `node_modules/@dcl/sdk-commands/dist/logic/runtime-script.js`
 so a clone's scripts start exactly the way a placed entity's do. That file is
@@ -96,14 +105,17 @@ importing a module that defines one lists it in its `ai.md` `claims-globals:`.
 | Key | Defined by |
 |---|---|
 | `__dclZoneBus_v1` | `zoneBus.ts` |
-| `__dclHudLayout_v1` | `hudLayout.tsx` — the HUD items every renderer shares |
+| `__dclHudLayout_v2` | `hudLayout.tsx` — the HUD items and touch-button declarations every renderer shares |
 | `__dclSpawner_v1` | `spawner.ts` — snapshots and live pools |
 | `__dclOutcomes_v1` | `outcomes.ts` — ledgers and the one wired rpc instance |
 | `__dclSpawnPoints_v1` | `spawnPoints.ts` — the spawn-point registry |
 | `__dclProtectedSync_v1` | `protectedSync.ts` — the protected-registration ledger |
 | `__dclServerLife_v1` | `serverLife.ts` — the one heartbeat driver and its pending-participant set |
+| `__dclCarry_v1` | `carry.ts` — registered items and stations, rules, server state and client visuals |
+| `__dclInteract_v1` | `interactPrompt.ts` — candidate providers, the label entity and the held button |
 | `__dclServerState_v1` | `serverState.ts` — store-key claims |
 | `__dclPlayerStoreKeys_v1` | `playerStore.ts` — store-key claims |
+| `__dclCameraRig_v1` | the Camera Rig prefab — which rig's camera owns the screen when several want it |
 | `__dclGameConfig_v1` | the generated `src/scripts/game-config.ts` |
 | `__dclRoundLoop_v1`, `__dclRoundTuple_v1` | the Round Loop prefab |
 | `__dclLevelSlots_v1` | the Level Slots prefab |
@@ -118,6 +130,13 @@ the pair `<ns>.rpc.req` / `<ns>.rpc.res`:
 | `runtime.outcomes`, `outcomes.rpc.*` | `outcomes.ts` |
 | `runtime.timeSync`, `runtime.timeSyncResponse` | `timeSync.ts` |
 | `board.rpc.*`, `round.rpc.*`, `zone.rpc.*` | the Leaderboard, Round Loop and Zone Authority prefabs |
+
+Names inside the `game` module's own envelope (`game.onRequest` / `game.broadcast` names and `game.state`
+keys) do not touch the engine's message table but must not collide either:
+
+| Name | Owner |
+|---|---|
+| request `carry.act`, broadcast `carry.event`, state `game.state.carry` | `carry.ts` (claimed by the Pickup Item guide) |
 
 Synced-entity ids are hand-allocated and must not collide (admin-tools holds
 8000; the editor allocates scene entities from 8001):

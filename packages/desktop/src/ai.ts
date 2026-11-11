@@ -234,7 +234,7 @@ function toolDetail(tool: string, inp: Record<string, unknown>, projectDir: stri
   const clip = (s: string): string => (s.length > 64 ? s.slice(0, 64) + '…' : s)
   const file = rel(projectDir, inp.file_path ?? inp.path ?? '')
   if (file !== '') return file
-  if (tool === 'Playtest') return `${str(inp.action)}${inp.platform === 'mobile' ? ' (mobile)' : ''}`
+  if (tool === 'Playtest') return Array.isArray(inp.steps) ? `${inp.steps.length} steps` : `${str(inp.action)}${inp.platform === 'mobile' ? ' (mobile)' : ''}`
   if (tool === 'UI layout') return 'Screen'
   if (tool === 'Scene') {
     const request = typeof inp.request === 'object' && inp.request !== null ? inp.request as Record<string, unknown> : {}

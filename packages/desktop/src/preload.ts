@@ -116,6 +116,7 @@ const shell = {
   },
   editorToolResult: (id: string, result: EditorToolResult): Promise<void> => ipcRenderer.invoke(EDITOR_TOOL_RESULT_CHANNEL, id, result),
   libraryFile: (file: string): Promise<Uint8Array> => ipcRenderer.invoke('library-file', file),
+  libraryFileRange: (file: string, offset: number, length: number): Promise<Uint8Array> => ipcRenderer.invoke('library-file-range', file, offset, length),
   // Prefab library: the builtin + userData prefab trees, and the staged-import
   // flow (pick/fetch → confirm → commit). All fs work happens in main.
   prefabLibraryList: (): Promise<PrefabLibraryEntry[]> => ipcRenderer.invoke('prefab-library-list'),

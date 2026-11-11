@@ -51,6 +51,37 @@ describe('a model build', () => {
     expect(material.side).toBe(THREE.FrontSide)
   })
 
+  it('mirrors u on the back copy of a double-sided part, so text reads forward from behind', () => {
+    const sign = new THREE.PlaneGeometry()
+    sign.computeTangents()
+    // an atlas cell, to show the flip stays inside the part's own u range
+    const cell = new THREE.PlaneGeometry().toNonIndexed()
+    const cellUv = cell.getAttribute('uv')
+    for (let i = 0; i < cellUv.count; i++) cellUv.setX(i, 0.25 + cellUv.getX(i) * 0.25)
+    const material = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), side: THREE.DoubleSide })
+    const front = new THREE.Mesh(sign, material)
+    const atlas = new THREE.Mesh(cell, material)
+    const inside = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshStandardMaterial({ side: THREE.BackSide }))
+    singleSided(new THREE.Group().add(front, atlas, inside))
+    const back = (front.children[0] as THREE.Mesh).geometry
+    const [u, backU] = [sign, back].map((g) => g.getAttribute('uv'))
+    expect(u.getX(0)).toBe(0)
+    expect(backU.getX(0)).toBe(1)
+    for (let i = 0; i < u.count; i++) {
+      expect(backU.getX(i)).toBeCloseTo(1 - u.getX(i))
+      expect(backU.getY(i)).toBe(u.getY(i))
+      expect(back.getAttribute('normal').getZ(i)).toBe(-1)
+      expect(back.getAttribute('tangent').getX(i)).toBe(-sign.getAttribute('tangent').getX(i))
+      expect(back.getAttribute('tangent').getW(i)).toBe(sign.getAttribute('tangent').getW(i))
+    }
+    // the face still points the way its normal does: (b - a) × (c - a) along -z
+    const [a, b, c] = [...(back.index?.array ?? [])].slice(0, 3).map((i) => new THREE.Vector3().fromBufferAttribute(back.getAttribute('position'), i))
+    expect(b.sub(a).cross(c.sub(a)).z).toBeLessThan(0)
+    const atlasBack = (atlas.children[0] as THREE.Mesh).geometry.getAttribute('uv')
+    for (let i = 0; i < cellUv.count; i++) expect(atlasBack.getX(i)).toBeCloseTo(0.75 - cellUv.getX(i))
+    expect(inside.geometry.getAttribute('uv').getX(0)).toBe(0)
+  })
+
   it('names unnamed parts <Model>_PartNN, keeps the script\'s names and never makes a collider name', () => {
     const namer = partNamer('gate_collider')
     const pivot = namer.name(new THREE.Group())

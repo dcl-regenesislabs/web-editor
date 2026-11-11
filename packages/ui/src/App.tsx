@@ -23,9 +23,10 @@ import { renameRequested } from './panels/reveal'
 import { assetsReview } from './panels/assets-review'
 import { storedValue, usePersistentEnum, usePersistentFlag, usePersistentNum } from './core/persist'
 import { autoSaveStatus } from './core/autosave'
-import { IconButton, Splitter, Toast as DsToast } from './ds'
+import { IconButton, Notice, Panel, Splitter, Toast as DsToast } from './ds'
 import { IconSidebarLeft, IconSidebarRight } from './icons'
 import { PhonePreviewPane } from './features/preview/PhonePreviewPane'
+import { entryMode, showAdvanced } from './features/editor/entry-mode'
 
 // Draggable right edge of the left dock.
 function LeftResize(props: { width: number; onResize: (w: number) => void }): JSX.Element {
@@ -106,10 +107,13 @@ export function App(props: { playing?: boolean }): JSX.Element {
   const [rightWidth, setRightWidth] = usePersistentNum('right-w', 340)
   const [aiHeight, setAiHeight] = usePersistentNum('ai-h', 520)
   const [inspectorMin, setInspectorMin] = usePersistentFlag('right-min', false)
-  const rightOpen = useStore(() => chrome.rightOpen)
+  // entry mode is the assistant alone, whatever the dock's flags say for the whole editor
+  const entry = useStore(entryMode)
+  const rightOpen = useStore(() => chrome.rightOpen) || entry
   const aiMin = useStore(() => aiStore.collapsed)
   const aiMode = useStore(() => aiStore.mode)
   const aiHere = useStore(canAskAssistant)
+  const aiAnswered = useStore(() => window.editorShell?.aiAnswered?.() ?? true)
   // Play the assistant runs (its playtest) is not the creator's: its turn and its
   // stop control stay on screen until that Play ends.
   const turnRunning = useStore(() => aiStore.turnRunning)
@@ -129,7 +133,7 @@ export function App(props: { playing?: boolean }): JSX.Element {
   // Who gets the column's leftover height: the inspector unless it is minimized,
   // in which case the docked chat takes it. Two minimized panels are two title
   // bars stacked at the top, with the viewport showing through below.
-  const splitShown = !inspectorMin && aiHere && aiMode === 'dock' && !aiMin
+  const splitShown = !entry && !inspectorMin && aiHere && aiMode === 'dock' && !aiMin
   // A stored height from a taller window (or a since-shrunk column) would push
   // the composer off the bottom — clamp on the way out, not just while dragging.
   const [colEl, setColEl] = useState<HTMLDivElement | null>(null)
@@ -153,16 +157,22 @@ export function App(props: { playing?: boolean }): JSX.Element {
         style={{ width: rightWidth }}
         hidden={(!rightOpen && aiMode !== 'studio') || (!ready && !studioHere) || (playing && !dockInPlay)}
       >
-        {ready && rightOpen && <InspectorPanel min={inspectorMin} onToggleMin={() => setInspectorMin(!inspectorMin)} />}
+        {ready && rightOpen && !entry && <InspectorPanel min={inspectorMin} onToggleMin={() => setInspectorMin(!inspectorMin)} />}
         {ready && rightOpen && splitShown && (
           <Splitter label="Resize inspector and assistant" value={dockHeight} min={DOCK_MIN_H} max={dockMax} onChange={setAiHeight} />
         )}
-        {studioHere && <AiPanel shown={rightOpen} fill={!ready || inspectorMin} height={dockHeight} />}
+        {studioHere && <AiPanel shown={rightOpen} fill={!ready || inspectorMin || entry} height={dockHeight} entry={entry} />}
+        {ready && entry && !studioHere && aiAnswered && (
+          <Panel title="Assistant">
+            <Notice>The assistant isn’t available to this account right now. Sign in with a wallet, or try again later.</Notice>
+          </Panel>
+        )}
       </div>
       {rightOpen && (!playing || dockInPlay) && (ready || studioHere) && <RightResize width={rightWidth} onResize={setRightWidth} />}
     </>
   )
   const showPrefabs = (): void => {
+    showAdvanced()
     setLeftOpen(true)
     setLeftView('prefabs')
   }
@@ -186,12 +196,14 @@ export function App(props: { playing?: boolean }): JSX.Element {
   useEffect(() => {
     if (reviewAsks === seenAsks.current) return
     seenAsks.current = reviewAsks
+    showAdvanced()
     setLeftOpen(true)
     setLeftView('assets')
   }, [reviewAsks])
   const renamePending = useStore(renameRequested)
   useEffect(() => {
     if (!renamePending) return
+    showAdvanced()
     setLeftOpen(true)
     setLeftView('scene')
   }, [renamePending])
@@ -200,9 +212,9 @@ export function App(props: { playing?: boolean }): JSX.Element {
     <>
       {rightCol}
       <PhonePreviewPane
-        left={leftOpen && ready ? leftWidth + 24 : 12}
+        left={leftOpen && ready && !entry ? leftWidth + 24 : 12}
         right={rightOpen ? rightWidth + 24 : 12}
-        panelControls={<>
+        panelControls={entry ? undefined : <>
           <IconButton tip={leftOpen ? 'Hide hierarchy' : 'Show hierarchy'} active={leftOpen} aria-pressed={leftOpen} onClick={() => setLeftOpen(!leftOpen)}>
             <IconSidebarLeft />
           </IconButton>
@@ -222,7 +234,7 @@ export function App(props: { playing?: boolean }): JSX.Element {
       ) : (
         <>
           <PrefabDropLayer />
-          <div className={leftSettled ? 'eui-play-hide eui-left-settled' : 'eui-play-hide'} hidden={playing}>
+          <div className={leftSettled ? 'eui-play-hide eui-left-settled' : 'eui-play-hide'} hidden={playing || entry}>
             <Toolbar
               leftOpen={leftOpen}
               rightOpen={rightOpen}

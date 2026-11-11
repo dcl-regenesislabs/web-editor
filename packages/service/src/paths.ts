@@ -1,6 +1,8 @@
 export const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/
 export const PREFAB_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
 export const WALLET = /^0x[0-9a-f]{40}$/
+// 160 random bits, base32 (RFC 4648, lowercase): what a share link carries
+export const SHARE_TOKEN = /^[a-z2-7]{32}$/
 
 const MAX_PATH = 512
 // bidi controls make a path or name read as something it is not
@@ -30,6 +32,10 @@ export const keys = {
   manifest: (wallet: string, id: string) => `wallets/${wallet}/projects/${id}/manifest.json`,
   histories: (wallet: string, id: string) => `wallets/${wallet}/projects/${id}/history/`,
   history: (wallet: string, id: string, version: number) => `wallets/${wallet}/projects/${id}/history/${version}.json`,
+  // the project's share flag: { token, createdAt } while another account may copy it
+  share: (wallet: string, id: string) => `wallets/${wallet}/projects/${id}/share.json`,
+  // a share link's token -> { wallet, id }; only believed while that project's flag names the same token
+  shared: (token: string) => `shares/${token}.json`,
   prefabs: (wallet: string) => `wallets/${wallet}/prefabs/`,
   prefab: (wallet: string, name: string) => `wallets/${wallet}/prefabs/${name}.json`,
   // the expiry leads, zero-padded, so a listing is oldest first

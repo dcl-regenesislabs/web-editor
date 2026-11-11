@@ -250,3 +250,11 @@ describe('compileSnapshot across the normalization divide', () => {
     )
   })
 })
+
+describe('a protobuf oneof written two ways', () => {
+  it('is the same value with or without $case', () => {
+    const composite = { mesh: { $case: 'box', box: { uvs: [] } } }
+    expect(componentValueEquivalent('MeshRenderer', composite, { mesh: { box: { uvs: [] } } })).toBe(true)
+    expect(componentValueEquivalent('MeshRenderer', composite, { mesh: { sphere: {} } })).toBe(false)
+  })
+})

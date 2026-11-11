@@ -1,21 +1,29 @@
 import { describe, expect, it, vi } from 'vitest'
 import { refreshWrittenScript } from './attach'
 
-const { snapshot, setValue } = vi.hoisted(() => {
+const { snapshot, setValue, scene, restartScene, writesBy } = vi.hoisted(() => {
   const snapshot: Record<string, Record<string, unknown>> = {}
+  const scene = { snapshot, activeEntity: null, frozen: true }
+  const writesBy: string[] = []
   const setValue = vi.fn(async (_key: string, id: string, component: string, json: string) => {
+    writesBy.push(scene.frozen ? 'edit mode' : 'playing')
     snapshot[id][component] = JSON.parse(json)
   })
-  return { snapshot, setValue }
+  const restartScene = vi.fn(async () => {
+    scene.frozen = true
+  })
+  return { snapshot, setValue, scene, restartScene, writesBy }
 })
 vi.mock('@scene/state', () => ({
-  state: { snapshot, activeEntity: null },
+  state: scene,
   componentKey: (id: string, name: string) => `${id}:${name}`,
   isUiEntity: () => false
 }))
 vi.mock('@scene/custom-components', () => ({ entityName: () => 'Tower HUD', NAME_COMPONENT: 'core::Name' }))
 vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiAddComponent: vi.fn() }))
 vi.mock('../engine/datalayer', () => ({ dataLayerReadFile: vi.fn() }))
+vi.mock('../boot/boot', () => ({ restartScene }))
+vi.mock('../core/autosave', () => ({ asAssistant: <T>(work: () => Promise<T>) => work() }))
 
 const PATH = 'src/scripts/TowerHud.tsx'
 const source = (fields: string) => `export class TowerHud {\n  constructor(public src: string, public entity: Entity, ${fields}) {}\n}\n`
@@ -43,5 +51,16 @@ describe('refreshWrittenScript', () => {
     await refreshWrittenScript(PATH, source(`public courseId: string = 'tower', public title: string = 'Tower'`))
     const [item] = (snapshot['548']['asset-packs::Script'] as { value: Array<{ layout: string }> }).value
     expect(Object.keys(JSON.parse(item.layout).params)).toEqual(['courseId', 'title'])
+  })
+
+  it('stops a playing scene before it writes, so the new settings are saved rather than lost on Stop', async () => {
+    snapshot['550'] = holder({ courseId: { type: 'string', value: 'tower' } })
+    scene.frozen = false
+    writesBy.length = 0
+    await refreshWrittenScript(PATH, source(`public courseId: string = 'tower', public laps: number = 3`))
+    expect(restartScene).toHaveBeenCalledOnce()
+    expect(writesBy.length).toBeGreaterThan(0)
+    expect(writesBy).not.toContain('playing')
+    expect(Object.keys(paramsOf('550'))).toEqual(['courseId', 'laps'])
   })
 })

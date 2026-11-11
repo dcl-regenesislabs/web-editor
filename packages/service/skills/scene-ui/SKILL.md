@@ -28,6 +28,35 @@ On a phone one virtual unit is roughly **0.09 mm** (1600 units across a ~14 cm s
 size rules below look large next to desktop habits. The mobile canvas is also **a third shorter**: a
 column that fits 1080 units does not fit 720.
 
+## Two surfaces: the HUD and windows
+
+Every piece of screen UI is one of two things, and they follow different rules.
+
+- **The HUD** is what stays on screen while the game plays: timer, score, the objective line, a small
+  status. It is **ultra clean**: as little as works (D5), compact, at the screen edges, the centre clear (H3),
+  and never on the phone's touch buttons (L2, H4). Detail the player does not need every second goes in a
+  window they open.
+- **A window** is where the mechanic is interacting for a moment: a shop, a recipe or upgrade choice, a
+  dialog, the results. While it is open it **may take the whole screen**: the screen behind it dims and a tap
+  there closes it, and on a phone the window fills the interactable area edge to edge (W2). Use that space
+  for content (text, images, big buttons), not for margins and padding: every pixel counts on a phone. When
+  there is a lot to fit, step down to the dense sizes, never below the floors. On desktop a window is
+  centred, at most about 960 wide, closer to ordinary React layout (W4).
+
+One size set covers both, per surface and platform (`uiSizes(surface, { dense })` in
+`./runtime/uiComponents` answers it for the player's device; virtual units):
+
+| | text | small (least) | title | press (least) | main button |
+|---|---|---|---|---|---|
+| HUD, phone | 28 | 20 | 28 | 80 | 80 |
+| HUD, desktop | 24 | 16 | 24 | 48 | 48 |
+| Window, phone | 24 | 20 | 32 | 80 | 96 |
+| Window, phone, dense | 20 | 20 | 28 | 80 | 80 |
+| Window, desktop | 20 | 16 | 28 | 48 | 56 |
+| Window, desktop, dense | 18 | 16 | 24 | 48 | 48 |
+
+The phone floors, text 20 and presses 80 on the short side, are L3 and L4: `mobile_check` measures them.
+
 ## The loop
 
 1. **Inventory.** List what the player does and which inputs the scene reads (every `InputAction`, every
@@ -55,18 +84,37 @@ column that fits 1080 units does not fit 720.
 
 - **L1** Every pressable node lies fully inside the interactable area (mobile) / screen inset area (desktop).
 - **L2** No node of yours overlaps a native control that is still visible.
-- **L3** Touch targets ≥ 80 units on the short side; the primary action ≥ 96. *(proposed, pending device measurement)*
-- **L4** Text ≥ 24 on the mobile canvas (≥ 20 only for secondary text); no text clipped by its box. *(proposed)*
+- **L3** Touch targets ≥ 80 units on the short side on a phone (48 on desktop); a window's main action ≥ 96.
+- **L4** Text ≥ 20 on the mobile canvas (24 for a window's body, 28 for HUD values; 16 on desktop); no text clipped by its box.
 - **L5** No pressable node is covered by a later or higher node that also takes the pointer.
 - **L6** Area containers (`InteractableArea`, `ScreenInsetArea`) never get a width or height.
 - **L7** A dialog that asks for an action is centred in the area (on a phone the interactable area, not the whole screen, so its buttons stay inside L1); a message that asks for nothing sits top-centre.
 - **L8** Nothing visible falls off either canvas; every stack fits in 720 units of height.
 
+**H — the HUD leaves the game visible (measured on the phone)** · `references/layout-check.md`
+
+- **H1** No two HUD panels overlap.
+- **H2** The HUD covers at most 25% of the phone screen (a compact game HUD is 15–20%).
+- **H3** No HUD panel sits in the screen centre (the middle third both ways), where the player and the game are.
+- **H4** The HUD is measured as it looks mid-game, every window closed: no HUD panel sits on a touch button
+  the scene declares (measured as L2; on a phone the right column ends above them), and a list that grows
+  during play (orders, players, a leaderboard) is sized to `hudSpace(slot)` and shows only the rows that fit.
+
+**W — windows (shop, choice, dialog, results)** · `references/thumb-and-dialogs.md`
+
+- **W1** A window covers the screen only while it is open: it is a `modal` with an `open()` that answers
+  false during play (measured).
+- **W2** On a phone a window fills the interactable area with content: thumb-sized buttons, choices in a grid,
+  little padding; dense sizes when a lot has to fit.
+- **W3** A tap on the dimmed screen behind it closes it when closing loses nothing, and it has a close button
+  in its title row; both go through the one close function (C7).
+- **W4** On desktop a window is centred and at most about 960 wide; its height follows its content.
+
 **C — controls (read from the code)** · `references/touch-controls.md`
 
 - **C1** Inventory every `InputAction` the scene reads.
 - **C2** Hide every native touch button the scene does not use.
-- **C3** Set the main action (`setMainAction`) to the scene's main verb; give kept buttons an icon that says what they do.
+- **C3** Set the main action (`setMainAction`) to the scene's main verb; give kept buttons an icon that says what they do, and never name E, F or 1–4 in text a phone shows.
 - **C4** No core action on `IA_ACTION_3`–`IA_ACTION_6` (on a phone they hide behind "+").
 - **C5** Buttons appear only while their action is possible (E near a usable thing, an item button once you hold the item).
 - **C6** Never hide the joystick unless the scene gives the player another way to move.
@@ -77,27 +125,27 @@ column that fits 1080 units does not fit 720.
 
 - **D1** Frequent actions in the right-thumb zone (bottom-right).
 - **D2** Rare and destructive actions (exit, settings, mute) in the top corners.
-- **D3** Dialogs: centred, ≤ 3 choices, primary on the right, destructive confirmed.
+- **D3** Dialogs that ask a question: ≤ 3 choices, primary on the right, destructive confirmed.
 - **D4** Every press shows a pressed state and plays a click before it acts; a denied press plays an error sound.
 - **D5** Show the least that works; disclose the rest on demand.
 - **D6** One HUD fits both canvases; branch on `isMobile()` only where a rule needs it.
 
-**H — on a device (the creator does it)**
+**P — on a phone (the creator does it)**
 
-- **H1** The creator plays it on a phone before shipping (Preview → *Show QR Code for Mobile*, or
+- **P1** The creator plays it on a phone before shipping (Preview → *Show QR Code for Mobile*, or
   `npm run start -- --mobile`). You cannot do this step; you ask for it, every time.
 
 ## Closing message (mandatory)
 
-Whenever you finish work that adds or changes screen UI or touch controls, end your reply with this line,
-in the creator's language:
+Whenever you finish work that adds or changes screen UI or touch controls, the closing block of your reply
+(its order is in the system prompt) carries this line, in the creator's language:
 
 > Many Decentraland players come from mobile devices — try it there too! (Preview → Show QR Code for Mobile)
 
-Before it, list the rules you could not verify (any L you checked only by reading code, every D, H1),
-so the creator knows what to look at on the phone. Spanish:
+Before it, list the rules you could not verify (any L or H you checked only by reading code, every D, P1),
+so the creator knows what to look at on the phone.
 
-> Muchos usuarios de Decentraland vienen de dispositivos móviles, ¡hacé una prueba ahí! (Preview → Show QR Code for Mobile)
+In another language, translate the line in the creator's own register (formal or informal, as they write) and keep the menu path in English.
 
 ## Starting point
 
@@ -126,14 +174,71 @@ function Root() {
 With no full-screen layers, the simpler form is `screenInset: 'interactable'` on the renderer and no area
 wrappers at all. Never both: an area inside an inset renderer applies the inset twice.
 
-**Decentraland Studio projects** already have this decision made: place every panel with
+**Decentraland Studio projects** already have this decision made, and ship the two surfaces ready-made:
+the compact HUD set in `./runtime/hudKit` and windows in `./runtime/uiWindow` (their headers are the API).
+A HUD with a timer, an objective, the score and a status line, under 5% of a phone screen:
+
+```tsx
+import { mountCompactHud } from './runtime/hudKit'
+
+mountCompactHud(() => ({ timer: secondsLeft(), objective: 'Deliver the soup', score: myScore(), status: holding() }))
+```
+
+A shop window: full interactable area on a phone, centred and at most 960 wide on desktop, closed by a tap
+on the dimmed screen or its close button:
+
+```tsx
+import ReactEcs from '@dcl/sdk/react-ecs'
+import { mountWindow, UiWindow, UiChoiceGrid, UiWindowActions } from './runtime/uiWindow'
+
+let shopOpen = false
+const closeShop = () => { shopOpen = false }
+mountWindow({ open: () => shopOpen, close: closeShop, render: () =>
+  <UiWindow id="shop" title="Shop" onClose={closeShop} dense={items.length > 6}>
+    <UiChoiceGrid id="shop" choices={items.map((item) => ({ label: item.name, detail: `${item.price} coins`,
+      image: item.icon, disabled: coins() < item.price, onClick: () => buy(item) }))} />
+    <UiWindowActions id="shop" actions={[{ label: 'Done', primary: true, onClick: closeShop }]} />
+  </UiWindow> })
+```
+
+Under them, place every panel with
 `addHudItem(slot, render)` from `./runtime/hudLayout` (read its header), never your own
 `ReactEcsRenderer.addUiRenderer`. The shared layout draws inside `UI_CANVAS` (`screenInset: 'interactable'`),
 stacks panels in the `left`, `right`, `top` and `bottom` slots, leaves the bottom corners to the phone's
-joystick and jump/E/F buttons, and hides the touch controls while a `modal` panel is open. Style panels with
-`sceneUiTheme` from `./runtime/uiTheme` and the components from `./runtime/uiComponents`.
-`UiButton` is 52 units tall: below L3, so give it `uiTransform={{ height: 80 }}` (96 for the primary action)
-wherever a phone player has to press it.
+joystick and jump/E/F buttons, ends the right column above the action buttons on a phone, and draws `modal`
+windows in front over the whole screen, hiding the touch controls while one is open. The native buttons the
+scene uses are declared with `declareTouchButtons([...], { main })` from the same module, each with the icon of what
+it does: `{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') }`, with `actionIcon` and the `ActionHint`
+that shows the same icon in a HUD hint from `./runtime/actionIcons` (C2, C3 and C7 are then the layout's job; never
+call `TouchScreenControls` yourself). Every other icon (inventory, HUD stats, menus, gamepad and keyboard prompts) comes
+from the editor's icon catalog: `references/icons.md`. A modal's render draws the dialog whenever it is
+called, and its panel carries a `uiTransform` `elementId`. Style panels with
+`sceneUiTheme` from `./runtime/uiTheme` and the components from `./runtime/uiComponents`. In the editor,
+`mobile_check` measures the HUD on a phone as it looks during play (every window closed, the declared touch
+buttons shown), then each modal open, and checks L1–L5, L8, H1–H4, W1, C1, C2 and C3 in code: run it after
+every UI or input change, instead of judging a picture. It measures what is on screen when it runs, so run it
+during a round with the lists as long as they get. `UiButton` is `uiSizes('window').button` tall (80 on a
+phone); give a window's main action `uiTransform={{ height: uiSizes('window').primary }}`.
+
+## The creator's images
+
+A logo, a title, a button face or a background the creator drew is an image file in the project, drawn as
+a texture. Never rebuild it with `Label`s and coloured boxes.
+
+- An image attached in the chat is only something you see; it is not in the project. Find its file with
+  `list_files` (kind `images`). When it is not there, ask the creator to import it with
+  **Import files** in the Assets panel (png with a transparent background for logos) and stop until they have.
+- Draw it with `uiBackground={{ textureMode: 'stretch', texture: { src: 'assets/images/logo.png' } }}` on a
+  `UiEntity` whose `width` and `height` keep the image's proportions (take them from the picture you saw),
+  so it is not squashed.
+- Rounded corners, outlines and shadows belong in the image: `borderRadius` is not rendered on mobile.
+
+```tsx
+<UiEntity
+  uiTransform={{ width: 520, height: 300 }}
+  uiBackground={{ textureMode: 'stretch', texture: { src: 'assets/images/toss-logo.png' } }}
+/>
+```
 
 ## Gotchas that cost a phone test each
 
@@ -154,4 +259,4 @@ These come from a real mobile pass (one HUD, three phone tests):
 ## Report
 
 Say what you built, which rules you checked and how (dump, code, screenshot), which ones you broke on
-purpose and why, and end with the closing message.
+purpose and why, and then the closing message.

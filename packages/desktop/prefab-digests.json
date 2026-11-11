@@ -11,6 +11,10 @@
     "version": "1.1.0",
     "digest": "085963a209dcedc598dbd874a2648c0a357bda4c8cfde00f1f91695eb2bd6e48"
   },
+  "camera-rig": {
+    "version": "1.0.1",
+    "digest": "1db3b2d0aa5a42d57974ab7d26d83919014bc26da312664a42f54a7e810ae294"
+  },
   "classic-bench": {
     "version": "1.1.0",
     "digest": "8a491fe903e6462af09fbc56ac75a6b93f2f9bd01d6aa21811b10d59c88d8276"
@@ -32,8 +36,8 @@
     "digest": "02940dd0afc30f595f215e0880ca10b5e1f9848829f0496419806d5f104d298e"
   },
   "game-flow": {
-    "version": "1.2.0",
-    "digest": "f444aef6360fb0b92d9f138a8b8fcb589494beead51cf167c639aab717e6c220"
+    "version": "1.3.1",
+    "digest": "96800d750087807af446af83f3afb9f82a08b3c69169b4d801db2d8242d9298b"
   },
   "health-respawn": {
     "version": "1.3.1",
@@ -48,8 +52,8 @@
     "digest": "0711512393d3f93d1b1a7d709493e770da633e06baf5ba7e87c399cdc0fb2551"
   },
   "leaderboard": {
-    "version": "1.6.0",
-    "digest": "ed5257dfaea371e85784d0b6b92628d172f1d894c9b886fc13ce87ade25dad67"
+    "version": "1.7.0",
+    "digest": "abc43ec6b1801f00671e0da4bd1b30218a361b63756b9346010c71f73deaa297"
   },
   "loveseat": {
     "version": "1.1.0",
@@ -63,9 +67,13 @@
     "version": "1.1.0",
     "digest": "90fc9953c2c3c085854c9ba2d547208155b3ecfd5c8fdde80558dd644511ffad"
   },
+  "pickup-item": {
+    "version": "1.0.1",
+    "digest": "e7d4f47118004bac59e2712a3cc577cdc6f1bf19e87a9f660b4cd796bf5a1954"
+  },
   "run-progress": {
-    "version": "1.4.0",
-    "digest": "97efc8aa3b98d384ac1e2772359d82cac24ed211031c95b6b07709b3d4811376"
+    "version": "1.4.1",
+    "digest": "9b395ac6df5c94b309cfe3d955758665308a67e646dc5af33722f45ec86bdbcc"
   },
   "rustic-bench": {
     "version": "1.1.0",
@@ -100,8 +108,8 @@
     "digest": "c746762057aa33b54ef9582d282c59c9c4f2238d789298fa261d51afbc6297b6"
   },
   "spawner": {
-    "version": "1.0.0",
-    "digest": "dcf15f0012469329143f8ee7c1e2be576c034968fc35959934a4f69f74fae2e7"
+    "version": "1.0.1",
+    "digest": "5d216f23c6dba96172aaebf2fbfd723929ae3bbb6375d059c29f94270bb6633b"
   },
   "steampunk-bench": {
     "version": "1.1.0",
@@ -120,8 +128,8 @@
     "digest": "ea879e29a7cb08806535872537c06e03c1d202db8288103e3fae330f84c1f404"
   },
   "ui-theme": {
-    "version": "1.1.0",
-    "digest": "bdc20f266b5f6406301429ff0e180f34055aa6f2bd81932855a16be239a4c167"
+    "version": "1.2.0",
+    "digest": "04c79c8d7c8e7f695d7def4f8fd8a4142ef06a8b75b7862c2935835bf2747f32"
   },
   "video-screen": {
     "version": "1.0.0",
@@ -134,5 +142,9 @@
   "wooden-chair-armrests": {
     "version": "1.1.0",
     "digest": "8351b2400ca57c0120f614bc8bec703f5b680e86e2370836d56f25243663750d"
+  },
+  "work-station": {
+    "version": "1.0.1",
+    "digest": "8fd9096d633626a3dbe4f761426a42410f0771bbee231340a3d49b8fee6fa80b"
   }
 }

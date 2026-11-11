@@ -265,6 +265,15 @@ describe('who may call', () => {
     expect(third.status).toBe(429)
     expect(Number(third.headers.get('retry-after'))).toBeGreaterThan(0)
   })
+
+  it('slows one address down across all its wallets, and leaves other addresses alone', async () => {
+    const ctx = setup({ ipRequestsPerMinute: 2 })
+    const [one, two] = [await ctx.wallet(), await ctx.wallet()]
+    const from = async (wallet: typeof one, client: string) =>
+      (await handle(new Request(`${BASE}/projects`, { headers: wallet.headers('GET', `${BASE}/projects`) }), ctx.env, client)).status
+    expect([await from(one, '203.0.113.7'), await from(two, '203.0.113.7'), await from(two, '203.0.113.7')]).toEqual([200, 200, 429])
+    expect(await from(two, '198.51.100.1')).toBe(200)
+  })
 })
 
 describe('assistant routes', () => {
@@ -481,6 +490,100 @@ describe('trash and history', () => {
     }
     const history = await ctx.env.store.list(`wallets/${wallet.address}/projects/my-scene/history/`)
     expect(history.map((key) => key.split('/').pop())).toEqual(['3.json', '4.json'])
+  })
+})
+
+describe('sharing a project to copy', () => {
+  type Shared = { name: string; version: number; files: Record<string, { hash: string; size: number }> }
+  const share = (wallet: TestWallet, id: string, method = 'PUT') => wallet.signedFetch(`${BASE}/projects/${id}/share`, { method })
+  const tokenOf = async (response: Response) => ((await response.json()) as { token: string }).token
+
+  it('lets another account read the latest version through the token, and nothing else of the owner', async () => {
+    const ctx = setup()
+    const owner = await ctx.wallet()
+    const stranger = await ctx.wallet()
+    const files = { 'scene.json': bytesOf(40, 1), 'assets/model.glb': bytesOf(300_000, 2) }
+    await save(ctx, owner, 'my-scene', files, null)
+    await save(ctx, owner, 'private', { 'secret.ts': bytesOf(30, 9) }, null)
+    expect(await error(await share(owner, 'my-scene', 'GET'))).toEqual([404, 'not-shared'])
+
+    const shared = await share(owner, 'my-scene')
+    expect([shared.status, await shared.clone().json()]).toEqual([200, { token: expect.stringMatching(/^[a-z2-7]{32}$/), createdAt: expect.any(Number) }])
+    const token = await tokenOf(shared)
+    expect(await tokenOf(await share(owner, 'my-scene'))).toBe(token)
+    expect(await tokenOf(await share(owner, 'my-scene', 'GET'))).toBe(token)
+
+    const read = await stranger.signedFetch(`${BASE}/shared/${token}`)
+    const body = (await read.json()) as Shared & Record<string, unknown>
+    expect(body).toEqual({ name: 'My scene', version: 1, updatedAt: expect.any(Number), bytes: 300_040, files: await describeFiles(files) })
+    const blob = await stranger.signedFetch(`${BASE}/shared/${token}/files/${body.files['assets/model.glb'].hash}`)
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(files['assets/model.glb'])
+    expect(blob.headers.get('content-disposition')).toBe('attachment')
+
+    const other = await describeFiles({ 'secret.ts': bytesOf(30, 9) })
+    expect((await stranger.signedFetch(`${BASE}/shared/${token}/files/${other['secret.ts'].hash}`)).status).toBe(404)
+    expect((await stranger.signedFetch(`${BASE}/projects/my-scene/manifest`)).status).toBe(404)
+    expect(await error(await share(stranger, 'my-scene'))).toEqual([404, 'not-found'])
+    expect((await stranger.signedFetch(`${BASE}/shared/${token}`, { method: 'PUT' })).status).toBe(405)
+
+    // live: the owner's next save is what the link answers
+    await save(ctx, owner, 'my-scene', { ...files, 'scene.json': bytesOf(41, 3) }, 1)
+    expect(((await (await stranger.signedFetch(`${BASE}/shared/${token}`)).json()) as Shared).version).toBe(2)
+
+    // the copy is the stranger's own: its bytes are uploaded again under that wallet
+    const copy = await save(ctx, stranger, 'my-copy', files, null)
+    expect(copy.status).toBe(200)
+  })
+
+  it('answers no one unsigned, and nothing for a token it never gave', async () => {
+    const ctx = setup()
+    const owner = await ctx.wallet()
+    await save(ctx, owner, 'my-scene', { 'a.ts': bytesOf(10, 1) }, null)
+    const token = await tokenOf(await share(owner, 'my-scene'))
+    expect(await error(await ctx.send(new Request(`${BASE}/shared/${token}`)))).toEqual([401, 'unsigned'])
+    expect(await error(await owner.signedFetch(`${BASE}/shared/${'a'.repeat(32)}`))).toEqual([404, 'not-found'])
+    expect(await error(await owner.signedFetch(`${BASE}/shared/not-a-token`))).toEqual([404, 'not-found'])
+    expect(await error(await share(owner, 'nothing-here'))).toEqual([404, 'not-found'])
+  })
+
+  it('stops answering a revoked link for good, and shares again under a new token', async () => {
+    const ctx = setup()
+    const owner = await ctx.wallet()
+    const reader = await ctx.wallet()
+    await save(ctx, owner, 'my-scene', { 'a.ts': bytesOf(10, 1) }, null)
+    const first = await tokenOf(await share(owner, 'my-scene'))
+    expect((await share(owner, 'my-scene', 'DELETE')).status).toBe(200)
+    expect((await share(owner, 'my-scene', 'DELETE')).status).toBe(200)
+    expect((await reader.signedFetch(`${BASE}/shared/${first}`)).status).toBe(404)
+    expect(await error(await share(owner, 'my-scene', 'GET'))).toEqual([404, 'not-shared'])
+
+    const second = await tokenOf(await share(owner, 'my-scene'))
+    expect(second).not.toBe(first)
+    expect((await reader.signedFetch(`${BASE}/shared/${second}`)).status).toBe(200)
+    expect((await reader.signedFetch(`${BASE}/shared/${first}`)).status).toBe(404)
+  })
+
+  it('hides a project in the trash, brings it back on restore, and forgets the link when purged', async () => {
+    const ctx = setup()
+    const owner = await ctx.wallet()
+    const reader = await ctx.wallet()
+    await save(ctx, owner, 'my-scene', { 'a.ts': bytesOf(10, 1) }, null)
+    const token = await tokenOf(await share(owner, 'my-scene'))
+
+    await owner.signedFetch(`${BASE}/projects/my-scene`, { method: 'DELETE' })
+    expect((await reader.signedFetch(`${BASE}/shared/${token}`)).status).toBe(404)
+    expect(await error(await share(owner, 'my-scene'))).toEqual([409, 'deleted'])
+    await owner.signedFetch(`${BASE}/projects/my-scene/restore`, { method: 'POST' })
+    expect((await reader.signedFetch(`${BASE}/shared/${token}`)).status).toBe(200)
+
+    await owner.signedFetch(`${BASE}/projects/my-scene`, { method: 'DELETE' })
+    ctx.advance(31 * DAY)
+    expect(await purge(ctx.env)).toMatchObject({ projects: 1 })
+    expect(await ctx.env.store.list('shares/')).toEqual([])
+    expect(await ctx.env.store.list(`wallets/${owner.address}/projects/`)).toEqual([])
+    const later = await owner.anotherDevice()
+    const after = (await (await later.signedFetch(`${BASE}/projects`)).json()) as { projects: unknown[]; usage: { bytes: number } }
+    expect(after).toMatchObject({ projects: [], usage: { bytes: 0 } })
   })
 })
 

@@ -8,7 +8,7 @@ import { cmd } from '../../engine/cmd'
 import { engineFrames, type EngineFrames } from '../../engine/engine-frames'
 import { ViewportQualitySection } from './ViewportQualitySection'
 import { useUnusedFiles } from '../../unused-files'
-import { sceneBudget, sceneModels, type ModelRow } from '../../scene-budget'
+import { sceneBudget, sceneModels, type ModelRow, type SceneBudget } from '../../scene-budget'
 import { uiFocusEntity, uiSelectEntity } from '../../actions/selection'
 import { useSceneFindings } from './scene-checks'
 import css from './scene-insights.css?inline'
@@ -31,7 +31,6 @@ export function useInsightsOpen(): boolean {
   return useSyncExternalStore((listener) => { listeners.add(listener); return () => listeners.delete(listener) }, () => open)
 }
 
-type Budget = Awaited<ReturnType<typeof sceneBudget>>
 type Stats = { tick: number; entities: number; status: string; at: number }
 
 function useFps(): number | null {
@@ -106,7 +105,7 @@ function Dock(): JSX.Element {
   const fps = frames.engine?.fps ?? frames.page
   const fromEngine = frames.engine !== null
   const findings = useSceneFindings()
-  const [budget, setBudget] = useState<Budget | null>(null)
+  const [budget, setBudget] = useState<SceneBudget | null>(null)
   const [models, setModels] = useState<ModelRow[] | null>(null)
   const [stats, setStats] = useState<{ now: Stats; ticksPerSecond: number | null } | null>(null)
   // collapsed too: the warning count shows there
@@ -149,9 +148,6 @@ function Dock(): JSX.Element {
   const triangleLimit = budget?.limits.triangles ?? 0
   const heavy = (models ?? []).filter((m) => triangleLimit > 0 && (m.triangles * m.entities.length) / triangleLimit > HEAVY_SHARE)
   const warnings = [
-    ...(budget?.over ?? []).map((key) => key === 'files'
-      ? `Over the ${budget?.parcels}-parcel limit of ${budget?.limits.files} files: Genesis City would refuse it, though a World takes up to 10,000. Delete unused files or add parcels.`
-      : `Over the ${budget?.parcels}-parcel soft limit for ${key}: explorers warn about it, and slower devices may struggle.`),
     ...heavy.map((m) => `${m.src} draws ${Math.round(((m.triangles * m.entities.length) / triangleLimit) * 100)}% of the scene's triangle limit.`),
     ...(models ?? []).flatMap((m) => m.warnings.map((w) => `${m.src}: ${w}`)),
     ...unused.map((f) => `${f} is not used by any entity or script.`),

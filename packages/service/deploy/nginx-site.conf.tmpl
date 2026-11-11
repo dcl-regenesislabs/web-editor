@@ -41,6 +41,8 @@ server {
         proxy_pass http://127.0.0.1:8787;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        # the service trusts this only from a private peer (CLIENT_IP_HEADER=x-real-ip)
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $editor_connection;
         proxy_read_timeout 900s;
@@ -54,8 +56,12 @@ server {
         proxy_pass http://127.0.0.1:8787;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        # the service trusts this only from a private peer (CLIENT_IP_HEADER=x-real-ip)
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $editor_connection;
+        # the service's per-address limits (CLIENT_IP_HEADER=x-real-ip); real_ip has already put the visitor here
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_request_buffering off;
         proxy_read_timeout 900s;
         proxy_send_timeout 900s;

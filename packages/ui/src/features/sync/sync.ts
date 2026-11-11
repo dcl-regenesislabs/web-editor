@@ -29,10 +29,13 @@ export interface SyncLine {
   tone: 'quiet' | 'busy' | 'attention'
 }
 
+export const LOADING_LINE: SyncLine = { text: 'Loading your scenes…', tone: 'busy' }
+
 // The one line the home screen shows about where the scenes are kept.
 export function syncLine(status: SyncStatus): SyncLine {
   if (status.account === 'guest') return { text: 'Scenes stay on this device until you sign in.', tone: 'quiet' }
   if (status.account === 'unavailable') return { text: 'Scenes stay on this device.', tone: 'quiet' }
+  if (status.loading === true) return LOADING_LINE
   switch (status.state) {
     case 'syncing':
       return { text: 'Syncing with your account…', tone: 'busy' }

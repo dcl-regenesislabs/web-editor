@@ -19,12 +19,14 @@ import {
   advanceFlow,
   asFlowFact,
   configFromSeconds,
+  flowLabels,
   intermissionState,
   lobbyState,
   panelText,
   podiumLine,
   roundState,
   type FlowConfig,
+  type FlowLabels,
   type FlowState
 } from './pure/flow'
 
@@ -65,8 +67,45 @@ export class GameFlow {
     public boardKey: string = 'leaderboard',
     public display: '3D text' | '2D UI' = '3D text',
     /** For "2D UI": where the round timer sits on screen. */
-    public position: 'top' | 'top left' | 'top right' | 'bottom' = 'top'
+    public position: 'top' | 'top left' | 'top right' | 'bottom' = 'top',
+    /** The game's name, shown while players gather. Empty shows the lobby label. */
+    public gameTitle: string = '',
+    public lobbyLabel: string = 'LOBBY',
+    /** Shown until a round can start. */
+    public waitingLabel: string = 'Waiting for players',
+    /** After the waiting label: {present} players in, {needed} to start. */
+    public playersLabel: string = '{present}/{needed}',
+    public startingLabel: string = 'Starting',
+    /** {round} is the round number. */
+    public roundLabel: string = 'ROUND {round}',
+    public roundOverLabel: string = 'ROUND {round} OVER',
+    /** The winners line; {winners} lists them. */
+    public winnersLabel: string = 'Round over — {winners}',
+    public noWinnersLabel: string = 'Round over — nobody scored.'
   ) {}
+
+  private labelsFor: readonly string[] = []
+  private labelsCache: FlowLabels | null = null
+
+  // The 2D panel reads this every frame; rebuild only when an inspector edit changes a label.
+  private get labels(): FlowLabels {
+    const given = [
+      this.gameTitle,
+      this.lobbyLabel,
+      this.waitingLabel,
+      this.playersLabel,
+      this.startingLabel,
+      this.roundLabel,
+      this.roundOverLabel,
+      this.winnersLabel,
+      this.noWinnersLabel
+    ]
+    if (this.labelsCache !== null && given.every((value, i) => value === this.labelsFor[i])) return this.labelsCache
+    const [gameTitle, lobby, waiting, players, starting, round, roundOver, winners, noWinners] = given
+    this.labelsFor = given
+    this.labelsCache = flowLabels({ gameTitle, lobby, waiting, players, starting, round, roundOver, winners, noWinners })
+    return this.labelsCache
+  }
 
   private get config(): FlowConfig {
     return configFromSeconds(this.roundSeconds, this.countdownSeconds, this.intermissionSeconds, this.minPlayers)
@@ -153,7 +192,7 @@ export class GameFlow {
   }
 
   private announcePodium(): void {
-    game.broadcast(ANNOUNCE, { text: podiumLine(game.state[this.boardKey], PODIUM_PLACES) })
+    game.broadcast(ANNOUNCE, { text: podiumLine(game.state[this.boardKey], PODIUM_PLACES, this.labels) })
   }
 
   private publish(): void {
@@ -167,7 +206,7 @@ export class GameFlow {
 
   private text(): string {
     const fact = asFlowFact(game.state[FLOW_KEY])
-    return panelText(fact, game.now(), this.endsWhen === 'timer', this.config.minPlayers)
+    return panelText(fact, game.now(), this.endsWhen === 'timer', this.config.minPlayers, this.labels)
   }
 
   private paint(): void {

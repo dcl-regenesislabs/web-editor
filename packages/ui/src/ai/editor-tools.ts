@@ -2,10 +2,11 @@
 // process forwards each call here. The web assistant runs the same modules through its browser
 // tools (packages/web/src/ai/tools.ts), with the browser project as the files.
 import type { EditorToolCall, EditorToolName } from '@dcl-editor/contract'
-import { runFreshBuild } from '../actions/verify-build'
+import { runFreshBuild, saveBeforeBuild } from '../actions/verify-build'
 import { dataLayerListFiles, dataLayerReadFileBytes, dataLayerSaveFileBytes } from '../engine/datalayer'
 import { awaitFreshBundle, currentSceneHealth } from '../features/editor/scene-health'
 import { log } from '../log'
+import { ensureScriptRuntime } from '../prefabs/generate'
 import { createAssetRequests } from './assets'
 import { refreshWrittenScript } from './attach'
 import { createFileTools, isFileTool, sameBytes, type ProjectFiles } from './file-tools'
@@ -35,7 +36,14 @@ const disk: ProjectFiles = {
   },
   written: refreshWrittenScript
 }
-let fileTools = createFileTools(disk)
+// kept across turns: a write still has to name the revision its own conversation read
+const fileTools = createFileTools(disk)
+
+async function diskSources(): Promise<ReadonlyMap<string, Uint8Array>> {
+  const paths = (await dataLayerListFiles()).filter((path) => /\.tsx?$/.test(path))
+  const read = await Promise.all(paths.map(async (path) => [path, await readDisk(path)] as const))
+  return new Map(read.filter((entry): entry is readonly [string, Uint8Array] => entry[1] !== undefined))
+}
 
 // the dev server notices a saved file within this and starts rebuilding
 const BUILD_NOTICE_MS = 1500
@@ -43,6 +51,10 @@ const BUILD_NOTICE_MS = 1500
 // Desktop builds on save: wait for the rebuild the assistant's last edits started, then run the new
 // bundle once the way the web build does.
 async function desktopBuild(signal: AbortSignal): Promise<unknown> {
+  await saveBeforeBuild()
+  // the runtime modules a script imports are otherwise only copied in when the turn ends or the composite changes.
+  // Before the wait: these writes start the rebuild awaitFreshBundle waits for.
+  await ensureScriptRuntime()
   await new Promise((resolve) => setTimeout(resolve, BUILD_NOTICE_MS))
   await awaitFreshBundle()
   signal.throwIfAborted()
@@ -75,6 +87,7 @@ export async function runEditorTool(name: EditorToolName, args: Record<string, u
   if (name === 'view') return JSON.stringify(await captureView(viewRequest(args), signal))
   if (name === 'playtest') return JSON.stringify(await playtest(args, signal))
   if (name === 'ui_layout') return JSON.stringify(await uiLayout(args, signal))
+  if (name === 'mobile_check') return JSON.stringify(await uiLayout({ check: true }, signal, diskSources))
   if (isFileTool(name)) return fileTools(name, args, signal)
   if (name === 'build') return JSON.stringify(await desktopBuild(signal))
   // scene.json (parcels, permissions, the thumbnail) is the web host's to edit; here it answers so
@@ -95,7 +108,9 @@ export function installEditorToolBridge(): void {
   const answer = shell.editorToolResult
   setLibraryBytes({
     material: async (name, map) => library(await shell.libraryFile?.(materialFile(name, map))),
-    sound: async (name) => library(await shell.libraryFile?.(soundFile(name)))
+    sound: async (name) => library(await shell.libraryFile?.(soundFile(name))),
+    iconIndex: async () => library(await shell.libraryFile?.('icons/icons.index.json')),
+    iconBlock: async (offset, length) => library(await shell.libraryFileRange?.('icons/icons.pack', offset, length))
   })
   const running = new Map<string, AbortController>()
   shell.onEditorToolCall((call: EditorToolCall) => {
@@ -112,9 +127,6 @@ export function installEditorToolBridge(): void {
       .finally(() => running.delete(call.id))
   })
   shell.onAiEvent?.((e) => {
-    if (e.kind === 'started') {
-      fileTools = createFileTools(disk)
-    }
     if (e.kind === 'done') leavePhone().catch((err: unknown) => log.warn('leaving the phone canvas failed', err))
   })
 }

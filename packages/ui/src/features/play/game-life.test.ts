@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   GAME_LIFE_MARKER,
+  GAME_PROBE_MARKER,
   GAME_LOG_TAIL,
   GAME_POLL_MS,
   GAME_SILENT_MS,
@@ -134,6 +135,7 @@ describe('the console tail the strip reads', () => {
 describe('isGameLifeLine', () => {
   it('marks the machinery the Game tab must not show', () => {
     expect(isGameLifeLine(line('running'))).toBe(true)
+    expect(isGameLifeLine(`[3.3] Log: ${GAME_PROBE_MARKER} 7 {"state":{}}`)).toBe(true)
     expect(isGameLifeLine('[3.2] Log: [you] layout(\'rock\') failed')).toBe(false)
   })
 })

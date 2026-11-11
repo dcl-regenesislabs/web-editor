@@ -26,6 +26,8 @@ export interface ProjectRecord {
   published?: PublishedRecord
   // the preview realm's id: random, so no other scene can find the unpublished build by its name
   previewId?: string
+  // the share token this project was copied from, so opening the same link again finds it
+  copiedFrom?: string
 }
 
 export interface PublishedRecord {
@@ -284,7 +286,7 @@ export class ProjectStore {
     return this.writeJson('sync', id, record)
   }
 
-  patch(id: string, change: Partial<Pick<ProjectRecord, 'lastOpened' | 'favourite' | 'published' | 'previewId'>>): Promise<void> {
+  patch(id: string, change: Partial<Pick<ProjectRecord, 'lastOpened' | 'favourite' | 'published' | 'previewId' | 'copiedFrom'>>): Promise<void> {
     return this.mutate((projects) => {
       const record = projects.find((project) => project.id === id)
       if (record !== undefined) Object.assign(record, change)

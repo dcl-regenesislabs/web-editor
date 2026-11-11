@@ -52,9 +52,12 @@ function lineArg(value: unknown, name: string): number | undefined {
   return value
 }
 
-// One per conversation: write_file checks against what this conversation last read.
-export function createFileTools(project: ProjectFiles) {
-  const reads = new Map<string, { revision: string; bytes: Uint8Array; whole: boolean }>()
+/** What a conversation last read of each file. write_file must name that read's revision, which only the
+ * conversation that read the file was given, and the write still fails if the file changed since. */
+export type FileReads = Map<string, { revision: string; bytes: Uint8Array; whole: boolean }>
+
+// `reads` lives as long as the conversation, so a file read in an earlier turn can be written without reading it again.
+export function createFileTools(project: ProjectFiles, reads: FileReads = new Map()) {
   return async (tool: FileToolName, args: Record<string, unknown>, signal: AbortSignal): Promise<string> => {
     signal.throwIfAborted()
     if (tool === 'list_files') {

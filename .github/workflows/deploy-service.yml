@@ -22,7 +22,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # the old container may take ASSISTANT_DRAIN_SECONDS (10 min) to stop
+    timeout-minutes: 35
     environment: production
     steps:
       - name: Only release tags

@@ -28,6 +28,7 @@ interface AiStoreShape {
   tabs: string[] // open documents → tab strip. Opening never closes what's there.
   selection: CodeSelection | null // the code chip in the composer
   prefill: string | null // text to drop into the composer, unsent
+  ask: string | null // a request to send as it is, from a control whose whole point is asking
   railVersion: number // bumped when the project's files change → rail re-lists
   // jump target for the editor; nonce lets the same line be re-revealed
   revealLine: { file: string; line: number; nonce: number } | null
@@ -63,6 +64,7 @@ export const aiStore = reactive<AiStoreShape>({
   tabs: [],
   selection: null,
   prefill: null,
+  ask: null,
   railVersion: 0,
   revealLine: null,
   codeMove: null,
@@ -93,6 +95,15 @@ export function canAskAssistant(): boolean {
 // is not a request.
 export function prefillAssistant(text: string): void {
   aiStore.prefill = text
+  aiStore.mode = 'dock'
+  surface()
+}
+
+// Send a request on the creator's behalf: for a control that IS the request, such as a
+// finding's Fix. When the assistant can't take it now (a turn running, a draft in the
+// composer) it lands in the composer instead, like a prefill.
+export function askAssistant(text: string): void {
+  aiStore.ask = text
   aiStore.mode = 'dock'
   surface()
 }

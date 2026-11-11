@@ -60,7 +60,7 @@ Open a scene folder (any SDK7 project with a `scene.json`). The app will:
 1. serve the bevy web build on `:3010` with the COOP/COEP headers wasm threads
    need (`serveBevyWeb` resolves the dir as `BEVY_WEB_DIR` → the
    `@dcl-regenesislabs/bevy-explorer-web` package → sibling
-   `../bevy-explorer/deploy/web` fallback),
+   `../dcl-one/rendering/bevy-explorer/source/deploy/web` fallback),
 2. start the editor system scene (`../editor-scene`) on `:8005`,
 3. start the scene's own dev server with `--data-layer` on `:8004`,
 4. load the editor.

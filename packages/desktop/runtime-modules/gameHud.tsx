@@ -2,6 +2,7 @@
 import ReactEcs from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import type { Color4 } from '@dcl/sdk/math'
+import { isMobile } from '@dcl/sdk/platform'
 import { sceneUiTheme } from './uiTheme'
 import { ThemedEntity as UiEntity, ProgressPips, UiButton, UiNotice, UiPanel, UiText } from './uiComponents'
 import type { UiTheme } from './pure/uiTheme'
@@ -76,6 +77,19 @@ function RunPanel(props: { run: RunHudProps; theme: UiTheme }) {
   </UiPanel>
 }
 
+// On a phone the left column runs into the middle of a short screen, so the run is one short card there: name, goals
+// and health, with no controls hint (the joystick shows itself) and no separate health panel.
+function PhoneRunPanel(props: { run: RunHudProps; theme: UiTheme }) {
+  const { run, theme } = props
+  const goals = runGoals(run)
+  const health = run.respawnSeconds > 0 ? `Respawning in ${Math.ceil(run.respawnSeconds)}…` : run.health !== null ? `Health ${run.health} / ${run.maxHealth}` : ''
+  return <UiPanel theme={theme} uiTransform={{ width: HUD_COLUMN_WIDTH, height: 16 + 30 + (goals === '' ? 0 : 26) + (health === '' ? 0 : 26), padding: 8 }}>
+    <UiText value={run.phase === 'ready' ? 'Cross the start to begin' : run.title} color={theme.text} size={22} height={30} />
+    {goals !== '' && <UiText value={goals} color={theme.muted} size={20} height={26} />}
+    {health !== '' && <UiText value={health} color={run.respawnSeconds > 0 ? theme.danger : theme.text} size={20} height={26} />}
+  </UiPanel>
+}
+
 function LifePanel(props: { run: RunHudProps; theme: UiTheme; hint: boolean }) {
   const { run, theme } = props
   const lifeLine = run.health !== null || run.respawnSeconds > 0
@@ -102,7 +116,7 @@ function Completion(props: { run: RunHudProps; theme: UiTheme }) {
   const stats = (run.collectibles > 0 ? 1 : 0) + (run.checkpoints > 0 ? 1 : 0)
   return <UiEntity uiTransform={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', pointerFilter: 'none' }}
     uiBackground={{ color: { r: 0, g: 0, b: 0, a: 0.28 } }}>
-    <UiPanel theme={theme} uiTransform={{ width: 520, maxWidth: '90%', height: stats === 0 ? 312 : 420, padding: 28 }}>
+    <UiPanel theme={theme} uiTransform={{ elementId: 'game:completion', width: 520, maxWidth: '90%', height: stats === 0 ? 312 : 420, padding: 28 }}>
       <UiText value="RUN COMPLETE" color={theme.accentText} size={16} height={28} align="middle-center" />
       <UiText value={run.title} color={theme.text} size={28} height={44} align="middle-center" />
       <UiText value={formatRunTime(run.elapsedMs)} color={theme.text} size={64} height={88} align="middle-center" mono />
@@ -166,8 +180,9 @@ export function mountRunHud(read: () => RunHudProps): () => void {
   const playing = () => run.phase !== 'finished'
   const full = () => run.hud !== 'Big timer'
   const removals = [
-    addHudItem('left', () => playing() && full() ? <RunPanel run={run} theme={theme()} /> : null, { order: -100 }),
-    addHudItem('left', () => playing() && (full() || run.health !== null || run.respawnSeconds > 0)
+    addHudItem('left', () => !playing() || !full() ? null
+      : isMobile() ? <PhoneRunPanel run={run} theme={theme()} /> : <RunPanel run={run} theme={theme()} />, { order: -100 }),
+    addHudItem('left', () => playing() && !(isMobile() && full()) && (full() || run.health !== null || run.respawnSeconds > 0)
       ? <LifePanel run={run} theme={theme()} hint={full()} /> : null, { order: -90 }),
     addHudItem('top', () => playing() && !full() ? <BigTimer run={run} theme={theme()} /> : null, { order: -100 }),
     addHudItem('right', () => playing() && full() ? <UiPanel theme={theme()} uiTransform={{ width: 208, height: 120 }}>
@@ -176,7 +191,7 @@ export function mountRunHud(read: () => RunHudProps): () => void {
     addHudItem('right', () => playing() ? <UiButton theme={theme()} label="Restart run" secondary onClick={run.restart}
       uiTransform={{ width: 172 }} /> : null, { order: -90 }),
     addHudItem('bottom', () => playing() && run.notice !== '' ? <UiNotice theme={theme()} text={run.notice} uiTransform={{ width: HUD_NOTICE_WIDTH }} /> : null),
-    addHudItem('modal', () => playing() ? null : <Completion run={run} theme={theme()} />, { open: () => !playing() })
+    addHudItem('modal', () => <Completion run={run} theme={theme()} />, { open: () => !playing() })
   ]
   return () => {
     engine.removeSystem(refresh)

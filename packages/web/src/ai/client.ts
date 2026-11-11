@@ -3,6 +3,7 @@ import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, Ass
 import { trackCreator } from '@ui/analytics'
 import type { HostFetchInit } from '@ui/engine/hosted'
 import { createBrowserTools } from './tools'
+import type { FileReads } from '@ui/ai/file-tools'
 import type { BrowserProject } from './tools'
 
 type AssistantShell = Required<Pick<EditorShell, 'aiProviders' | 'aiSend' | 'aiStop' | 'aiReset' | 'aiForget' | 'aiCanResume' | 'onAiEvent'>>
@@ -30,6 +31,8 @@ export function createBrowserAssistant(options: {
     started: number; model: string | null; error: string | null
   } | null = null
   let toolQueue: Promise<void> = Promise.resolve()
+  // what the conversation has read, across its turns: a new chat, account or project starts over
+  let reads: { of: string; files: FileReads } = { of: '', files: new Map() }
   // the connection whose service still holds a conversation a limit paused
   let paused: WebSocket | null = null
   const emit = (event: AiEvent) => { for (const listener of listeners) listener(event) }
@@ -68,8 +71,9 @@ export function createBrowserAssistant(options: {
       case 'asset_request': return { tool: 'Assets', detail: String(call.args.action ?? '') }
       case 'build': return { tool: 'Build', detail: 'Scene' }
       case 'view': return { tool: 'View', detail: call.args.target === 'mobile' ? 'Mobile preview' : call.args.target === 'editor' ? 'Editor' : 'Current view' }
-      case 'playtest': return { tool: 'Playtest', detail: `${String(call.args.action ?? '')}${call.args.platform === 'mobile' ? ' (mobile)' : ''}` }
+      case 'playtest': return { tool: 'Playtest', detail: Array.isArray(call.args.steps) ? `${call.args.steps.length} steps` : `${String(call.args.action ?? '')}${call.args.platform === 'mobile' ? ' (mobile)' : ''}` }
       case 'ui_layout': return { tool: 'UI layout', detail: 'Screen' }
+      case 'mobile_check': return { tool: 'Mobile check', detail: 'HUD and dialogs' }
       case 'scene_request':
         if (request.type === 'batch' && Array.isArray(request.requests)) return { tool: 'Scene', detail: `${request.requests.length} changes` }
         if (request.type === 'sceneSettings') return { tool: 'Scene', detail: 'Settings' }
@@ -222,9 +226,14 @@ export function createBrowserAssistant(options: {
     }
   }
 
-  function reset(): Promise<void> {
+  // `discard`: the service drops the conversation too. A Stop keeps it, so the next message knows what the stopped
+  // turn already changed and reads the same history from cache.
+  function reset(discard = true): Promise<void> {
     connectionGeneration++
-    send({ kind: 'reset' })
+    if (discard) {
+      send({ kind: 'reset' })
+      reads = { of: '', files: new Map() }
+    }
     finish(false)
     const old = socket
     socket = null
@@ -253,8 +262,11 @@ export function createBrowserAssistant(options: {
       if (wallet === null) throw new Error('Sign in to use the assistant.')
       paused = null
       const project = options.project()
+      const of = `${wallet}/${project.id}`
+      if (reads.of !== of) reads = { of, files: new Map() }
       const turn = {
-        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(), execute: createBrowserTools(project.tools), ended: project.tools.turnEnded,
+        id: crypto.randomUUID(), wallet, projectId: project.id, controller: new AbortController(), calls: new Set<string>(),
+        execute: createBrowserTools(project.tools, reads.files), ended: project.tools.turnEnded,
         started: Date.now(), model: params.model ?? null, error: null
       }
       active = turn
@@ -284,7 +296,7 @@ export function createBrowserAssistant(options: {
     },
     async aiStop() {
       if (active !== null) send({ kind: 'stop', turnId: active.id })
-      await reset()
+      await reset(false)
     },
     async aiReset() { await reset() },
     async aiForget() {

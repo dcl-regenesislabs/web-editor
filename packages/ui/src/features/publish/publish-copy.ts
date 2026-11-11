@@ -36,6 +36,10 @@ export const SDK_TOO_OLD_HEADING = "This scene's Decentraland SDK can't publish 
 export const NO_NAME_HEADING = "You don't own a Decentraland NAME yet"
 export const NO_NAME_NOTE =
   'A NAME is a Decentraland name you own, like yourname.dcl.eth. Every NAME has a world of its own, and that world is where a scene is published. The owner of a world can also let your wallet publish to theirs.'
+export const NO_NAME_SHARED_NOTE =
+  'Until you have one, publish to a shared world: you get a corner of a world others publish to as well, and a link to your scene there. With a NAME of your own, the whole world is yours.'
+// what the dialog calls a shared world before the service has named one
+export const SHARED_WORLD = 'a shared world'
 export const WORLDS_FAILED_HEADING = "Couldn't load your worlds"
 
 export function sceneHeadline(title: string): string {
@@ -59,6 +63,7 @@ export const UPLOADING_NOTE = 'Sending your scene to Decentraland. Almost thereâ
 export const SIGNING_NOTE = 'Decentraland is asking you to confirm. Check the world and the wallet, then sign.'
 export const SIGNING_STEP = 'Confirm in Decentraland'
 export const PUBLISHED_AT = 'It is live at'
+export const MOBILE_SCAN_NOTE = 'Scan with your phone to play it in the Decentraland mobile explorer.'
 
 
 export function publishingHeadline(world: string): string {

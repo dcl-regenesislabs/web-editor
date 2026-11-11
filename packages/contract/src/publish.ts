@@ -19,6 +19,7 @@ export interface PublishedScene {
   entityId: string
   // opens the published world in this explorer
   url: string
+  base?: string // the base parcel it landed on, "x,y"
   files: number
   bytes: number
   at: number // epoch ms

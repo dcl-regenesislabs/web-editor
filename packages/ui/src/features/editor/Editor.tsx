@@ -17,7 +17,8 @@ import { ENGINE_BOOT_WATCHDOG_MS, INSPECTOR_STALL_MS, SLOW_BOOT_HINT_MS } from '
 import { forwardEngineKeys } from '../../embed'
 import { Button, LinkButton, Spinner, labelTip } from '../../ds'
 import { isTyping } from '../../shortcuts'
-import { backLabel, backToProjects, reloadEditor } from './nav'
+import { reloadEditor } from './nav'
+import { BackButton } from './BackButton'
 import { SceneTopbar } from './SceneTopbar'
 import { PublishOutcomeToast } from '../publish/PublishOutcomeToast'
 import { SyncConflictGate } from '../sync/SyncChip'
@@ -29,6 +30,7 @@ import { LogsDrawer, type LogsTab } from './LogsDrawer'
 import { stripAnsi, useSceneHealth, errorLocation, type SceneHealth } from './scene-health'
 import { SceneChecksCard } from './SceneChecksCard'
 import { SceneInsightsDock } from './SceneInsightsDock'
+import { entryMode } from './entry-mode'
 import { openCodeAt } from '../../panels/ai-store'
 import { baseName } from '../../script/project-files'
 import { chrome, toggleUiHidden } from '../../core/chrome'
@@ -233,6 +235,7 @@ export function Editor(props: { params: URLSearchParams; preview?: number }): JS
     return () => clearTimeout(t)
   }, [health, ready, revealed])
   const uiHidden = useStore(() => chrome.uiHidden)
+  const entry = useStore(entryMode)
   const frozen = useStore(() => state.frozen)
   // Lives here, not in shortcuts.ts: that hook is inside <App/>, which unmounts
   // while the chrome is hidden — the key that brings it back has to outlive it.
@@ -295,14 +298,14 @@ export function Editor(props: { params: URLSearchParams; preview?: number }): JS
       {!ready && !everReady && stalled && <InspectorStallNotice onLogs={() => openLogs()} />}
       {revealed && health !== null && <SceneHealthBanner health={health} onLogs={() => openLogs()} />}
       {revealed && !uiHidden && !fullScreen && <SceneChecksCard />}
-      {revealed && !uiHidden && !fullScreen && <SceneInsightsDock />}
+      {revealed && !uiHidden && !fullScreen && !entry && <SceneInsightsDock />}
       {props.params.get('project') !== null && <SyncConflictGate project={props.params.get('project') as string} />}
       {/* Play is the game as a player sees it: the chrome stays mounted (the
           chat keeps its turn, the panels their scroll) but takes no room. */}
       {!uiHidden && (
         <>
           <div className="eui-play-hide" hidden={fullScreen}>
-            <SceneTopbar logsOpen={logsOpen} onToggleLogs={toggleLogs} project={props.params.get('project')} />
+            <SceneTopbar logsOpen={logsOpen} onToggleLogs={toggleLogs} project={props.params.get('project')} entry={entry} />
           </div>
           <PublishOutcomeToast />
           <App playing={fullScreen} />
@@ -385,9 +388,7 @@ function EngineInitOverlay(): JSX.Element {
         )}
         {/* This overlay covers the topbar, so without its own exit a scene that
             never finishes loading can only be escaped by quitting the app. */}
-        <Button variant="ghost" size="lg" onClick={backToProjects}>
-          {backLabel()}
-        </Button>
+        <BackButton />
       </div>
     </div>
   )
@@ -417,9 +418,7 @@ function SceneCodeErrorOverlay(props: { health: SceneHealth; project: string | n
             Try again
           </Button>
         )}
-        <Button variant="ghost" size="lg" onClick={backToProjects}>
-          {backLabel()}
-        </Button>
+        <BackButton />
       </div>
     </div>
   )

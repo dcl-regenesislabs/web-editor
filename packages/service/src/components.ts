@@ -11,13 +11,20 @@ import { createTelemetryComponent } from './adapters/telemetry.ts'
 import { adminAccessFromConfig, createAdminComponent } from './admin/admin.ts'
 import { createAssistantComponent, DEFAULT_ASSISTANT_LIMITS } from './ai/server.ts'
 import type { AssistantLimits } from './ai/server.ts'
+import { createAccountPool } from './ai/accounts.ts'
+import type { AccountPool } from './ai/accounts.ts'
+import { DISABLED_QUOTA } from './ai/quota.ts'
 import { createAssistantMemory } from './ai/memory.ts'
+import { createSessionLog, DEFAULT_SESSION_LOG_LIMITS } from './ai/session-log.ts'
 import { createUsageMeter, DEFAULT_USAGE_LIMITS } from './ai/usage.ts'
-import { ASSISTANT_MODEL, createPiFactory } from './ai/pi.ts'
+import {
+  ASSISTANT_MODEL, CACHE_WARMING_MODES, createPiFactory, DEFAULT_CACHE_WARMING, DEFAULT_COMPACT_AT_TOKENS, isCacheWarming, MIN_COMPACT_AT_TOKENS
+} from './ai/pi.ts'
 import { codexTokenSource, createCodexImageProvider } from './ai/images.ts'
 import type { AgentFactory } from './ai/types.ts'
 import { createRateLimiter, createUploadGate, envFromConfig, DEFAULT_LIMITS, walletAllowlist } from './config.ts'
 import { createQuotaStore } from './quota-store.ts'
+import { createPoolComponent } from './pool/component.ts'
 import { createFsStore } from './fs-store.ts'
 import { metricDeclarations } from './metrics.ts'
 import { createLock } from './store.ts'
@@ -46,6 +53,8 @@ async function assistantLimits(config: IConfigComponent, enabled: boolean): Prom
     wallets: walletAllowlist(listed, 'ASSISTANT_WALLETS'),
     turnsPerMinute: await count('ASSISTANT_TURNS_PER_MINUTE', DEFAULT_ASSISTANT_LIMITS.turnsPerMinute),
     turnsPerDay: await count('ASSISTANT_TURNS_PER_DAY', DEFAULT_ASSISTANT_LIMITS.turnsPerDay),
+    turnsPerIpPerDay: await count('ASSISTANT_TURNS_PER_IP_PER_DAY', DEFAULT_ASSISTANT_LIMITS.turnsPerIpPerDay),
+    turnsPerDayTotal: await count('ASSISTANT_TURNS_PER_DAY_TOTAL', DEFAULT_ASSISTANT_LIMITS.turnsPerDayTotal),
     turnsAtOnce: await count('ASSISTANT_TURNS_AT_ONCE', DEFAULT_ASSISTANT_LIMITS.turnsAtOnce),
     imagesPerDay: await count('ASSISTANT_IMAGES_PER_DAY', DEFAULT_ASSISTANT_LIMITS.imagesPerDay)
   }
@@ -87,6 +96,9 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
   if (authInStorage) {
     logs.getLogger('assistant').warn('The assistant credential is inside STORAGE_DIR; set AI_AUTH_PATH to a secret mount outside it')
   }
+  if (process.env.NODE_ENV === 'production' && env.clientIpHeader === undefined) {
+    logs.getLogger('service').warn('CLIENT_IP_HEADER is unset: behind a reverse proxy every client shares one address, so per-IP limits are off')
+  }
   if (imageAuthInStorage) {
     logs.getLogger('assistant').warn('The image model credential is inside STORAGE_DIR; set AI_IMAGE_AUTH_PATH to a secret mount outside it')
   }
@@ -94,10 +106,41 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
     daily: (await config.getNumber('ASSISTANT_DAILY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.daily,
     weekly: (await config.getNumber('ASSISTANT_WEEKLY_LIMIT')) ?? DEFAULT_USAGE_LIMITS.weekly
   })
-  const telemetry = await createTelemetryComponent({ config, logs }, { stateDir: authPath === undefined ? undefined : dirname(authPath) })
+  // the pool estimates each account's share from telemetry's spend, and telemetry reports the pool's reading
+  let accounts: AccountPool | undefined
+  const telemetry = await createTelemetryComponent({ config, logs }, {
+    stateDir: authPath === undefined ? undefined : dirname(authPath), quota: () => accounts?.quota() ?? DISABLED_QUOTA
+  })
+  if (authPath !== undefined) {
+    accounts = await createAccountPool({
+      primaryPath: authPath, dir: join(dirname(authPath), 'claude-accounts'), logger: logs.getLogger('assistant'),
+      spend: () => telemetry.operations.snapshot().sinceStart.usage.estimatedCostUsd
+    })
+  }
+  const sessionLog = await config.getString('ASSISTANT_SESSION_LOG')
+  if (sessionLog !== undefined && sessionLog !== '0' && sessionLog !== '1') throw new Error('ASSISTANT_SESSION_LOG must be 0 or 1')
+  const sessionDays = (await config.getNumber('ASSISTANT_SESSION_LOG_DAYS')) ?? DEFAULT_SESSION_LOG_LIMITS.maxAgeMs / 86_400_000
+  if (!Number.isSafeInteger(sessionDays) || sessionDays < 1) throw new Error('ASSISTANT_SESSION_LOG_DAYS must be a positive whole number')
+  const sessions = sessionLog !== '1' || authPath === undefined ? undefined
+    : createSessionLog(join(dirname(authPath), 'sessions'), { ...DEFAULT_SESSION_LOG_LIMITS, maxAgeMs: sessionDays * 86_400_000 })
+  if (sessions !== undefined) {
+    logs.getLogger('assistant').warn(`ASSISTANT_SESSION_LOG is on: assistant sessions are kept in plaintext for ${sessionDays} days and readable at /admin/`)
+  }
+  const compactAt = (await config.getNumber('ASSISTANT_COMPACT_AT_TOKENS')) ?? DEFAULT_COMPACT_AT_TOKENS
+  // below this the system prompt and one file read would trigger a summary on nearly every call
+  if (!Number.isSafeInteger(compactAt) || (compactAt !== 0 && compactAt < MIN_COMPACT_AT_TOKENS)) {
+    throw new Error(`ASSISTANT_COMPACT_AT_TOKENS must be 0 or a whole number of at least ${MIN_COMPACT_AT_TOKENS}`)
+  }
+  const warming = (await config.getString('ASSISTANT_CACHE_WARMING')) ?? DEFAULT_CACHE_WARMING
+  if (!isCacheWarming(warming)) {
+    throw new Error(`ASSISTANT_CACHE_WARMING must be one of ${CACHE_WARMING_MODES.join(', ')}`)
+  }
   const factory = options.agentFactory ?? (authPath === undefined ? undefined :
     await createPiFactory(authPath, (await config.getString('AI_MODEL')) ?? ASSISTANT_MODEL, setupToken, skills,
-      logs.getLogger('assistant'), telemetry.recordProviderHeaders))
+      logs.getLogger('assistant'), accounts, compactAt, warming))
+  const pool = await createPoolComponent({ config, logs })
+  env.pool = pool.service
+  const poolService = pool.service
   const admin = createAdminComponent({ logs }, {
     access: adminAccessFromConfig({
       teamDomain: await config.getString('CF_ACCESS_TEAM_DOMAIN'),
@@ -107,14 +150,20 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
       production: process.env.NODE_ENV === 'production'
     }),
     basePath: env.basePath, version: env.version, historyUrl: telemetry.historyUrl,
-    operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery,
-    allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance()
+    operations: telemetry.operations, quota: telemetry.quota, telemetry: telemetry.delivery, accounts,
+    allowance: usage === undefined ? undefined : async (wallet) => usage.forWallet(wallet).balance(),
+    pool: poolService === undefined ? undefined : () => poolService.status(),
+    sessions
   })
+  const drainSeconds = (await config.getNumber('ASSISTANT_DRAIN_SECONDS')) ?? 600
+  if (!Number.isSafeInteger(drainSeconds) || drainSeconds < 0) throw new Error('ASSISTANT_DRAIN_SECONDS must be a whole number of seconds')
   const assistant = createAssistantComponent({ logs }, {
     factory, allowedOrigins: env.allowedOrigins, basePath: env.basePath,
-    limits, operations: telemetry.operations,
+    limits, operations: telemetry.operations, drainMs: drainSeconds * 1000,
     // beside the credential, outside STORAGE_DIR and its project backups
     memory: authPath === undefined ? undefined : createAssistantMemory(join(dirname(authPath), 'memory')),
+    sessions,
+    countsPath: authPath === undefined ? undefined : join(dirname(authPath), 'prompt-counts.json'),
     usage,
     // one image counts 1, so the meter's daily limit is the image cap
     images: imageAuthPath === undefined ? undefined : {
@@ -131,5 +180,5 @@ export async function initComponents(options: ComponentOptions = {}): Promise<Ap
 
   // Stop WebSockets before the HTTP listener, then drain the purge job before storage; telemetry
   // stops after the assistant so the last turns' events are queued.
-  return { config, logs, metrics, store, skills, telemetry, admin, projectStorage, purgeJob, server, statusChecks, assistant }
+  return { config, logs, metrics, store, skills, telemetry, admin, projectStorage, purgeJob, pool, server, statusChecks, assistant }
 }

@@ -16,6 +16,8 @@ export function parcelLimits(parcels: number) {
   return { triangles: parcels * 10_000, entities: parcels * 200, bodies: parcels * 300, materials: Math.floor(log * 20), textures: Math.floor(log * 10), files: parcels * 200 }
 }
 
+export type BudgetKey = keyof ReturnType<typeof parcelLimits>
+
 type Counts = { triangles: number; primitives: number; materials: number; textures: number; bytes: number; shared: string[]; clips: string[]; warnings: string[] }
 // The bytes and distinct files a deployment would carry, from the host that knows the publish rules;
 // without one only the placed model files are counted.
@@ -169,10 +171,12 @@ export async function sceneBudget() {
     files: published.files,
     megabytes: Math.round(published.bytes / MB * 10) / 10
   }
-  const over = (Object.keys(limits) as (keyof typeof limits)[]).filter((key) => used[key] > limits[key])
+  const over = (Object.keys(limits) as BudgetKey[]).filter((key) => used[key] > limits[key])
   return {
     parcels, used, limits, over,
     megabytesOf: publishedSize !== null ? 'every file a deployment carries, before the scene build adds its code' : 'placed model files only',
     note: 'soft limits: explorers warn above them, except files, which Genesis City refuses a deployment above (a World takes up to 10,000). files and megabytes count what megabytesOf says; megabytes is uncapped here.'
   }
 }
+
+export type SceneBudget = Awaited<ReturnType<typeof sceneBudget>>

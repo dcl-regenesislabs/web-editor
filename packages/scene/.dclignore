@@ -1,2 +1,4 @@
 scripts
 *.map
+# empty: the editor scene has no composite, and unpkg answers 500 for an empty file
+main.crdt

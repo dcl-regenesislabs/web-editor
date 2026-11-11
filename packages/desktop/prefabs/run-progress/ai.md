@@ -68,9 +68,12 @@ Confirmed finishes also publish a persisted top-25 board at
 first. Place Leaderboard, choose Source "Run best times" and the same Course Id.
 It works without another script; restart and player departure retain the board.
 
-For a moving deck, attach `scripts/moving-platform.ts` from this prefab's actual
-project folder to an authored platform with a MeshCollider. Its `axis` is x/y/z,
-`distance` is the travel amplitude in metres, and `periodSeconds` is one cycle.
+For a moving deck: attachScript takes only src/scripts/, so write a class there
+that extends `MovingPlatform` from this folder's `scripts/moving-platform.ts`
+(from src/scripts/: `../../custom/run_progress/scripts/moving-platform`, check the
+folder) with the same constructor, `super(src, entity, axis, distance,
+periodSeconds)`, and attach it to an authored platform with a MeshCollider.
+`axis` is x/y/z, `distance` the travel amplitude in metres, `periodSeconds` one cycle.
 Keep its whole path inside the parcels. Every player uses the same shared clock;
 test riding and jumping from it in the engine before treating it as reachable.
 
@@ -93,10 +96,3 @@ Start Spawn and Spawn 1–3. Place Health & Respawn with respawnAt Start Spawn a
 dieBelowHeight below the platforms. Place Run Progress with its default names.
 The HUD and full run loop then work without another scene script.
 
-## Creator workflow
-
-Add and name Trigger Areas, then place Run Progress. In its inspector choose Start Area, Finish Area and
-Start Marker, and use **+ Add** in the checkpoint, spawn-marker and collectible lists; row order is the
-matching order. These are scene entity pickers, so no CSV or generated script is needed; names have no commas.
-Place **UI Theme**, choose one accent color and Dark or Light, and Play. The HUD, result dialog, progress,
-buttons and Announcer use that theme. Keep one UI Theme per scene; its settings override the fallback accent.

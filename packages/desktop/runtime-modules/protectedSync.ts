@@ -210,6 +210,9 @@ interface RealmInfoLike {
 }
 
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']
+// the web editor's preview realm is served from the explorer's own host (decentraland.zone), not
+// this machine, and names itself like `dcl start` does
+const PREVIEW_REALM_NAME = 'LocalPreview'
 
 /**
  * Whether this session is a creator playing their own scene — preview, or a
@@ -218,7 +221,7 @@ const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']
  */
 export function isDevRealm(info: RealmInfoLike | null | undefined): boolean {
   if (info === null || info === undefined) return false
-  if (info.isPreview === true) return true
+  if (info.isPreview === true || info.realmName === PREVIEW_REALM_NAME) return true
   return isLoopback(info.baseUrl) || isLoopback(info.realmName)
 }
 

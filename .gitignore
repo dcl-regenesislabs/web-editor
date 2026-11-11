@@ -6,7 +6,7 @@ dist/
 bin/
 *.tsbuildinfo
 
-# the UI build writes into the external bevy-explorer/deploy/web — not in this repo
+# the UI build writes into the external explorer's deploy/web — not in this repo
 
 # scene runtime
 packages/scene/.dclcache/
@@ -45,3 +45,7 @@ skills-lock.json
 .claude/skills/*
 !.claude/skills/add-builtin-prefab
 .data/
+
+# Local pool signer key and scratch explorations (never commit)
+signer.json
+explorations/

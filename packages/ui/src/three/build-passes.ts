@@ -144,6 +144,27 @@ export function toSceneAxes(root: THREE.Object3D, clips: readonly THREE.Animatio
 
 const sides = (mesh: THREE.Mesh): THREE.Side[] => [mesh.material].flat().map((material) => material.side)
 
+// Seen from behind, a surface shows its texture mirrored, so the back copy turns u about the middle of the
+// geometry's own u range: 0–1 becomes 1−u, a tiled 0–4 stays tiled, an atlas cell stays in its cell
+function mirroredU(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  for (const [name, uv] of Object.entries(geometry.attributes)) {
+    if (!/^uv\d*$/.test(name) || uv.count === 0) continue
+    let low = Infinity
+    let high = -Infinity
+    for (let i = 0; i < uv.count; i++) {
+      low = Math.min(low, uv.getX(i))
+      high = Math.max(high, uv.getX(i))
+    }
+    for (let i = 0; i < uv.count; i++) uv.setX(i, low + high - uv.getX(i))
+  }
+  // with u reversed and the normal turned, the tangent turns too and its handedness w stays
+  const tangent = geometry.getAttribute('tangent')
+  if (tangent !== undefined) {
+    for (let i = 0; i < tangent.count; i++) tangent.setXYZ(i, -tangent.getX(i), -tangent.getY(i), -tangent.getZ(i))
+  }
+  return geometry
+}
+
 // Decentraland culls back faces, so a double-sided part gets a back copy and a back-sided one turns around
 export function singleSided(root: THREE.Object3D): void {
   const doubled: THREE.Mesh[] = []
@@ -154,9 +175,11 @@ export function singleSided(root: THREE.Object3D): void {
     else if (sides(node).every((side) => side === THREE.BackSide)) reversed.push(node)
   })
   const turned = new Map<string, THREE.BufferGeometry>()
-  const turn = (geometry: THREE.BufferGeometry): THREE.BufferGeometry => {
-    let out = turned.get(geometry.uuid)
-    if (out === undefined) turned.set(geometry.uuid, out = flipped(geometry))
+  // a back-sided part keeps its UVs: three shows it mirrored too, and turning it should not change its look
+  const turn = (geometry: THREE.BufferGeometry, back: boolean): THREE.BufferGeometry => {
+    const key = `${geometry.uuid}:${String(back)}`
+    let out = turned.get(key)
+    if (out === undefined) turned.set(key, out = back ? mirroredU(flipped(geometry)) : flipped(geometry))
     return out
   }
   for (const mesh of doubled) {
@@ -166,10 +189,10 @@ export function singleSided(root: THREE.Object3D): void {
     back.position.set(0, 0, 0)
     back.quaternion.identity()
     back.scale.set(1, 1, 1)
-    back.geometry = turn(mesh.geometry)
+    back.geometry = turn(mesh.geometry, true)
     mesh.add(back)
   }
-  for (const mesh of reversed) mesh.geometry = turn(mesh.geometry)
+  for (const mesh of reversed) mesh.geometry = turn(mesh.geometry, false)
   // front and back share the material, now one-sided, so it still counts once
   for (const mesh of [...doubled, ...reversed]) for (const material of [mesh.material].flat()) material.side = THREE.FrontSide
   root.updateMatrixWorld(true)

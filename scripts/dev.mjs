@@ -29,14 +29,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const uiRoot = path.join(root, 'packages', 'ui')
 // Engine source: the @dcl-regenesislabs/bevy-explorer-web npm package (its tarball
 // includes the wasm, so `npm install` = runnable engine, no Rust compile). Fall
-// back to a local bevy-explorer build; BEVY_WEB_DIR overrides both (point it at
-// ../bevy-explorer/deploy/web to test a local engine build).
+// back to a local build in a dcl-one checkout beside this one; BEVY_WEB_DIR overrides both
+// (point it at ../dcl-one/rendering/bevy-explorer/source/deploy/web to test a local engine build).
 function resolveEngineDir() {
   if (process.env.BEVY_WEB_DIR) return process.env.BEVY_WEB_DIR
   const pkg = path.join(root, 'node_modules', '@dcl-regenesislabs', 'bevy-explorer-web')
   // engine/boot.js marks the react-web-era layout our engine.html boots against
   if (fs.existsSync(path.join(pkg, 'engine', 'boot.js'))) return pkg
-  return path.resolve(root, '..', 'bevy-explorer', 'deploy', 'web')
+  return path.resolve(root, '..', 'dcl-one', 'rendering', 'bevy-explorer', 'source', 'deploy', 'web')
 }
 const engineDir = resolveEngineDir()
 const webPort = Number(process.env.BEVY_WEB_PORT ?? 3010)

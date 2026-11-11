@@ -1,6 +1,6 @@
 # Editor host contract v1 (bevy-web <-> editor package)
 
-v0 is implemented in bevy-explorer (react-web/src/features/editorHost/host/host.ts) and here (packages/ui/src/engine/hosted.ts, packages/web/README.md). v1 = v0 plus the following. Both sides implement exactly this; deviations must be reported loudly.
+v0 is implemented in dcl-one's explorer (rendering/bevy-explorer/source/react-web/src/features/editorHost/host/host.ts, and its copy in apps/ui3/src/play) and here (packages/ui/src/engine/hosted.ts, packages/web/README.md). v1 = v0 plus the following. Both sides implement exactly this; deviations must be reported loudly.
 
 ## Entering and leaving
 - The editor is AVAILABLE when the page is on an allowed host and an editor package source exists (loopback: `<PAGE_DIR>editor/`; decentraland.zone: the pinned CDN package, currently none). Availability never downloads anything.
@@ -65,6 +65,29 @@ and holds events until the terms are accepted. The editor sends only `Creator Ac
 properties (`packages/ui/src/analytics.ts`). Older hosts can omit it: the editor then sends the same
 event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, timestamp }]>')`.
 
+## v1.5: features (still `version: 1`, additive)
+
+`features?: { advanced?: boolean }` is what the entry url's `editor-features` turned on. It is a
+comma list, read from the ENTRY url (the engine's url sync keeps it, so a reload has it too):
+
+| `editor-features` | Host | Editor |
+|---|---|---|
+| `experimental` | A released page (`decentraland.zone`, `decentraland.org`) offers Create only with it; loopback always does | — |
+| `advanced` | passes `features.advanced: true` | shows the Advanced button. Without it the web editor is entry mode only: a remembered pick and the reveals that switch to the whole editor (a prefab, an asset review, a rename, inspecting while playing) do nothing, and without an assistant it says so instead of opening the whole editor |
+
+The flag hides the editor; it is not a boundary. Anything behind it must be safe for whoever types
+it. A host without the field offers no advanced; the desktop app is always the whole editor. Share
+links carry `editor-features` from the page they were made on, so the link opens where it was made.
+
+## Share links (no host change)
+
+A link to copy a project another account shared is `?editor=copy-<token>` (the token is 32
+characters, `[a-z2-7]`). It fits the host's project id check, so the host passes it as
+`openProject` like any other; the editor recognises the shape (`packages/web/src/shell/share.ts`),
+saves the shared project as a new one of the signed-in wallet and opens it. No project the store
+makes has that shape: its ids end in a 4-character tail. The host keeps `?editor=` in the url, so
+a reload opens the same link again: the editor then opens the copy it made from that token.
+
 ## The project-storage service (packages/service)
 - Rejects any request whose metadata has `signer === 'decentraland-kernel-scene'` (or a sceneId), or whose `intent !== 'dcl:editor:projects'`; timestamp window 5 minutes; Origin allowlist.
 - API (all under the base url, all signed, wallet = the auth chain's owner, lowercased):
@@ -75,5 +98,7 @@ event as `engineConsole('/track <base64 of a UTF-8 JSON [{ event, properties, ti
   - `PUT /projects/:id/manifest` `{ name, files, baseVersion }` with `baseVersion: null` to create -> `{ version }`; 409/412 `{ version, updatedAt }` when baseVersion is stale; 422 when a referenced blob is missing for this wallet
   - `GET /projects/:id/files/:hash` -> the blob (only hashes in that wallet's manifests)
   - `DELETE /projects/:id` -> soft delete (kept 30 days); `POST /projects/:id/restore`
+  - `GET|PUT|DELETE /projects/:id/share` -> the share flag; `GET /shared/:token` and `/shared/:token/files/:hash` read a shared project ([service README](../packages/service/README.md#api))
 - `hash` is the Decentraland content hash a Worlds deployment uses (hashV1: `bafkrei…` up to 262,144 bytes, `bafybei…` above), so files are hashed once.
+  - `/pool`, `/pool/lease`, `/pool/sign`, `/pool/published`, `/pool/scene`: shared worlds for a wallet without a NAME, off unless configured ([service README](../packages/service/README.md#shared-worlds))
 - Order: content first, manifest last. Project ids match `/^[a-z0-9][a-z0-9-]{0,63}$/`.

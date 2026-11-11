@@ -475,6 +475,21 @@ void app.whenReady().then(async () => {
     if (at === null) throw new Error(`not a library file: ${file}`)
     return new Uint8Array(await fs.promises.readFile(at))
   })
+  ipcMain.handle('library-file-range', async (_e, file: string, offset: number, length: number) => {
+    const at = libraryFilePath(file)
+    if (at === null) throw new Error(`not a library file: ${file}`)
+    if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length <= 0 || length > 4 * 1024 * 1024) {
+      throw new Error(`not a library byte range: ${offset}+${length}`)
+    }
+    const handle = await fs.promises.open(at, 'r')
+    try {
+      const bytes = new Uint8Array(length)
+      const { bytesRead } = await handle.read(bytes, 0, length, offset)
+      return bytes.subarray(0, bytesRead)
+    } finally {
+      await handle.close()
+    }
+  })
   ipcMain.handle('ai-stop', () => aiStop())
   ipcMain.handle('ai-reset', () => aiReset())
   // Engine boot recovery: a corrupt IndexedDB/Service Worker store makes the

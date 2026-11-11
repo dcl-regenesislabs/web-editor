@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { SceneChecksCard } from './SceneChecksCard'
+import { SceneChecksCard, fixRequest } from './SceneChecksCard'
+import { aiStore } from '../../panels/ai-store'
 import { resetSceneChecksForTest, revealSceneChecks, setSceneFindings, type SceneFinding } from './scene-checks'
 import { clearPrefabReveal, prefabStore } from '../../panels/prefab-store'
 import { mount, run } from '../../test/render'
 import { state } from '@scene/state'
 import { unusedFiles } from '../../unused-files'
 import { THUMBNAIL_FIX_ACTION } from './scene-check-thumbnail'
+import { type DclEditorHost, setHost } from '../../engine/hosted'
 
 const blocker: SceneFinding = {
   id: 'server-pool-multi-entity',
@@ -132,6 +134,17 @@ describe('SceneChecksCard render', () => {
   })
 
 
+  it('leaves out a fix that opens a panel where the whole editor is not offered', () => {
+    setHost({ version: 1, engineConsole: async () => '' } as Partial<DclEditorHost> as DclEditorHost)
+    setSceneFindings([blocker, playBlocker])
+    const view = mount(<SceneChecksCard />)
+    view.click(view.find('.eui-checks-head .bar'))
+    expect(view.byText('Show prefab', 'button')).toBeNull()
+    expect(view.byText('Select entity', 'button')).not.toBeNull()
+    view.unmount()
+    setHost(null)
+  })
+
   it('offers the assistant for the thumbnail even before one is signed in', () => {
     setSceneFindings([noThumbnail])
     const view = mount(<SceneChecksCard />)
@@ -238,6 +251,46 @@ describe('SceneChecksCard auto-open', () => {
     expect(view.container.innerHTML).toBe('')
     run(() => setSceneFindings([blocker, warning]))
     expect(view.find('.eui-checks-list')).not.toBeNull()
+    view.unmount()
+  })
+})
+
+describe('SceneChecksCard fix with the assistant', () => {
+  // onBuildEvent: the card's health hook wires itself to the shell it finds
+  const shellHost = window as unknown as { editorShell?: { aiSend: () => Promise<void>; onBuildEvent: () => void } }
+  afterEach(() => {
+    delete shellHost.editorShell
+    run(() => {
+      aiStore.ask = null
+    })
+  })
+
+  it('offers nothing to the assistant when there is none', () => {
+    setSceneFindings([warning])
+    const view = mount(<SceneChecksCard />)
+    view.click(view.find('.eui-checks-head .bar'))
+    expect(view.byText('Fix', 'button')).toBeNull()
+    view.unmount()
+  })
+
+  it('sends one finding to the assistant, title and detail', () => {
+    shellHost.editorShell = { aiSend: async () => {}, onBuildEvent: () => {} }
+    setSceneFindings([warning])
+    const view = mount(<SceneChecksCard />)
+    view.click(view.find('.eui-checks-head .bar'))
+    view.click(view.all('.eui-checks-list li .act button').find((b) => b.textContent === 'Fix') ?? null)
+    expect(aiStore.ask).toBe(fixRequest([warning]))
+    expect(aiStore.ask).toContain(warning.title)
+    expect(aiStore.ask).toContain(warning.detail)
+    view.unmount()
+  })
+
+  it('fixes them all from the collapsed bar, keeping the thumbnail for the creator', () => {
+    shellHost.editorShell = { aiSend: async () => {}, onBuildEvent: () => {} }
+    setSceneFindings([blocker, warning, noThumbnail])
+    const view = mount(<SceneChecksCard />)
+    view.click(view.byText('Fix all', 'button'))
+    expect(aiStore.ask).toBe(fixRequest([blocker, warning]))
     view.unmount()
   })
 })
