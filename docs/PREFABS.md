@@ -257,7 +257,8 @@ Two substitution schemes travel in the composite.
 **`{assetPath}`** — every project file path, rewritten at capture and resolved to
 the prefab folder at instantiation. Rewritten at:
 
-- `GltfContainer.src`, `AudioSource.audioClipUrl`, `VideoPlayer.src`
+- `GltfContainer.src`, `AudioSource.audioClipUrl`, `VideoPlayer.src`,
+  `asset-packs::Placeholder.src` (creator-hub#1287)
 - `Material` pbr `texture` / `alphaTexture` / `emissiveTexture` / `bumpTexture`,
   and unlit `texture`
 - `asset-packs::Script` `value[].path`
