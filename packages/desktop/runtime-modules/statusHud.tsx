@@ -21,9 +21,9 @@ export function mountStatusHud(...args: [HudPosition, () => StatusHudValue] | [E
     const content = read()
     const small = uiSizes('hud').small
     return <UiPanel theme={theme} uiTransform={{ width: 300, height: content.detail ? 150 : 120, padding: 20 }}>
-      <UiText value={content.label} color={theme.accentText} size={small} height={28} align="middle-center" />
-      <UiText value={content.value} color={theme.text} size={36} height={52} align="middle-center" mono />
-      {content.detail && <UiText value={content.detail} color={theme.muted} size={small} height={30} align="middle-center" />}
+      <UiText value={content.label} color={theme.accentText} size={small} height={28} align="middle-center" uiTransform={{ elementId: 'status-hud-label' }} />
+      <UiText value={content.value} color={theme.text} size={36} height={52} align="middle-center" mono uiTransform={{ elementId: 'status-hud-value' }} />
+      {content.detail && <UiText value={content.detail} color={theme.muted} size={small} height={30} align="middle-center" uiTransform={{ elementId: 'status-hud-detail' }} />}
     </UiPanel>
   }, { order: 0 })
 }
