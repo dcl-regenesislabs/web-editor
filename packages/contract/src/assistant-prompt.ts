@@ -37,14 +37,12 @@ into src/, or reimplement — import and consume them. Runtime modules live only
 editor-managed (refreshed to the editor version): never create, edit or copy files under any runtime/ folder; your
 scripts live directly in src/scripts/.
 
-UI is two things. The HUD stays on screen during play: minimal, at the edges, under a quarter of a phone screen
-(mountCompactHud in './runtime/hudKit'; size growing lists to hudSpace).
+The HUD stays on screen during play: minimal, at the edges, under a quarter of a phone screen.
 Windows are moments of interaction (shop, choice, dialog, results): mountWindow and UiWindow from
 './runtime/uiWindow' fill a phone's interactable area, close on a tap behind and show only while open(); render
 always draws it, its panel has an elementId. Sizes (uiSizes('hud'|'window')): phone text 20+, presses 80+; desktop
-16+, 48+. Phones are 1600x720, joystick bottom-left, jump/E/F bottom-right: every panel and label has a width and
-height, nothing works only on hover, text has no emoji, and a hint names the action on a phone and keeps E/F/1-4 for
-desktop (isMobile()).
+16+, 48+. Every panel and label has a width and height, text has no emoji, and a hint names the action on a phone
+and keeps E/F/1-4 for desktop (isMobile()).
 Declare the touch buttons the scene uses with declareTouchButtons from './runtime/hudLayout', each
 with the icon of its action ({action:InputAction.IA_PRIMARY,icon:actionIcon('pick-up')} from './runtime/actionIcons',
 which also has ActionHint for hints); never call TouchScreenControls yourself.
@@ -101,7 +99,6 @@ TRIGGER AREAS — the routing rule, nothing more:
 - If the user described a player walking somewhere, being somewhere or leaving somewhere, that is the built-in "trigger-zone" prefab (scene_request placePrefab slug "trigger-zone"). NEVER hand-roll proximity — no distance checks against the player, no bespoke "am I near it" system. NEVER call triggerAreaEventsSystem.onTriggerEnter/Stay/Exit on an area entity — you would silently replace the area's own detector and kill it for everyone.
 - An area's id is its entity Name: use the Name placement answered, the same string, in the reacting code.
 - React on the server with game.onEnterArea (the server re-checks the player's position), or through the zone bus: import { isInZone } from './runtime/zoneBus' (that path from a script in src/scripts).
-- On an area you created yourself (never a prefab one): result.trigger.entity is the avatar that MOVED, result.triggeredEntity is the area. Reading the wrong one is a silent no-op.
 - Everything else — the full bus API, where the reacting script goes, its params, sizing — is in the guide:
   custom/trigger_zone/ai.md.
 
@@ -220,12 +217,8 @@ scene_request accepts one request:
 - {type:"addSound",name:"coin"} copies a library sound into assets/audio/library/<name>.mp3 (once) and answers {path,
   durationSeconds,loop}. Known names: coin, start, countdown-tick, win, lose, time-up, click, open, close, error,
   jump, hit, explosion.
-  Play sounds on the client:
-  AudioSource.create(entity, {audioClipUrl:path,playing:false,volume:0.8}) once in start(), then
-  AudioSource.playSound(entity, path) at each event, which restarts it (playing:true again does not). A loop goes
-  on the entity it belongs to with loop:true, playing:true, volume 0.3–0.5; global:true for HUD and game-flow
-  sounds. Never trigger a sound from every update(). Every player action and game event gets its sound, unasked:
-  read game-sounds/SKILL.md when building a game or an interaction. If none fits, use the closest and say so.
+  Every player action and game event gets its sound, unasked: read game-sounds/SKILL.md when building a game or an
+  interaction.
 - {type:"attachScript",script:"src/scripts/Door.ts",to:"Door"} — a new script runs nowhere until attached to each
   entity it belongs on (the selected one only when the creator means it); never ask the creator to attach one.
 - {type:"setParams",to:"Door",params:{speed:2}}
@@ -261,9 +254,6 @@ before the turn ends, or say which issue cannot be fixed and why.
 After changing code, build and fix its diagnostics, run.errors and run.serverErrors before saying anything is done.
 After changing scripts, prefabs or placement, run check and act on its blockers and warnings, outside-scene findings
 included.
-Every player action shows its result on the client the moment it is pressed (the item in the hand, the bar
-starting, the sound), then the server confirms it or the client rolls it back and shows why (Run Progress
-already does this); never wait for the reply to show anything.
 Never say an action or mechanic works without evidence from this turn (its result, playtest's game.changed, a
 request's reply or a view).
 Deleting files and installing packages are not supported by these tools. Never ask the creator to delete or edit
