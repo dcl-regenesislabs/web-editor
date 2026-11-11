@@ -31,11 +31,7 @@ const built = path.join(repo, '.data/model-assistant/dist', `${variant}${values.
 const sdk = path.resolve(values.sdk)
 const baseRef = execFileSync('git', ['rev-parse', '--verify', values.baseline], { cwd: repo, encoding: 'utf8' }).trim()
 const previous = (file) => execFileSync('git', ['show', `${baseRef}:${file}`], { cwd: repo, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' })
-const replaced = new Set([
-  'packages/ui/src/ai/scene.ts', 'packages/ui/src/ai/code-model.ts', 'packages/ui/src/assets.ts', 'packages/ui/src/three/worker.ts', 'packages/ui/src/three/library-glb.ts',
-  'packages/ui/src/three/protocol.ts', 'packages/contract/src/assistant.ts', 'packages/contract/src/assistant-prompt.ts', 'packages/contract/src/editor-tools.ts',
-  'packages/service/src/ai/pi.ts', 'packages/service/src/adapters/skills.ts'
-])
+const replaced = new Set(execFileSync('git', ['diff', '--name-only', '--diff-filter=M', '-z', baseRef, '--', 'packages'], { cwd: repo, encoding: 'utf8' }).split('\0').filter((file) => /\.tsx?$/.test(file)))
 const cases = {
   tree: { prompt: 'Create a 5 metre broadleaf tree for a park.', camera: [23, 4, 8], target: [16, 2.5, 16] },
   chair: { prompt: 'Create an oak dining chair with a curved backrest and a padded cream seat, sized for a person.', camera: [17.7, 1.25, 14], target: [16, 0.55, 16] },
@@ -118,7 +114,11 @@ function stop(child) {
 async function ready(url, child) {
   for (let attempt = 0; attempt < 90; attempt++) {
     if (child.exitCode !== null) throw new Error(`Server exited with ${child.exitCode}: ${url}`)
-    try { if ((await fetch(url, { signal: AbortSignal.timeout(1000) })).ok) return } catch {}
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1000) })
+      await response.body?.cancel()
+      if (response.ok) return
+    } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
   throw new Error(`Server did not start: ${url}`)
@@ -210,7 +210,7 @@ export function main(){const e=engine.addEntity();Transform.create(e,{position:{
       return { samples: gaps.length, frameMs: gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length, p95Ms: gaps[Math.floor(gaps.length * 0.95)] }
     })
     await fs.writeFile(path.join(resultDir, 'frames.json'), JSON.stringify(frames, null, 2))
-    await fs.writeFile(path.join(resultDir, 'revision.json'), JSON.stringify({ baseline: baseRef, variant, assistantExitCode: code }))
+    await fs.writeFile(path.join(resultDir, 'revision.json'), JSON.stringify({ baseline: baseRef, variant, replaced: [...replaced].sort(), assistantExitCode: code }))
     if (code !== 0) process.exitCode = 1
     console.log(`FINISH ${variant} ${name}: assistant exit ${code}`)
     if (code === 0 && values['follow-up']) {

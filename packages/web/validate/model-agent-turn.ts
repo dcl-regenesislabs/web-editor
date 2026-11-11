@@ -3,9 +3,9 @@ import path from 'node:path'
 import { chromium } from 'playwright-core'
 import { createPiFactory } from '../../service/src/ai/pi.ts'
 import { createSkillsComponent } from '../../service/src/adapters/skills.ts'
-import { ASSISTANT_EFFORT, ASSISTANT_MODEL } from '../../contract/src/assistant.ts'
+import { ASSISTANT_EFFORT, ASSISTANT_MODEL, isCatalogSearch } from '../../contract/src/assistant.ts'
 import type { BrowserToolName } from '../../contract/src/assistant.ts'
-import { orderedBrowserTools } from './model-agent-tools.ts'
+import { createToolQueue } from '../../contract/src/assistant-queue.ts'
 
 const [configPath] = process.argv.slice(2)
 const config = JSON.parse(await fs.readFile(configPath, 'utf8')) as {
@@ -79,7 +79,8 @@ const runBrowser = async (name: BrowserToolName, args: Record<string, unknown>):
   }
 }
 // Match the service connection: searches may overlap, but project edits run in order.
-const agent = await factory.create(params, orderedBrowserTools(runBrowser), (event) => { answer += event.text })
+const browserCalls = createToolQueue()
+const agent = await factory.create(params, (name, args) => browserCalls.run(isCatalogSearch(name, args), () => runBrowser(name, args)), (event) => { answer += event.text })
 const timer = setTimeout(() => { void agent.abort() }, config.timeoutMs)
 let failure: string | undefined
 try {

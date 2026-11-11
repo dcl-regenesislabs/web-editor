@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest'
-import { orderedBrowserTools } from './model-agent-tools'
+import { createToolQueue } from './assistant-queue'
+import { isCatalogSearch, type BrowserToolName } from './assistant'
+
+function orderedBrowserTools(work: (name: BrowserToolName, args: Record<string, unknown>) => Promise<string>) {
+  const queue = createToolQueue()
+  return (name: BrowserToolName, args: Record<string, unknown>) => queue.run(isCatalogSearch(name, args), () => work(name, args))
+}
 
 it('preserves both simultaneous script edits and rebuilds the edited version', async () => {
   let script = 'width=1;height=1'

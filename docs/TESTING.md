@@ -164,9 +164,10 @@ dependency template. Some SDK versions reinstall when the directory itself is a
 link and ignore `--skip-install` during `start`. The runner checks that the shared
 packages remain linked after startup.
 
-The baseline replaces the changed modeling and prompt modules with their contents
-at `--baseline`, and hides the new modeling skill; it is not a whole-repository
-checkout. `--cases tree,chair` selects cases. Output directories must be fresh.
+The baseline derives modified TypeScript modules from `git diff --diff-filter=M`
+against `--baseline` and loads their earlier contents. Added modules remain available;
+the new modeling skill is hidden. This is a source overlay, not a whole-repository
+checkout. `revision.json` records the overridden paths. `--cases tree,chair` selects cases. Output directories must be fresh.
 `--build-only` prepares bundles without running a provider; `--skip-build` reuses
 them only when sources have not changed.
 `--effort low|medium|high` overrides reasoning only in the benchmark bundle;
