@@ -1,5 +1,5 @@
 import { startThreeWorker } from '../three/client'
-import type { ModelPreview } from '../three/model-preview'
+import type { ModelPreview } from '@dcl-editor/contract'
 import type { ThreeReply } from '../three/protocol'
 import { dataLayerReadFileBytes } from '../engine/datalayer'
 
@@ -7,7 +7,7 @@ export async function previewCodeModel(bytes: Uint8Array<ArrayBuffer>, uris: rea
   signal.throwIfAborted()
   const files = Object.fromEntries(await Promise.all(uris.map(async (uri) => [uri, new Uint8Array(await dataLayerReadFileBytes(`models/${uri}`)).buffer])))
   signal.throwIfAborted()
-  const worker = await startThreeWorker('view')
+  const worker = await startThreeWorker('view', signal)
   let timer: ReturnType<typeof setTimeout> | undefined
   const stop = () => worker.terminate()
   let abort = stop

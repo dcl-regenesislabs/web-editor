@@ -122,6 +122,28 @@ export type EditorToolContent =
   | { type: 'text'; text: string }
   | { type: 'image'; mimeType: 'image/jpeg'; data: string }
 
+export interface ModelPreview {
+  mimeType: 'image/jpeg'
+  image: string
+  width: number
+  height: number
+}
+
+export const MODEL_PREVIEW_OMITTED = 'Preview omitted. Use view to inspect this model in the scene.'
+
+export function modelPreviewLimit(): (value: unknown) => value is ModelPreview {
+  let images = 0, characters = 0
+  return (value): value is ModelPreview => {
+    if (!object(value) || value.mimeType !== 'image/jpeg' || typeof value.image !== 'string' || value.image.length === 0 ||
+      typeof value.width !== 'number' || !Number.isInteger(value.width) || value.width <= 0 ||
+      typeof value.height !== 'number' || !Number.isInteger(value.height) || value.height <= 0 ||
+      images >= 4 || characters + value.image.length > 400_000) return false
+    images++
+    characters += value.image.length
+    return true
+  }
+}
+
 function picture(value: unknown): string {
   if (!object(value) || typeof value.image !== 'string' || value.mimeType !== 'image/jpeg') throw new Error('The editor sent no picture.')
   return value.image
@@ -131,20 +153,25 @@ function picture(value: unknown): string {
 export function editorToolContent(name: EditorToolName, text: string): EditorToolContent[] {
   if (name === 'scene_request') {
     const images: EditorToolContent[] = []
+    const acceptPreview = modelPreviewLimit()
+    let stripped = false
     const extract = (value: unknown): unknown => {
       if (!object(value)) return value
       const { preview, ...result } = value
       if (preview !== undefined) {
-        const caption = Array.isArray(result.models) ? 'Catalog thumbnails. Compare the labelled models before choosing.'
-          : `Exported model ${String(result.path ?? result.script ?? '')}: three studio views. Check shape and materials; scene lighting is separate.`
-        images.push({ type: 'text', text: caption },
-          { type: 'image', mimeType: 'image/jpeg', data: picture(preview) })
+        stripped = true
+        if (acceptPreview(preview)) {
+          const caption = Array.isArray(result.models) ? 'Catalog thumbnails. Compare the labelled models before choosing.'
+            : `Exported model ${String(result.path ?? result.script ?? '')}: three studio views. Check shape and materials; scene lighting is separate.`
+          images.push({ type: 'text', text: caption },
+            { type: 'image', mimeType: 'image/jpeg', data: preview.image })
+        } else result.previewNote = MODEL_PREVIEW_OMITTED
       }
       if (Array.isArray(result.results)) result.results = result.results.map((item: unknown) => object(item) ? { ...item, result: extract(item.result) } : item)
       return result
     }
     const result = extract(JSON.parse(text))
-    return [...images, { type: 'text', text: images.length > 0 ? JSON.stringify(result) : text }]
+    return [...images, { type: 'text', text: stripped ? JSON.stringify(result) : text }]
   }
   if (name !== 'view' && name !== 'ui_layout' && name !== 'mobile_check' && name !== 'playtest') return [{ type: 'text', text }]
   const answer: unknown = JSON.parse(text)

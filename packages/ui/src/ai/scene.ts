@@ -1,4 +1,4 @@
-import { isModelScriptPath, isReservedEntity, object } from '@dcl-editor/contract'
+import { isModelScriptPath, isReservedEntity, modelPreviewLimit, MODEL_PREVIEW_OMITTED, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
 import { buildFromSchema, getSchema, toEngineValue, type ComponentSchema } from '@scene/schema'
 import { cmd } from '../engine/cmd'
@@ -110,9 +110,13 @@ const MAX_BATCH = 200
 
 // A batch answers what the request did, not the components it just wrote: echoing them back
 // filled the conversation with the assistant's own input. inspect reads them when needed.
-function brief(result: unknown): unknown {
+function brief(result: unknown, acceptPreview: ReturnType<typeof modelPreviewLimit>): unknown {
   if (!object(result)) return result
   const { components: _components, value: _value, ...rest } = result
+  if (rest.preview !== undefined && !acceptPreview(rest.preview)) {
+    delete rest.preview
+    rest.previewNote = MODEL_PREVIEW_OMITTED
+  }
   return rest
 }
 
@@ -125,10 +129,11 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     }
     // one failure doesn't stop the rest: each later request may not depend on it
     const results: unknown[] = []
+    const acceptPreview = modelPreviewLimit()
     for (const item of request.requests) {
       if (object(item) && item.type === 'batch') throw new Error('Batches do not nest.')
       try {
-        results.push({ ok: true, result: brief(await browserSceneRequest(item, signal, settings)) })
+        results.push({ ok: true, result: brief(await browserSceneRequest(item, signal, settings), acceptPreview) })
       } catch (e) {
         signal.throwIfAborted()
         results.push({ ok: false, error: e instanceof Error ? e.message : String(e) })
@@ -275,7 +280,10 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
     const asset = modelById(request.id)
     if (asset === undefined) throw new Error('No catalog model has that id. Use findModels.')
     const rel = await importCatalogFile(asset)
-    const info = await dataLayerReadFileBytes(rel).then(inspectModel).catch(() => null)
+    const info = await dataLayerReadFileBytes(rel).then(inspectModel).catch((error: unknown) => {
+      log.warn('catalog model inspection failed', rel, error)
+      return null
+    })
     const cost = await catalogTextureCost(rel, info)
     const previous = request.into === undefined ? undefined : state.snapshot[entity(request.into)]?.Transform
     const pose = request.height === undefined ? {} : fitModelHeight(info?.bounds ?? null, request.height,
@@ -338,6 +346,7 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
     try {
       preview = await previewCodeModel(bytes, info.sharedImages, signal)
     } catch (error) {
+      signal.throwIfAborted()
       log.warn('built model preview failed', error)
       warnings.push('The model was saved, but its studio preview failed. Use view to inspect the placed entity; do not rebuild just to get a preview.')
     }

@@ -1,5 +1,5 @@
 import { catalogUrl, opendclUrl, readCapped, type ModelAsset } from '../assets'
-import type { ModelPreview } from '../three/model-preview'
+import type { ModelPreview } from '@dcl-editor/contract'
 import { log } from '../log'
 
 export async function previewCatalogModels(models: readonly ModelAsset[], signal: AbortSignal): Promise<ModelPreview | undefined> {
@@ -9,7 +9,10 @@ export async function previewCatalogModels(models: readonly ModelAsset[], signal
     const url = opendclUrl(model.thumbnailUrl)
     if (url === undefined || !catalogUrl(url)) return null
     const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(3000)]) })
-    if (!response.ok) throw new Error(`Thumbnail HTTP ${response.status}`)
+    if (!response.ok) {
+      await response.body?.cancel()
+      throw new Error(`Thumbnail HTTP ${response.status}`)
+    }
     const bytes = await readCapped(response, 2 * 1024 * 1024)
     return createImageBitmap(new Blob([bytes]), { resizeWidth: 256, resizeHeight: 256 })
   }))

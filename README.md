@@ -273,6 +273,9 @@ irregular rocks, curved tapered parts and turned profiles with less modeling cod
 directional texture mapping. Each build returns three studio views of the exported model for the assistant
 to inspect, plus its build time and file size; it is instructed to check placement and lighting in the scene. If studio
 preview is unavailable, the saved model remains usable and the assistant is told to inspect it in the scene.
+Each tool answer carries at most four model previews within a shared payload limit;
+other models remain listed and can be inspected with `view`. Script writes and edits
+protect `models/src/` in `.dclignore` even before the first model build.
 The assistant uses medium reasoning effort on web and desktop, with model budgets,
 preview images and visual-check instructions.
 Its core geometry and material guidance is included in every turn, so common models

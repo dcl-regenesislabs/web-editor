@@ -3,10 +3,12 @@ import { browserSceneRequest } from './scene'
 import { state } from '@scene/state'
 import { ensureContentMapped, importCatalogFile, loadModelCatalog, modelById, type ModelAsset } from '../assets'
 import { inspectModel } from '../model-info'
-import { sceneTextures } from '../scene-budget'
+import { sceneBudget, sceneTextures } from '../scene-budget'
 import { buildCodeModel } from './code-model'
 import { materialFile } from '../three/materials'
-import { dataLayerListFiles, dataLayerReadFileBytes, dataLayerSaveFileBytes } from '../engine/datalayer'
+import { dataLayerListFiles, dataLayerReadFile, dataLayerReadFileBytes, dataLayerSaveFileBytes } from '../engine/datalayer'
+import { previewCodeModel } from './model-preview'
+import { previewCatalogModels } from './catalog-preview'
 import { soundBytes } from './library-bytes'
 import { createPrefabFrom } from '../actions/prefabs'
 import { flushPendingSave } from '../core/autosave'
@@ -32,7 +34,8 @@ vi.mock('../actions/entities', () => ({ uiAddEntity: vi.fn() }))
 vi.mock('../actions/components', () => ({ uiSetComponentValue: setValue, uiDeleteComponent: deleteValue }))
 vi.mock('../assets', () => ({ importCatalogFile: vi.fn(), loadModelCatalog: vi.fn(async () => []), modelById: vi.fn(() => undefined), ensureContentMapped: vi.fn(async () => true) }))
 vi.mock('./catalog-preview', () => ({ previewCatalogModels: vi.fn(async () => undefined) }))
-vi.mock('../engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
+vi.mock('./model-preview', () => ({ previewCodeModel: vi.fn() }))
+vi.mock('../engine/datalayer', async (real) => ({ ...(await real<object>()), dataLayerReadFile: vi.fn(), dataLayerListFiles: vi.fn(), dataLayerReadFileBytes: vi.fn(async () => new Uint8Array(0)), dataLayerSaveFileBytes: vi.fn() }))
 vi.mock('./library-bytes', () => ({ materialBytes: vi.fn(), soundBytes: vi.fn() }))
 vi.mock('../engine/bus', () => ({ sendToScene: vi.fn() }))
 vi.mock('./code-model', () => ({ buildCodeModel: vi.fn(async () => { throw new Error('built') }), overBudget: () => [], MODEL_BUDGET: {} }))
@@ -42,7 +45,10 @@ vi.mock('../actions/spawned-only', () => ({ uiSetSpawnedOnly: vi.fn() }))
 vi.mock('../core/autosave', () => ({ asAssistant: <T>(work: () => Promise<T>) => work(), flushPendingSave: vi.fn(async () => ({ pending: true, ok: true })) }))
 vi.mock('../panels/prefab-store', () => ({ prefabStore: { items: [] }, refreshPrefabs: vi.fn(async () => [{ folder: 'custom/zombie', data: { id: 'p-zombie', name: 'Zombie' } }]) }))
 vi.mock('../model-info', async (real) => ({ ...(await real<object>()), inspectModel: vi.fn() }))
-vi.mock('../scene-budget', async (real) => ({ ...(await real<object>()), sceneTextures: vi.fn() }))
+vi.mock('../scene-budget', async (real) => {
+  const module = await real<{ sceneBudget: typeof sceneBudget }>()
+  return { ...module, sceneTextures: vi.fn(), sceneBudget: vi.fn(module.sceneBudget) }
+})
 vi.mock('./request-format', () => ({ resolveEntityRef: (_: unknown, ref: string) => ref }))
 vi.mock('../features/editor/scene-check-context', () => ({
   refreshSceneChecks: async () => [{ id: 'empty-prefab-ref', level: 'blocker', title: 'Nothing picked', detail: 'Pick a prefab', entityId: '512', fix: { label: 'x', action: 'y' } }]
@@ -128,6 +134,30 @@ describe('assistant scene requests', () => {
     expect(dog.slice(2).sort()).toEqual(['Basenji Dog Photo Print', 'METADOGE Dough Cut'])
     const stones = await found('stones')
     expect(stones.slice(0, 2).sort()).toEqual(['Rock01 Rework', 'Stone 03'])
+  })
+
+  it('bounds preview images before sending a batch to the service', async () => {
+    vi.mocked(previewCatalogModels).mockResolvedValue({ mimeType: 'image/jpeg', image: 'AAAA', width: 1024, height: 608 })
+    try {
+      const result = await browserSceneRequest({ type: 'batch', requests: Array.from({ length: 10 }, () => ({ type: 'findModels', query: 'dog' })) }, new AbortController().signal)
+      const previews = JSON.stringify(result).match(/AAAA/g)
+      expect(previews).toHaveLength(4)
+      expect(JSON.stringify(result)).toContain('Preview omitted')
+    } finally { vi.mocked(previewCatalogModels).mockResolvedValue(undefined) }
+  })
+
+  it('propagates Stop during a saved model preview without another budget inspection', async () => {
+    const controller = new AbortController()
+    vi.mocked(buildCodeModel).mockResolvedValueOnce({ bytes: new Uint8Array(8), clips: [], library: [], warnings: [] })
+    vi.mocked(inspectModel).mockReturnValueOnce({ triangles: 100, materials: [], textures: 0, largestImage: 0, sharedImages: [], externalResources: [], textureProblems: [] } as unknown as ReturnType<typeof inspectModel>)
+    vi.mocked(sceneTextures).mockResolvedValueOnce({ used: 0, limit: 10, shared: new Set() })
+    vi.mocked(dataLayerReadFile).mockResolvedValueOnce('models/src/\n')
+    vi.mocked(previewCodeModel).mockImplementationOnce(async () => { controller.abort(new Error('Stopped')); throw controller.signal.reason })
+    vi.mocked(sceneBudget).mockClear()
+    try {
+      await expect(browserSceneRequest({ type: 'buildModel', into: '512', code: 'root' }, controller.signal)).rejects.toThrow('Stopped')
+      expect(sceneBudget).toHaveBeenCalledOnce()
+    } finally { vi.mocked(dataLayerSaveFileBytes).mockClear() }
   })
 
   it('refuses a model whose shared materials would take the scene past its texture limit, counting the ones it already has once', async () => {

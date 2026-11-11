@@ -1,4 +1,4 @@
-import type { ModelPreview } from './model-preview'
+import type { ModelPreview } from '@dcl-editor/contract'
 
 export const MODEL_BUDGET = { triangles: 8000, materials: 6, textures: 4, largestTexture: 512 }
 

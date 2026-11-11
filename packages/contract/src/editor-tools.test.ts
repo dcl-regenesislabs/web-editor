@@ -28,6 +28,25 @@ describe('model preview tool results', () => {
     const result = JSON.stringify({ path: 'models/tree.glb', warnings: ['preview failed'] })
     expect(editorToolContent('scene_request', result)).toEqual([{ type: 'text', text: result }])
   })
+
+  it('bounds images across nested batch results and preserves every result without base64', () => {
+    const results = Array.from({ length: 200 }, (_, id) => ({ ok: true, result: { id, preview } }))
+    const content = editorToolContent('scene_request', JSON.stringify({ results: [{ ok: true, result: { results } }] }))
+    expect(content.filter((part) => part.type === 'image')).toHaveLength(4)
+    const last = content.at(-1)!
+    expect(last.type === 'text' && last.text).not.toContain('AAAA')
+    expect(last.type === 'text' && JSON.parse(last.text).results[0].result.results).toHaveLength(200)
+  })
+
+  it.each([null, { image: 'AAAA' }, { ...preview, width: -1 }, { ...preview, image: 'A'.repeat(400_001) }])(
+    'keeps successful build metadata when its preview is malformed or oversized', (preview) => {
+      const content = editorToolContent('scene_request', JSON.stringify({ path: 'models/tree.glb', preview }))
+      expect(content.filter((part) => part.type === 'image')).toHaveLength(0)
+      const last = content.at(-1)!
+      expect(last.type === 'text' && JSON.parse(last.text)).toMatchObject({ path: 'models/tree.glb' })
+      expect(last.type === 'text' && last.text).not.toContain('AAAA')
+    }
+  )
 })
 
 describe('editorToolContent', () => {

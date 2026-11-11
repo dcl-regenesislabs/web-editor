@@ -1,12 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
-export interface ModelPreview {
-  mimeType: 'image/jpeg'
-  image: string
-  width: number
-  height: number
-}
+import type { ModelPreview } from '@dcl-editor/contract'
 
 // A studio contact sheet checks the exported asset; the scene's lighting still needs an in-world view.
 export async function renderModelPreview(bytes: ArrayBuffer, files: Record<string, ArrayBuffer>): Promise<ModelPreview> {
@@ -14,6 +9,7 @@ export async function renderModelPreview(bytes: ArrayBuffer, files: Record<strin
   const manager = new THREE.LoadingManager()
   manager.setURLModifier((url) => blobs.get(url) ?? url)
   const scene = new THREE.Scene()
+  const meshes: THREE.Mesh[] = []
   const canvas = new OffscreenCanvas(384, 384)
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
   try {
@@ -22,7 +18,10 @@ export async function renderModelPreview(bytes: ArrayBuffer, files: Record<strin
     scene.background = new THREE.Color('#d6d9dc')
     const { scene: model } = await new GLTFLoader(manager).parseAsync(bytes, '')
     const hidden: THREE.Object3D[] = []
-    model.traverse((node) => { if (/_collider$/i.test(node.name)) hidden.push(node) })
+    model.traverse((node) => {
+      if (node instanceof THREE.Mesh) meshes.push(node)
+      if (/_collider$/i.test(node.name)) hidden.push(node)
+    })
     for (const node of hidden) node.removeFromParent()
     scene.add(model)
     const bounds = new THREE.Box3().setFromObject(model)
@@ -55,14 +54,13 @@ export async function renderModelPreview(bytes: ArrayBuffer, files: Record<strin
     })
     return { mimeType: 'image/jpeg', image, width: 1152, height: 384 }
   } finally {
-    scene.traverse((node) => {
-      if (!(node instanceof THREE.Mesh)) return
+    for (const node of meshes) {
       node.geometry.dispose()
       for (const material of [node.material].flat()) {
         for (const value of Object.values(material)) if (value instanceof THREE.Texture) value.dispose()
         material.dispose()
       }
-    })
+    }
     renderer.dispose()
     for (const blob of blobs.values()) URL.revokeObjectURL(blob)
   }

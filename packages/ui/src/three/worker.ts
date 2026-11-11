@@ -173,7 +173,7 @@ function externalUris(glb: ArrayBuffer, given: Record<string, ArrayBuffer>): boo
     const rows: unknown = typeof json === 'object' && json !== null ? Reflect.get(json, key) : undefined
     return Array.isArray(rows) ? rows.map((row: unknown) => (typeof row === 'object' && row !== null ? Reflect.get(row, 'uri') : undefined)) : []
   }
-  return [...uris('buffers'), ...uris('images')].some((uri) => typeof uri === 'string' && !uri.startsWith('data:') && given[uri] === undefined)
+  return [...uris('buffers'), ...uris('images')].some((uri) => typeof uri === 'string' && !uri.startsWith('data:') && !Object.prototype.hasOwnProperty.call(given, uri))
 }
 
 let view: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; target: THREE.Vector3; yaw: number; pitch: number; distance: number } | null = null

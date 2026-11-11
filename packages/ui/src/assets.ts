@@ -175,7 +175,10 @@ const MAX_MODEL_BYTES = 50 * 1024 * 1024
 
 // streamed, so an oversized or lying content-length can't fill memory first
 export async function readCapped(res: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
-  if (Number(res.headers.get('content-length')) > max || res.body === null) throw new Error(`File exceeds the ${max / 1024 / 1024} MB limit.`)
+  if (Number(res.headers.get('content-length')) > max || res.body === null) {
+    await res.body?.cancel()
+    throw new Error(`File exceeds the ${max / 1024 / 1024} MB limit.`)
+  }
   const reader = res.body.getReader()
   const chunks: Uint8Array[] = []
   let size = 0
