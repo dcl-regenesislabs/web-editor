@@ -6,30 +6,46 @@ import { state } from '@scene/state'
 import { cmd } from '../engine/cmd'
 import { mobileCheck, type ProjectSources } from './mobile-check'
 import { playtestPlatform } from './playtest'
-import { measuredNodes, type Components } from './ui-measure'
+import { measuredNodes, unmeasurable, type Components, type SceneSdk } from './ui-measure'
 import { captureView } from './view'
 
-function measure(snapshot: Record<string, Components>): Record<string, unknown> {
+/** What the desktop editor knows about the scene's installed SDK; the web build uses the editor's own. */
+export type SceneSdkProbe = () => Promise<SceneSdk | null>
+
+const LAYOUT_SETTLE_MS = 500
+
+function measure(snapshot: Record<string, Components>, sdk: SceneSdk | null): Record<string, unknown> {
   const root = snapshot['0'] ?? {}
-  const { nodes, unnamed } = measuredNodes(snapshot)
-  if (nodes.length === 0 && unnamed > 0) {
-    throw new Error(`None of the ${unnamed} UI nodes has an elementId: the engine measures only nodes with one. If this project's SDK has elementId in uiTransform, give every button, panel and text a unique one and measure again; if it does not, check the layout rules by hand from the code and a view picture.`)
-  }
+  const blocked = unmeasurable(snapshot, sdk)
+  if (blocked !== null) return { canvas: root.UiCanvasInformation, measured: false, unmeasurable: blocked.reason, why: blocked.why, instead: blocked.instead }
+  const { nodes, unnamed, skipped } = measuredNodes(snapshot)
   return {
     canvas: root.UiCanvasInformation,
+    measured: true,
     nodes,
-    ...(unnamed > 0 ? { unmeasured: `${unnamed} UI nodes have no elementId and were not measured` } : {})
+    ...(nodes.length === 0 ? { note: 'no measured node is on screen now: open the panel or dialog (playtest click or input) and measure again' } : {}),
+    ...(unnamed > 0 ? { unmeasured: `${unnamed} UI nodes have no elementId and were not measured` } : {}),
+    // text and press targets are what the layout rules check: name them so a short node list is not read as a pass
+    ...(skipped.length > 0 ? { notChecked: skipped } : {})
   }
 }
 
-export async function uiLayout(request: Record<string, unknown>, signal: AbortSignal, sources?: ProjectSources): Promise<unknown> {
+export async function uiLayout(request: Record<string, unknown>, signal: AbortSignal, sources?: ProjectSources, sdk?: SceneSdkProbe): Promise<unknown> {
   signal.throwIfAborted()
+  const probe = async (): Promise<SceneSdk | null> => sdk === undefined ? null : await sdk()
   if (request.check === true) {
     if (sources === undefined) throw new Error('The mobile check needs the project files.')
-    return mobileCheck(signal, sources)
+    return mobileCheck(signal, sources, await probe())
   }
   if (state.frozen) throw new Error('Start playtesting first (platform mobile for the phone layout): the UI is laid out while the game runs.')
-  const layout = measure(await cmd.crdtSnapshot())
+  const scene = await probe()
+  let layout = measure(await cmd.crdtSnapshot(), scene)
+  // right after a playtest starts the engine can write the layout a frame or two late: look again before blaming it
+  if (layout.unmeasurable === 'explorer-has-no-layout-feedback') {
+    await new Promise((resolve) => setTimeout(resolve, LAYOUT_SETTLE_MS))
+    signal.throwIfAborted()
+    layout = measure(await cmd.crdtSnapshot(), scene)
+  }
   signal.throwIfAborted()
   const view = await captureView({ entity: null, from: null, lookAt: null }, signal)
   return { platform: playtestPlatform(), ...layout, view }

@@ -158,6 +158,9 @@ scene_request accepts one request:
   and Material, and MeshCollider when the model carries its own
   colliders, with the Transform scale the model needs: a stand-in's scale was its size and would stretch the
   model. src comes from list_files kind models, never guessed.
+- {type:"deleteEntity",entity:"id or unique name"} deletes it and all under it as the Delete key does (one undo
+  step) and answers deleted: each id and name. Refuses code-made entities and shared names. Delete what you
+  replaced or redid (an old placement, a test object) in the same batch, or what the creator asks; say what went.
 - {type:"findModels",query:"stone platform",limit:8} searches the model catalog, 5,700 free models, by whole words
   in name, category, tags and description; answers id, name, category, size in metres, triangles and KB, lightest
   first among equals; flat:true marks a picture, sign or thin plane, listed last unless the query asks for one.
@@ -242,10 +245,10 @@ scene_request accepts one request:
   which are soft (explorers warn, slower devices struggle): keep every value under, and simplify or grow the
   parcels first. megabytes is the deploy size; keep it small, as big scenes load slowly.
 - {type:"batch",requests:[...]} runs up to 200 of the requests above in order, reads and writes together, and
-  returns one {ok,result|error} per request, the result naming what changed (ids, model paths) without the
-  components you sent; inspect reads them back. A failure does not stop the rest. Later requests can name entities
-  created earlier in the batch. One batch per change, not one request per call: outline the entities you need,
-  then every edit in one batch, then view.
+  returns one {ok,result|error} per request, an edit's naming what changed (ids, model paths), not what you sent;
+  inspect reads it back. same.<type> has what edits share. A failure does not stop the rest. Later requests can
+  name entities created earlier in the batch. One batch per change, not one request per call: outline the
+  entities you need, then every edit in one batch, then view.
 Edits need edit mode, and playtest and mobile_check leave the scene playing: playtest stop before any edit.
 You can see the scene: view returns a picture from the creator's camera; framed on an entity when you name one;
 or from a world position you choose (from, lookAt in metres): above the scene centre looking down for a plan view,
@@ -268,7 +271,8 @@ Never say an action or mechanic works without evidence from this turn (its resul
 request's reply or a view).
 Play a core loop in one playtest steps call (walk to entities by name, waitFor game.state), rerunning from the
 failing step.
-Deleting entities or files and installing packages are not supported by these tools.
+Deleting files and installing packages are not supported by these tools. Never ask the creator to delete or edit
+by hand what a request above does.
 Each turn you get only a count of the scene's entities and of the project's files, plus the entities the creator
 has selected. Look up what you need before acting, as you would explore a codebase: outline to find entities by
 name and see where they are, inspect for the components you will change, list_files with a kind and a match for

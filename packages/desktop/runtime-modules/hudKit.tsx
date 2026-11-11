@@ -17,7 +17,7 @@
 // Each has a fixed height from uiSizes('hud') (./uiComponents), so a whole compact HUD covers under 5% of a phone
 // screen. HudIconButton is for rare actions (menu, mute, language): put it in the right column or the top corners,
 // never under the right thumb, where the phone's own action buttons are. `id` becomes the uiTransform elementId of
-// the text, so the editor's mobile check measures it.
+// the text (and `<id>-label` of a chip's label), so the editor's mobile check measures it.
 import ReactEcs, { UiEntity } from '@dcl/sdk/react-ecs'
 import { engine } from '@dcl/sdk/ecs'
 import { isMobile } from '@dcl/sdk/platform'
@@ -54,7 +54,7 @@ export function HudChip(props: { value: string; label?: string; icon?: string; t
     borderRadius: theme.radius, flexShrink: 0, pointerFilter: 'none' }} uiBackground={{ color: theme.panel }}>
     {props.icon !== undefined && <UiEntity uiTransform={{ width: iconSize, height: iconSize, flexShrink: 0, margin: { right: size.gap }, pointerFilter: 'none' }}
       uiBackground={{ texture: { src: props.icon }, textureMode: 'stretch', color: toneColor(theme, props.tone) }} />}
-    {props.label !== undefined && <UiText value={props.label} color={theme.muted} size={size.small} height={iconSize} uiTransform={{ width: 'auto', flexGrow: 1 }} />}
+    {props.label !== undefined && <UiText value={props.label} color={theme.muted} size={size.small} height={iconSize} uiTransform={{ width: 'auto', flexGrow: 1, ...(props.id === undefined ? {} : { elementId: `${props.id}-label` }) }} />}
     <UiText value={props.value} color={toneColor(theme, props.tone)} size={size.text} height={iconSize} mono
       align={props.label === undefined && props.icon === undefined ? 'middle-center' : 'middle-right'}
       uiTransform={{ width: 'auto', flexGrow: 1, ...(props.id === undefined ? {} : { elementId: props.id }) }} />

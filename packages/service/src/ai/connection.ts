@@ -2,6 +2,7 @@ import type { ILoggerComponent } from '@well-known-components/interfaces'
 import { ASSISTANT_ID, ASSISTANT_MAX_IMAGE_BYTES, isCatalogSearch, object } from '../../../contract/src/assistant.ts'
 import type { AssistantServerMessage, BrowserToolName } from '../../../contract/src/assistant.ts'
 import type { AiSendParams } from '../../../contract/src/shell.ts'
+import { editorToolDeadlineMs, editorToolTimeoutMessage } from '../../../contract/src/editor-tools.ts'
 import { MEMORY_ID, MEMORY_KEY } from './memory.ts'
 import type { MemoryRef, MemorySaveResult, WalletMemory } from './memory.ts'
 import type { WalletUsage } from './usage.ts'
@@ -29,11 +30,15 @@ const TOOL_LABELS: Record<BrowserToolName, string> = {
   search_files: 'Searching the code', edit_file: 'Editing a file'
 }
 
+// past the editor's own deadline for a call: the editor answers first, this covers one that never does
+const DEADLINE_GRACE_MS = 30_000
+
 // a picture is quick or stuck: the browser gives up on it sooner, this covers an editor that does not
-function toolTimeout(tool: BrowserToolName): number {
+export function toolTimeout(tool: BrowserToolName, args: Record<string, unknown> = {}): number {
   if (tool === 'read_file' || tool === 'list_files' || tool === 'search_files') return 60_000
   if (tool === 'view') return 2 * 60_000
-  return 15 * 60_000
+  const deadline = editorToolDeadlineMs(tool, args)
+  return deadline === undefined ? 15 * 60_000 : deadline + DEADLINE_GRACE_MS
 }
 
 interface Pending {
@@ -150,12 +155,21 @@ export function createConnection(options: {
       const step = ++live.steps
       return new Promise<string>((resolve, reject) => {
         const cancel = () => finish(false, 'The turn was cancelled.')
+        const limit = options.toolTimeoutMs ?? toolTimeout(tool, args)
         const timer = setTimeout(() => {
           tally(live, tool, false)
+          // the socket answers pings (server.ts closes it otherwise): the page is there, its editor never answered
+          options.logger.info(`assistant tool timeout turn=${live.id} n=${step} tool=${tool} limit=${limit}ms`)
+          if (editorToolDeadlineMs(tool, args) !== undefined) {
+            // the editor gives up on these itself; one that does not has not got that yet, or is stuck. The model can
+            // retry once or carry on, so the turn goes on.
+            finish(false, editorToolTimeoutMessage(tool, limit, 'the editor may have reloaded, or it is stuck on the scene'))
+            return
+          }
           finish(false, 'The browser did not answer the tool request.')
           // paused, not ended: the conversation keeps the failed call, so Continue picks up from it
           abort(`${label ?? TOOL_LABELS[tool]} timed out. Check the scene, then continue.`, true, 'timed_out')
-        }, options.toolTimeoutMs ?? toolTimeout(tool))
+        }, limit)
         function finish(ok: boolean, text: string) {
           if (!pending.delete(callId)) return
           clearTimeout(timer)

@@ -1,6 +1,6 @@
 // The desktop assistant reaches the engine through this server: the CLI speaks MCP's JSON-RPC
 // over HTTP, so the handshake, the tool list and a call with a picture are checked end to end.
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EditorToolCall } from '@dcl-editor/contract'
 import { createPageForwarder, editorMcpConfig, startEditorMcp, type EditorMcp } from './editor-mcp'
 
@@ -67,6 +67,30 @@ describe('page forwarder', () => {
     stop.abort()
     expect(await stopped).toEqual({ ok: false, message: 'Stopped.' })
     expect(sent.at(-1)).toEqual({ id: sent[1].id, cancel: true })
+  })
+
+  it('gives up on a stuck build at its deadline, but takes the answer of a call that stops when told', async () => {
+    vi.useFakeTimers()
+    try {
+      const sent: EditorToolCall[] = []
+      const pages = createPageForwarder((call) => {
+        sent.push(call)
+        return true
+      })
+      const stuck = pages.forward('build', {}, new AbortController().signal)
+      await vi.advanceTimersByTimeAsync(4 * 60_000)
+      expect(sent.at(-1)).toEqual({ id: sent[0].id, cancel: true })
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(await stuck).toMatchObject({ ok: false, message: expect.stringContaining('The build did not answer within 240 s') })
+
+      const batch = pages.forward('scene_request', { type: 'batch', requests: [] }, new AbortController().signal)
+      await vi.advanceTimersByTimeAsync(4 * 60_000)
+      expect(sent.at(-1)).toEqual({ id: sent[2].id, cancel: true })
+      pages.answer(sent[2].id, { ok: true, text: '{"cutShort":"Stopped after 3 of 9 requests"}' })
+      expect(await batch).toEqual({ ok: true, text: '{"cutShort":"Stopped after 3 of 9 requests"}' })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('fails at once when there is no window', async () => {

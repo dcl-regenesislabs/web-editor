@@ -24,7 +24,8 @@ import { importThumbnail, loadSceneSettings, saveSceneSettings } from './scene-s
 import { compositeEntityIds } from './composite-entities'
 import { installAuthServerSdk, sdkCapability } from './sdk-capability'
 import { mobilePreview, unityDeepLink, webPreviewUrl } from './preview'
-import { editorSkillsDir, libraryFilePath, prefabLibraryDirs, prefabStagingRoot, soundLibraryDir } from './app-paths'
+import { editorSkillsDir, libraryFilePath, prefabLibraryDirs, prefabStagingRoot, soundLibraryDir, templatesDir } from './app-paths'
+import { alignSceneOnOpen, guardSceneJson, type SceneJsonGuard } from './scene-json-guard'
 import { assertRelayHost } from './relay-host'
 import { installEditorChords } from './chords'
 import { buildMenu as buildMenuTemplate } from './menu'
@@ -70,6 +71,7 @@ const MAX_LOG_LINES = 4000
 // The scene folder the user is currently editing — the AI CLI's working dir.
 // openProject is the only place it's known; it wasn't stored anywhere before.
 let currentProjectDir: string | null = null
+let sceneJsonGuard: SceneJsonGuard | null = null
 
 // decentraland/sdk-skills cache refresh, kicked off at startup (skills.ts).
 // Resolves to the cached skills dir (or null: offline with no prior cache).
@@ -359,6 +361,12 @@ async function openProject(projectDir: string): Promise<void> {
     /* default spawn */
   }
 
+  // the data layer the project's server starts reads the composite's copy of the scene metadata
+  // and can write it over scene.json: line the copy up first, and watch scene.json while open
+  sceneJsonGuard?.close()
+  alignSceneOnOpen(projectDir, path.join(templatesDir(), 'blank', 'assets', 'scene', 'main.composite'), log)
+  sceneJsonGuard = guardSceneJson(projectDir, log)
+
   try {
     // editor system scene rarely changes — start it once and reuse our process.
     // In dev it's the editor's own workspace scene (deps hoisted to the repo
@@ -458,6 +466,8 @@ void app.whenReady().then(async () => {
   // system scene stays up — it's shared across projects and reused on re-open.
   ipcMain.handle('close-project', () => {
     stopSceneServer(cfg.scenePort)
+    sceneJsonGuard?.close()
+    sceneJsonGuard = null
     lastReady = null
     currentProjectDir = null
     aiReset() // no project → no assistant working dir; drop the conversation
@@ -728,6 +738,7 @@ function teardown(): void {
   aiStop() // reap any running AI CLI turn
   void mcpServer?.then((mcp) => mcp?.close())
   publishStop() // reap a running publish job
+  sceneJsonGuard?.close()
   stopAll()
 }
 

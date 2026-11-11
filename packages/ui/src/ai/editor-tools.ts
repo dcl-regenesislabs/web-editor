@@ -16,6 +16,8 @@ import { materialFile } from '../three/materials'
 import { soundFile } from '../sounds'
 import { leavePhone, playtest } from './playtest'
 import { uiLayout } from './ui-layout'
+import type { SceneSdk } from './ui-measure'
+import { launchParam } from '../boot/launch-params'
 import { captureView, viewRequest } from './view'
 
 async function readDisk(path: string): Promise<Uint8Array | undefined> {
@@ -43,6 +45,20 @@ async function diskSources(): Promise<ReadonlyMap<string, Uint8Array>> {
   const paths = (await dataLayerListFiles()).filter((path) => /\.tsx?$/.test(path))
   const read = await Promise.all(paths.map(async (path) => [path, await readDisk(path)] as const))
   return new Map(read.filter((entry): entry is readonly [string, Uint8Array] => entry[1] !== undefined))
+}
+
+// A desktop scene builds with the SDK in its own node_modules, which may predate elementId.
+async function sceneSdk(): Promise<SceneSdk | null> {
+  const probe = window.editorShell?.sdkCapability
+  const dir = launchParam('project')
+  if (probe === undefined || dir === null) return null
+  try {
+    const cap = await probe(dir)
+    return cap.installed && cap.uiElementId !== undefined ? { elementId: cap.uiElementId, ...(cap.version === undefined ? {} : { version: cap.version }) } : null
+  } catch (e) {
+    log.warn('sdk capability probe failed', e)
+    return null
+  }
 }
 
 // the dev server notices a saved file within this and starts rebuilding
@@ -86,8 +102,8 @@ export async function runEditorTool(name: EditorToolName, args: Record<string, u
   signal.throwIfAborted()
   if (name === 'view') return JSON.stringify(await captureView(viewRequest(args), signal))
   if (name === 'playtest') return JSON.stringify(await playtest(args, signal))
-  if (name === 'ui_layout') return JSON.stringify(await uiLayout(args, signal))
-  if (name === 'mobile_check') return JSON.stringify(await uiLayout({ check: true }, signal, diskSources))
+  if (name === 'ui_layout') return JSON.stringify(await uiLayout(args, signal, undefined, sceneSdk))
+  if (name === 'mobile_check') return JSON.stringify(await uiLayout({ check: true }, signal, diskSources, sceneSdk))
   if (isFileTool(name)) return fileTools(name, args, signal)
   if (name === 'build') return JSON.stringify(await desktopBuild(signal))
   // scene.json (parcels, permissions, the thumbnail) is the web host's to edit; here it answers so

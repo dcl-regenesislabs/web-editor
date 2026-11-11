@@ -53,13 +53,48 @@ describe('ui_layout', () => {
       { entity: 512, parent: 0, elementId: 'hud', order: 3, rect: [0, 0, 1500, 675] },
       { entity: 513, parent: 512, elementId: 'dash', order: 4, zIndex: 2, rect: [1300, 500, 90, 90], clipped: true, visibleRect: [1300, 500, 90, 80], pointer: ['pointer_events'], text: 'DASH', fontSize: 24 }
     ])
-    expect(result).toMatchObject({ platform: 'mobile', canvas: CANVAS, unmeasured: '1 UI nodes have no elementId and were not measured', view: { image: 'AAAA' } })
+    expect(result).toMatchObject({ platform: 'mobile', canvas: CANVAS, unmeasured: '1 UI nodes have no elementId and were not measured', notChecked: [{ entity: 515, text: 'no id' }], view: { image: 'AAAA' } })
     expect(mock.calls).toEqual(['snapshot', 'view'])
   })
 
-  it('asks for element ids when no node has one', async () => {
+  it('says nothing was measured, why and what to do instead, with the picture, when no node has an element id', async () => {
     mock.snapshot = { '0': { UiCanvasInformation: CANVAS }, '515': { UiTransform: { parent: 0 } } }
-    await expect(uiLayout({}, new AbortController().signal)).rejects.toThrow('elementId')
+    const result = await uiLayout({}, new AbortController().signal) as Record<string, unknown>
+    expect(result).toMatchObject({ platform: 'mobile', canvas: CANVAS, measured: false, unmeasurable: 'no-element-ids', view: { image: 'AAAA' } })
+    expect(result).not.toHaveProperty('nodes')
+    expect(result.why).toContain('None of the 1 UI nodes has an elementId')
+    // without a probe the SDK is unknown: the answer covers both
+    expect(result.instead).toContain('check its type')
+    expect(result.instead).toContain('by hand')
+  })
+
+  it('blames the scene SDK when the probe says uiTransform has no elementId, and asks for no element ids', async () => {
+    mock.snapshot = { '0': { UiCanvasInformation: CANVAS }, '515': { UiTransform: { parent: 0 } }, '516': { UiTransform: { parent: 515 } } }
+    const result = await uiLayout({}, new AbortController().signal, undefined, async () => ({ elementId: false, version: '7.33.0' })) as Record<string, unknown>
+    expect(result).toMatchObject({ measured: false, unmeasurable: 'sdk-has-no-element-id' })
+    expect(result.why).toContain("@dcl/sdk 7.33.0 has no elementId")
+    expect(result.instead).toContain('Do not write elementId')
+    expect(result.instead).toContain('@dcl/sdk@experimental-bevy-auth-server')
+  })
+
+  it('names the explorer when nodes have element ids but none got a layout', async () => {
+    mock.snapshot = { '0': { UiCanvasInformation: CANVAS }, '512': { UiTransform: { parent: 0, elementId: 'hud' } } }
+    const result = await uiLayout({}, new AbortController().signal, undefined, async () => ({ elementId: true })) as Record<string, unknown>
+    expect(result).toMatchObject({ measured: false, unmeasurable: 'explorer-has-no-layout-feedback' })
+    expect(result.why).toContain('UiLayoutFeedback')
+  })
+
+  it('says when the scene draws no screen UI at all', async () => {
+    mock.snapshot = { '0': { UiCanvasInformation: CANVAS }, '600': { Transform: {} } }
+    const result = await uiLayout({}, new AbortController().signal) as Record<string, unknown>
+    expect(result).toMatchObject({ measured: false, unmeasurable: 'no-ui' })
+  })
+
+  it('notes that nothing measured is on screen rather than answering an empty list alone', async () => {
+    mock.snapshot = { '0': { UiCanvasInformation: CANVAS }, '514': SNAPSHOT['514'] }
+    const result = await uiLayout({}, new AbortController().signal) as Record<string, unknown>
+    expect(result).toMatchObject({ measured: true, nodes: [] })
+    expect(result.note).toContain('no measured node is on screen')
   })
 
   it('measures only while the game runs', async () => {

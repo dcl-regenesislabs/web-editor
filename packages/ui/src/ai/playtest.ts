@@ -303,7 +303,7 @@ async function observed(): Promise<{ position: unknown; hud: string[]; errors: s
   }
 }
 
-async function status(signal: AbortSignal, before: ProbeAnswer | null, since: string): Promise<unknown> {
+async function status(signal: AbortSignal, before: ProbeAnswer | null, since: string, path?: string): Promise<unknown> {
   const answer = await probeGame(signal)
   const { position, hud, errors, serverErrors } = await observed()
   if (answer !== null) lastGame = answer
@@ -312,7 +312,7 @@ async function status(signal: AbortSignal, before: ProbeAnswer | null, since: st
     platform,
     position,
     hud,
-    ...(state.frozen ? {} : { game: answer === null ? (gameAnswered ? LATE_GAME : NO_GAME) : gameView(answer, before, since) }),
+    ...(state.frozen ? {} : { game: answer === null ? (gameAnswered ? LATE_GAME : NO_GAME) : gameView(answer, before, since, path) }),
     errors,
     serverErrors
   }
@@ -478,7 +478,16 @@ function made(requests: ProbeRequest[], since: ProbeAnswer): Array<Record<string
     .map((request) => ({ name: request.name, ...(request.refused !== undefined ? { refused: request.refused } : { reply: request.reply ?? null }) }))
 }
 
+// a path asks for one game.state value in full, beyond what the state and changed show of it
+function readOf(request: Record<string, unknown>): string | undefined {
+  const { path } = request
+  if (path === undefined) return undefined
+  if (typeof path !== 'string' || path.trim() === '') throw new Error('path is a game.state path such as score or movers.3.')
+  return path
+}
+
 async function runSteps(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+  readOf(request)
   const list = request.steps
   if (!Array.isArray(list) || list.length === 0 || list.length > MAX_STEPS) throw new Error(`steps is a list of 1 to ${MAX_STEPS} actions.`)
   if (request.view !== undefined && typeof request.view !== 'boolean') throw new Error('view is true or false.')
@@ -542,7 +551,7 @@ async function runSteps(request: Record<string, unknown>, signal: AbortSignal): 
   const final = steps.last
   if (final !== null) lastGame = final
   const game = final === null ? (gameAnswered ? LATE_GAME : NO_GAME)
-    : gameView({ ...final, requests }, first === final ? null : first, 'before the first step')
+    : gameView({ ...final, requests }, first === final ? null : first, 'before the first step', readOf(request))
   let picture: Record<string, unknown> = {}
   if (request.view === true) {
     try {
@@ -568,6 +577,7 @@ export async function playtest(request: Record<string, unknown>, signal: AbortSi
   signal.throwIfAborted()
   const action = request.action
   if (action === 'steps') return runSteps(request, signal)
+  const path = readOf(request)
   let before = action === 'status' ? lastGame : null
   let since = 'the previous playtest result'
   if (action === 'start') {
@@ -582,5 +592,5 @@ export async function playtest(request: Record<string, unknown>, signal: AbortSi
     await act.run(Infinity)
     await wait(SETTLE_MS, signal)
   }
-  return status(signal, before, since)
+  return status(signal, before, since, path)
 }

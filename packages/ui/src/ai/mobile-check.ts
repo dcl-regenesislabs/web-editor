@@ -7,7 +7,7 @@ import { state } from '@scene/state'
 import { cmd } from '../engine/cmd'
 import { keyHintIssues, layoutIssues, touchIssues, touchLayout, usedActions, visibleButtons, type Canvas, type Issue, type MeasuredNode, type Rect } from './mobile-rules'
 import { playtest, playtestPlatform } from './playtest'
-import { measuredNodes } from './ui-measure'
+import { measuredNodes, unmeasurable, type SceneSdk, type UnmeasuredNode } from './ui-measure'
 import { captureView } from './view'
 
 type Snapshot = Record<string, Record<string, unknown>>
@@ -43,7 +43,7 @@ function modalCount(snapshot: Snapshot): number | null {
   return null
 }
 
-function nodesOf(snapshot: Snapshot): { nodes: MeasuredNode[]; unnamed: number } {
+function nodesOf(snapshot: Snapshot): { nodes: MeasuredNode[]; unnamed: number; skipped: UnmeasuredNode[] } {
   const measured = measuredNodes(snapshot)
   const nodes = measured.nodes.flatMap((raw): MeasuredNode[] => {
     const rect = raw.rect
@@ -58,7 +58,7 @@ function nodesOf(snapshot: Snapshot): { nodes: MeasuredNode[]; unnamed: number }
       pointer: Array.isArray(raw.pointer) ? raw.pointer.filter((p): p is string => typeof p === 'string') : undefined
     }]
   })
-  return { nodes, unnamed: measured.unnamed }
+  return { nodes, unnamed: measured.unnamed, skipped: measured.skipped }
 }
 
 async function untilUi(signal: AbortSignal): Promise<Snapshot> {
@@ -76,12 +76,16 @@ interface StateResult { state: string; measured: number; unmeasured: number; vie
 async function measureState(name: string, controlsShown: boolean, signal: AbortSignal): Promise<{ result: StateResult; issues: Issue[]; snapshot: Snapshot }> {
   const snapshot = await cmd.crdtSnapshot()
   const canvas = canvasOf(snapshot)
-  const { nodes, unnamed } = nodesOf(snapshot)
-  const issues = canvas === null
+  const { nodes, unnamed, skipped } = nodesOf(snapshot)
+  const issues: Issue[] = canvas === null
     ? [{ rule: 'setup', state: name, detail: 'the engine reported no UiCanvasInformation' }]
     : [...layoutIssues(name, canvas, nodes, controlsShown ? touchLayout(snapshot['0']?.TouchScreenControls) : null), ...keyHintIssues(name, nodes)]
   if (name.startsWith('modal') && !nodes.some((node) => node.elementId !== undefined && !node.elementId.startsWith('hud:'))) {
     issues.push({ rule: 'M1', state: name, detail: 'nothing inside this dialog is measured: give its panel a uiTransform elementId, and make its render draw the dialog whenever it is called (open() decides when it shows)' })
+  }
+  if (skipped.length > 0) {
+    const what = skipped.slice(0, 6).map((node) => node.text !== undefined ? `"${node.text}"` : `entity ${node.entity} (${node.pointer?.join(', ')})`).join(', ')
+    issues.push({ rule: 'U1', state: name, detail: `${skipped.length} UI nodes with text or presses were not measured (no elementId, or the engine has not laid them out), so L3/L4 were not checked on them: ${what}${skipped.length > 6 ? ', …' : ''}. Give each a uiTransform elementId and check again` })
   }
   const view = await captureView({ entity: null, from: null, lookAt: null }, signal)
   return { result: { state: name, measured: nodes.length, unmeasured: unnamed, view }, issues, snapshot }
@@ -96,14 +100,18 @@ function decoded(files: ReadonlyMap<string, Uint8Array>): Array<[string, string]
 }
 
 /** Measure every screen state of the scene's UI on a phone and check it; leaves the mobile playtest running. */
-export async function mobileCheck(signal: AbortSignal, sources: ProjectSources): Promise<unknown> {
+export async function mobileCheck(signal: AbortSignal, sources: ProjectSources, sdk: SceneSdk | null = null): Promise<unknown> {
   signal.throwIfAborted()
   if (state.frozen || playtestPlatform() !== 'mobile') await playtest({ action: 'start', platform: 'mobile' }, signal)
   const first = await untilUi(signal)
-  const modals = modalCount(first)
+  const blocked = unmeasurable(first, sdk)
+  // nothing can be measured: the modals can't be found either, and a check of no nodes would pass
+  const modals = blocked === null ? modalCount(first) : null
   const states: StateResult[] = []
   const issues: Issue[] = []
-  if (modals === null) {
+  if (blocked !== null) {
+    issues.push({ rule: 'setup', state: 'hud', detail: `nothing could be measured (${blocked.reason}): ${blocked.why} ${blocked.instead}` })
+  } else if (modals === null) {
     issues.push({ rule: 'setup', state: 'hud', detail: 'the scene has no HUD from ./runtime/hudLayout: place every panel with addHudItem, or check the layout by hand from the code and a view picture' })
   }
   if (modals !== null) {

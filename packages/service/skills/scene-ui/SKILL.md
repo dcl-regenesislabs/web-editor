@@ -73,7 +73,10 @@ The phone floors, text 20 and presses 80 on the short side, are L3 and L4: `mobi
    When the explorer gives you a layout dump (in the Decentraland editor: the `ui_layout` tool during a
    playtest, started with `platform: "mobile"` for the phone), the check is mechanical: measure, fix,
    measure again until no rule fails. Without a dump, check the same rules against the numbers in the code and a
-   screenshot, and say which ones you could not measure.
+   screenshot, and say which ones you could not measure. A dump that measured nothing is not a pass: `ui_layout`
+   answers `measured: false` with `why` and `instead` (and `mobile_check` a `setup` issue) when the scene draws
+   no UI, names no node, runs an SDK without `elementId` or an explorer that writes no layout. Do what
+   `instead` says; on an SDK without `elementId` the layout is checked by hand for the whole session.
 5. **Review** C1–C8 against the code and D1–D6 against the design. Every button, dialog and game-flow
    screen (start, result, time up) has its sound: the `game-sounds` skill has the library and the wiring.
 6. **Hand off** with the closing message below.
