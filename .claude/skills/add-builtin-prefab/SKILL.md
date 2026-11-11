@@ -126,13 +126,44 @@ Then smoke it: place the prefab in a dev scene, ask the assistant the guide's
 
 ## Porting from the creator-hub
 
-The Hub's smart items live in
-`../creator-hub/packages/asset-packs/packs/*/assets/<item>/` — copy their
-composite shapes and models, but: strip `inspector::Config` and
-`core-schema::Sync-Components`, bundle any CDN-loaded textures into the folder,
-and replace `@dcl/asset-packs` runtime behaviour with a self-contained script
-(see admin-tools; do NOT port the Actions interpreter — dispatch the named
-action off the target's `asset-packs::Actions` instead).
+Since creator-hub#1354 and #1667 a Hub smart item is a script: the behaviour is
+the `<Item>.ts` (or `.tsx`) in its folder, with its params documented in the
+constructor's JSDoc, and its `asset-packs::Actions` are `call_script_method`
+calls into that script (`{ scriptPath: "{assetPath}/<Item>.ts", methodName }`).
+So porting one is almost always copying it, not rewriting it. The items live in
+decentraland/creator-hub `packages/asset-packs/packs/*/assets/<item>/`
+(a `../creator-hub` checkout, or GitHub):
+
+1. Copy the folder: model, textures, sounds, `composite.json`, and the script
+   into `scripts/` (point the Script entry and every Actions `scriptPath` at
+   `{assetPath}/scripts/<Item>.ts`).
+2. Keep the script's logic as it is. Change only what this repo cannot build or
+   run: `@dcl/asset-packs/dist/*` imports have no package here — define the few
+   components it reads with the registry's exact spec, at module scope with
+   `engine.defineComponent` (it returns the existing definition when the scene
+   already registered the name; inside `start()` the engine is sealed and it
+   throws — see `runtime-modules/seat.ts`), and replace
+   helpers like `getWorldPosition` with a local transform walk. An
+   `ActionCallback` param works as is (the script runner builds the callback).
+   Add `if (isServer()) return` where the item has nothing to do on the
+   Multiplayer Server, and check the SDK surface against rule 8.
+3. In `composite.json`, strip `inspector::Config` and `core-schema::Sync-Components`
+   (rule 2). State the Hub syncs through Sync-Components is synced from the
+   script instead: `syncEntity(entity, [Component.componentId], entity as number)`
+   in `start()` — a composite entity's number is the same on every peer.
+4. Keep the Hub's Actions (`call_script_method`): the Admin Tools panel and
+   other smart items call them. The script's matching methods carry `@action`
+   in their JSDoc, so the inspector lists them.
+5. The parser reads the Hub's param types (Slider, object/array params,
+   `@components`, `@actionsOf`, `@format wallet`, `@event`), so the params need
+   no rewrite. The Hub puts each param's help in the constructor's `@param`
+   lines; this editor shows the JSDoc above the param itself, so move each line
+   there.
+6. Several prefabs sharing one script (the 23 seats) put it in
+   `packages/desktop/runtime-modules/` and keep a thin per-folder class that
+   declares the constructor params and `@action` methods — the parser reads
+   those from the prefab's own file. Then update the runtime-module lists in
+   `scripts/sync-runtime-modules.test.mjs` and `guides.test.ts`.
 
 Copy the item's **whole folder**, not just the `.glb`: Hub models often keep
 their texture as a sibling file the `.glb` names by relative URI, and a model

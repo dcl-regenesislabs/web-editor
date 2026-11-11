@@ -145,6 +145,8 @@ const RESOURCE_PATHS: Record<string, string[][]> = {
   GltfContainer: [['src']],
   AudioSource: [['audioClipUrl']],
   VideoPlayer: [['src']],
+  // Creator Hub's Admin Tools ships its model this way (creator-hub#1287)
+  'asset-packs::Placeholder': [['src']],
   Material: [
     ...TEXTURE_SLOTS.map((slot) => ['material', 'pbr', slot, 'tex', 'texture', 'src']),
     ['material', 'unlit', 'texture', 'tex', 'texture', 'src']

@@ -257,7 +257,8 @@ Two substitution schemes travel in the composite.
 **`{assetPath}`** — every project file path, rewritten at capture and resolved to
 the prefab folder at instantiation. Rewritten at:
 
-- `GltfContainer.src`, `AudioSource.audioClipUrl`, `VideoPlayer.src`
+- `GltfContainer.src`, `AudioSource.audioClipUrl`, `VideoPlayer.src`,
+  `asset-packs::Placeholder.src` (creator-hub#1287)
 - `Material` pbr `texture` / `alphaTexture` / `emissiveTexture` / `bumpTexture`,
   and unlit `texture`
 - `asset-packs::Script` `value[].path`
@@ -304,10 +305,11 @@ travels with the folder, a guide always describes the exact code on disk in that
 project.
 
 The rule is a biconditional, enforced in `packages/ui/src/prefabs/guides.test.ts`:
-**`ai.md` exists iff the folder's scripts import a `~runtime/` module.** Reaching
-for the shared runtime is what makes a prefab something other scripts talk to
-(`zoneBus`, `timeSync`, `rpc`), and it auto-forbids a guide on the 23 seats and on
-admin-tools, which expose no API.
+**`ai.md` exists iff the folder's scripts import a `~runtime/` module other than
+`~runtime/seat`.** Reaching for the shared runtime is what makes a prefab something
+other scripts talk to (`zoneBus`, `timeSync`, `rpc`), and it auto-forbids a guide
+on admin-tools, which exposes no API. The 23 seats import only `~runtime/seat`,
+their shared behaviour, which is not an API either.
 
 | property | rule |
 | --- | --- |
@@ -664,17 +666,24 @@ folder there with a `data.json`). To add one, follow the
   collapsed into one browsable "Seats" card in the Prefabs tab via `data.json`'s
   optional `group` field (any prefabs sharing a `group` value render as a single
   drill-down card; a text filter searches the members flat). Each is a GLB root
-  plus hidden "Sit Spot" child entities carrying only a Transform; the bundled
-  `scripts/seat.ts` gives every spot its pointer collider and hover at runtime,
-  then sits the player with `movePlayerTo` onto the spot plus a looping emote —
-  the predefined `sittingChair1/2` via `triggerEmote` by default, or the
-  scene-bundled emote `.glb`s listed in the script's `SCENE_EMOTES` const via
-  `triggerSceneEmote` (how `sit-spot-edge` gets Genesis Plaza's
-  `Sit_Edge1/2_emote.glb` legs-dangling pose). The Hub's and Genesis Plaza's
-  exact mechanism — no AvatarAttach; walking cancels the emote engine-side.
-  Declares `ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE` + `ALLOW_TO_TRIGGER_AVATAR_EMOTE`.
-  No seat reservation (matching Plaza; the Hub's Taken state needs synced
-  state — deferred). Because a sit spot is invisible at runtime, the editor
+  plus hidden "Sit Spot" child entities carrying only a Transform. The
+  behaviour is one shared module, `runtime-modules/seat.ts`, a port of the
+  Hub's current `Seat.ts` (creator-hub#1354); each folder's `scripts/seat.ts` is
+  a thin class declaring its params (`hoverText`, `takenMessage`) and its
+  `@action` methods (`sit`, `markAsFree`), which the composite's
+  `asset-packs::Actions` offer as `call_script_method` to other smart items and
+  the Admin Tools panel. Each spot gets its pointer collider and hover at
+  runtime and a Free/Taken `asset-packs::States` synced under the spot's entity
+  number, so every player sees which spots are taken and a taken one says
+  `takenMessage`. Clicking sits the player with `movePlayerTo` onto the spot
+  (the nearest free one if it is taken), then a looping emote — the predefined
+  `sittingChair1/2` via `triggerEmote` by default, or the scene-bundled emote
+  `.glb`s listed in the wrapper's `SCENE_EMOTES` const via `triggerSceneEmote`
+  (how `sit-spot-edge` gets Genesis Plaza's `Sit_Edge1/2_emote.glb`
+  legs-dangling pose). No AvatarAttach; walking cancels the emote engine-side,
+  and walking 1.5 m away frees the spot. Declares
+  `ALLOW_TO_MOVE_PLAYER_INSIDE_SCENE` + `ALLOW_TO_TRIGGER_AVATAR_EMOTE`.
+  Because a sit spot is invisible at runtime, the editor
   draws a ghost seated persona over every "…Sit Spot…" entity while the scene is
   stopped (`packages/scene/src/viewport/seat-marker.ts`).
 - **video-screen** — a port of the Hub's `video_screen` smart item: GLB screen,
@@ -944,7 +953,7 @@ packages/desktop/prefabs/admin-tools/
     state.ts         mutable panel state; react-ecs re-renders off it each frame
     components.ts    the asset-packs components the prefab touches
     api.ts           endpoints + the signedFetch wrapper
-    actions.ts       ~100-line local action dispatcher (not the Hub's interpreter)
+    actions.ts       ~150-line local action dispatcher (not the Hub's interpreter)
     message-bus.ts   wallet-validated comms commands + per-frame revert
     icons.ts         iconPath()/createIcons() — every texture path in the prefab
     ui.tsx           shared react-ecs primitives
@@ -974,12 +983,27 @@ Things worth knowing before touching it:
   comms bus, one synced video state under a fixed sync id, one drain system the
   engine refuses to add twice. A module-scope `started` flag stops a second
   item with a console line naming the fix (delete it) instead of throwing.
-- **Endpoints are hardcoded** (`comms-gatekeeper.decentraland.<org|zone>`,
-  `rewards.decentraland.<org|zone>`) exactly as they are in the Hub runtime, with
-  the org/zone switch driven by the realm's network id.
+- **Endpoints are hardcoded** (`comms-gatekeeper.decentraland.<org|zone>`)
+  exactly as they are in the Hub runtime, with the org/zone switch driven by the
+  realm's network id.
+- **The Smart Items tab runs** `play_animation`, `play_sound`, `set_visibility`,
+  `set_state`, `play_video_stream` and `call_script_method`. The last is what
+  Creator Hub's script-backed smart items (doors, buttons, levers, platforms,
+  seats) author on their Actions since creator-hub#1667: `actions.ts` looks the
+  instance up in `globalThis.__DCL_SCRIPT_INSTANCES__` by `<entity>:<scriptPath>`
+  (a payload still holding `{assetPath}/` matches the entity's script with that
+  file name) and calls `methodName` with `params` positionally.
+- **No Rewards tab.** Creator Hub dropped its Rewards control (creator-hub#1748;
+  rewards live in the `wearable_dispenser` smart item now), and so did this
+  panel. `rewardsControl` stays in the `asset-packs::AdminTools` schema and in the
+  inspector's write, unedited, because placed items carry it.
 - **Not ported:** the DCL Cast presentation-bot flow (this SDK pin exposes only
-  `getActiveVideoStreams` from `~system/CommsApi` — no pub/sub transport) and the
-  rewards supply counter (the server rejects the explorer's signedFetch for it).
+  `getActiveVideoStreams` from `~system/CommsApi` — no pub/sub transport).
+- **Creator Hub's own Admin Tools is a script now** (creator-hub#1748): its
+  `admin_toolkit` carries `asset-packs::Script` with `AdminTools.ts` and no
+  `asset-packs::AdminTools` component, so a scene made with it opens here as a
+  Script card whose object and list params the inspector edits directly (see
+  `packages/ui/src/script/parser.ts`), not in the Admin Tools view.
 - **`asset-packs::AdminTools` is deliberately absent from `ALLOWED_COMPONENTS`,**
   so it stays out of the Add-Component picker: the config with no `admin.tsx`
   behind it would do nothing. The inspector still renders it for placed prefabs.

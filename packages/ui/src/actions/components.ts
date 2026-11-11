@@ -57,7 +57,8 @@ export const uiDeleteComponent = (entityId: string, name: string): void => {
 // Creator Hub's lock / hide flags. We honour them (a locked entity can't be
 // picked or dragged, a hidden one isn't drawn), so the editor has to be able to
 // clear them too — otherwise a project made there arrives with entities that
-// can never be touched again. Both are editor state, excluded from the composite.
+// can never be touched again. Both are editor state: saved in the scene's
+// composite, as Creator Hub does, and excluded from prefabs (prefabs/format.ts).
 export const uiSetEntityFlag = async (
   id: string,
   flag: 'inspector::Lock' | 'inspector::Hide',
