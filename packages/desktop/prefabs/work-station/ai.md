@@ -75,15 +75,17 @@ import { onStation, takeFromStation } from './runtime/carry'
 export class Serving {
   constructor(public src: string, public entity: Entity) {}
   start(): void {
-    if (!isServer()) return
-    onStation('Serving Window', (event) => {
-      if (event.type !== 'put' || event.player === undefined) return
-      takeFromStation('Serving Window')
-      const rows = (Array.isArray(game.state.served) ? game.state.served : []) as Array<{ player: string; score: number }>
-      const mine = rows.find((row) => row.player === event.player)
-      const others = rows.filter((row) => row !== mine)
-      game.setState({ served: [...others, { player: event.player, score: (mine?.score ?? 0) + 10 }] })
-    })
+    if (isServer()) {
+      onStation('Serving Window', (event) => {
+        if (event.type !== 'put' || event.player === undefined) return
+        takeFromStation('Serving Window')
+        const rows = (Array.isArray(game.state.served) ? game.state.served : []) as Array<{ player: string; score: number }>
+        const mine = rows.find((row) => row.player === event.player)
+        const others = rows.filter((row) => row !== mine)
+        game.setState({ served: [...others, { player: event.player, score: (mine?.score ?? 0) + 10 }] })
+      })
+      return
+    }
   }
 }
 ```

@@ -68,8 +68,8 @@
     "digest": "0f36ec0c78f0872992ca6ffe3490443d668c92be69c101dbfa49a808f40a0bbe"
   },
   "pickup-item": {
-    "version": "1.0.1",
-    "digest": "e7d4f47118004bac59e2712a3cc577cdc6f1bf19e87a9f660b4cd796bf5a1954"
+    "version": "1.0.2",
+    "digest": "c2726021c080f3c8e9689ed01115bea39a97d7bbb748c25d4e87cb2c8c933194"
   },
   "run-progress": {
     "version": "1.4.1",
@@ -128,8 +128,8 @@
     "digest": "ea879e29a7cb08806535872537c06e03c1d202db8288103e3fae330f84c1f404"
   },
   "ui-theme": {
-    "version": "1.2.0",
-    "digest": "04c79c8d7c8e7f695d7def4f8fd8a4142ef06a8b75b7862c2935835bf2747f32"
+    "version": "1.2.1",
+    "digest": "98ff357a507c62cde68a580772bd92a18886cdef0b5611aee4b7fa9b13e0e377"
   },
   "video-screen": {
     "version": "1.0.0",
@@ -144,7 +144,7 @@
     "digest": "c24ab74a1d1ddad7fd4251ecf28735d3597052b04cb90671b73f3bff0608b9d4"
   },
   "work-station": {
-    "version": "1.0.1",
-    "digest": "8fd9096d633626a3dbe4f761426a42410f0771bbee231340a3d49b8fee6fa80b"
+    "version": "1.0.2",
+    "digest": "13abedea24184e8a6e9fd64a7e960474fbe7347aab3cc1cfc984ed1f43211c63"
   }
 }

@@ -144,13 +144,13 @@ export function thumbnailTool(call: BrowserCall, images: WalletImages): ToolDefi
       '(from, lookAt in world metres): the hero subject close, then the whole scene wide. Each one is saved as a new version, ' +
       'assets/images/thumbnail-N.jpg, and set in scene.json; earlier versions stay. revise edits the current thumbnail instead ' +
       'of painting a new one: say only what to change. Every call paints a new image and returns a small copy of it; ' +
-      'never call it just to look at a thumbnail.',
+      'never call it just to look at a thumbnail. Call it only when the creator asks, and retry at most once unless they ask for more.',
     parameters: Type.Object({
-      brief: Type.String({ maxLength: 2000, description: 'Art direction: the game hook, hero subject, mood and palette' }),
-      title: Type.String({ maxLength: 60, description: 'The title text, exactly as it should read' }),
+      brief: Type.String({ maxLength: 2000, description: 'Written as an art director: the game hook, the hero subject, the mood and a palette from the scene. Never name other games, films or brands' }),
+      title: Type.String({ maxLength: 60, description: 'The game\'s name, exactly as it should read' }),
       style: Type.String({ maxLength: 80 }),
       revise: Type.Optional(Type.String({ maxLength: 500, description: 'Only what to change in the current thumbnail' })),
-      avatars: Type.Optional(Type.Boolean({ description: 'Show Decentraland avatars, led by the creator\'s own, when players are the game\'s hook; without it the poster has no people' })),
+      avatars: Type.Optional(Type.Boolean({ description: 'Show Decentraland avatars, led by the creator\'s own, when players are the hook (a game they play, race, fight or meet in); leave it off for a place, a gallery, an object or scenery, and follow the creator if they say. Without it the poster has no people' })),
       shots: Type.Array(Type.Object({ from: point, lookAt: point }), { minItems: 2, maxItems: 2 }),
       label: Type.Optional(Type.String({ description: 'What you are doing now, for the creator, at most six words' }))
     }),
