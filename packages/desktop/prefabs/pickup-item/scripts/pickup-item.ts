@@ -3,6 +3,12 @@ import { isServer } from '@dcl/sdk/network'
 import { registerPickup } from '~runtime/carry'
 import { declareInteractButtons } from '~runtime/interactPrompt'
 
+// the emote files ship in this prefab's emotes/ folder; "from the floor" holds the picker still while it plays
+const PICK_EMOTES = {
+  'from a table': { file: 'emotes/Pickup_Table_emote.glb', holdSeconds: 0 },
+  'from the floor': { file: 'emotes/Pickup_Floor_emote.glb', holdSeconds: 1.9 }
+}
+
 export class PickupItem {
   constructor(
     public src: string,
@@ -21,10 +27,15 @@ export class PickupItem {
     /** Size in the hand, relative to the placed size. */
     public heldScale: number = 1,
     /** After a script uses it up, it comes back home after this many seconds; 0 waits for the next round. */
-    public returnSeconds: number = 0
+    public returnSeconds: number = 0,
+    /** The picker reaches for it: "from the floor" squats and holds them still for 2 s. Off keeps a fast game fast. */
+    public pickAnimation: 'none' | 'from a table' | 'from the floor' = 'none'
   ) {}
 
   start(): void {
+    const emote = this.pickAnimation === 'none' ? null : PICK_EMOTES[this.pickAnimation]
+    // src is the script's directory (custom/<slug>/scripts); the emotes sit one level up
+    const root = this.src.replace(/\/scripts\/?$/, '')
     registerPickup({
       entity: this.entity,
       kind: this.kind,
@@ -35,7 +46,9 @@ export class PickupItem {
       throwVerb: this.throwVerb,
       throwable: this.throwable,
       heldScale: this.heldScale,
-      returnSeconds: this.returnSeconds
+      returnSeconds: this.returnSeconds,
+      pickEmote: emote === null ? '' : `${root}/${emote.file}`,
+      pickHoldSeconds: emote?.holdSeconds ?? 0
     })
     if (isServer() || this.supply === 'look only') return
     declareInteractButtons(this.throwable ? 'throw' : undefined)
