@@ -511,7 +511,7 @@ function StartCta(props: { onView: (v: LeftView) => void }): JSX.Element {
   return (
     <div className="eui-empty">
       <p className="eui-empty-line">Nothing of yours in the scene yet.</p>
-      <Button variant="primary" onClick={() => props.onView('prefabs')}>
+      <Button variant="primary" className="eui-empty-cta" onClick={() => props.onView('prefabs')}>
         Start with a ready-made prefab
       </Button>
       <p className="eui-empty-line">Built something already? Right-click it and pick “Create prefab”.</p>
