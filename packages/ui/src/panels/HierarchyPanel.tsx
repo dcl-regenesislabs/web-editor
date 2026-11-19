@@ -89,6 +89,8 @@ const DETAIL_HIDDEN = new Set(['model', 'sound', 'stream', 'video', 'text', 'ava
 
 type RenameTarget = { id: string; preselect: boolean }
 
+const shortName = (name: string) => (name.length > 24 ? name.slice(0, 23) : name.slice(0, name.length - 1))
+
 type DragHandlers = {
   dropTarget: string | null
   begin: (id: string) => void
@@ -725,7 +727,7 @@ function EntityRow(props: {
                   </span>
                 )}
                 <span className={kind.derived ? 'kind' : undefined}>
-                  <Highlight text={kind.primary} query={search.hit(id) ? search.query : ''} />
+                  <span dangerouslySetInnerHTML={{ __html: shortName(kind.primary) }} />
                 </span>
                 {detail !== null && <span className="detail">{detail}</span>}
               </span>
