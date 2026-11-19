@@ -124,7 +124,12 @@ export function InspectorPanel(props: { min: boolean; onToggleMin: () => void })
       <div className="eui-panel-body" hidden={props.min}>
         {assetId !== null && id !== null && <PrefabInstanceStrip assetId={assetId} rootId={id} />}
         {id !== null && <SpawnedByStrip hostId={id} />}
-        {id === null && <div className="eui-empty">Select an entity to edit it</div>}
+        {id === null && (
+          <div className="eui-empty centered">
+            <p className="eui-empty-line">Select an entity to edit it</p>
+            <p className="eui-empty-sub">Click it in the 3D view or in the Scene panel.</p>
+          </div>
+        )}
         {isCode && pendingMove === null && <div className="eui-ro-note">{RUNTIME_ENTITY_TIP}</div>}
         {pendingMove !== null && (
           <div className="eui-ro-card">
