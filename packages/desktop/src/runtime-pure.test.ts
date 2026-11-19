@@ -69,6 +69,20 @@ import {
 } from '../runtime-modules/pure/carryRules'
 import { CarryPrediction } from '../runtime-modules/pure/carryPrediction'
 import { nearestCandidate, promptText, verbWith } from '../runtime-modules/pure/interactPick'
+import {
+  emptyLine,
+  freshHarvest,
+  gatherProgress,
+  isEmpty,
+  leaveHarvest,
+  nodeRow,
+  readHarvest,
+  startGather,
+  tickHarvest,
+  waitText,
+  type HarvestState,
+  type NodeRule
+} from '../runtime-modules/pure/harvestRules'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -759,5 +773,99 @@ describe('_runtime interact prompt', () => {
     expect(verbWith('Coger {item}', 'Tomate')).toBe('Coger Tomate')
     expect(verbWith('{item} aufheben', 'Ball')).toBe('Ball aufheben')
     expect(verbWith('Drop {item}', '')).toBe('Drop')
+  })
+})
+
+describe('_runtime harvest rules', () => {
+  const rules: Record<string, NodeRule> = {
+    tree: { kind: 'Wood', ms: 2000, uses: 2, respawnMs: 10000 },
+    pond: { kind: 'Fish', ms: 0, uses: 0, respawnMs: 0 },
+    rock: { kind: 'Stone', ms: 1000, uses: 1, respawnMs: 0 }
+  }
+  const always = () => true
+  const handsFree = true
+  const start = (state: HarvestState, id: string, player = 'a', now = 0) =>
+    startGather(state, id, player, rules[id], now, handsFree)
+
+  it('gives one gatherer at a time and refuses a full hand', () => {
+    const started = start(freshHarvest(), 'tree')
+    expect(started.accepted).toBe(true)
+    expect(started.state.nodes.tree).toEqual({ left: 2, by: 'a', since: 0 })
+    expect(start(started.state, 'tree', 'b')).toMatchObject({ accepted: false, message: 'Someone is already here' })
+    expect(start(started.state, 'tree', 'a').state).toBe(started.state)
+    expect(startGather(freshHarvest(), 'tree', 'a', rules.tree, 0, false)).toMatchObject({ accepted: false, message: 'Your hands are full' })
+    expect(startGather(freshHarvest(), 'nowhere', 'a', undefined, 0, true).accepted).toBe(false)
+  })
+
+  it('hands the kind over once the time is up, then runs out and comes back', () => {
+    const given: string[] = []
+    const give = (player: string, kind: string) => { given.push(`${player}:${kind}`); return true }
+    let state = start(freshHarvest(), 'tree').state
+    expect(tickHarvest(state, rules, 1999, always, give).changed).toBe(false)
+    let tick = tickHarvest(state, rules, 2000, always, give)
+    expect(tick.events).toEqual([{ type: 'gather', node: 'tree', kind: 'Wood', player: 'a' }])
+    state = tick.state
+    expect(state.nodes.tree).toEqual({ left: 1 })
+    state = start(state, 'tree', 'a', 3000).state
+    tick = tickHarvest(state, rules, 5000, always, give)
+    expect(tick.events.map((event) => event.type)).toEqual(['gather', 'empty'])
+    state = tick.state
+    expect(state.nodes.tree).toEqual({ left: 0, backAt: 15000 })
+    expect(isEmpty(nodeRow(state, 'tree', rules.tree), rules.tree)).toBe(true)
+    expect(start(state, 'tree', 'b', 6000)).toMatchObject({ accepted: false, message: 'Nothing left here yet' })
+    tick = tickHarvest(state, rules, 15000, always, give)
+    expect(tick.events).toEqual([{ type: 'back', node: 'tree', kind: 'Wood' }])
+    expect(tick.state.nodes.tree).toEqual({ left: 2 })
+    expect(given).toEqual(['a:Wood', 'a:Wood'])
+  })
+
+  it('stays empty until the next round when it has no respawn time', () => {
+    let state = start(freshHarvest(), 'rock').state
+    state = tickHarvest(state, rules, 1000, always, () => true).state
+    expect(state.nodes.rock).toEqual({ left: 0 })
+    expect(tickHarvest(state, rules, 10 ** 9, always, () => true).changed).toBe(false)
+  })
+
+  it('never runs out with no uses, and an instant node gives on the next step', () => {
+    let state = start(freshHarvest(), 'pond').state
+    const tick = tickHarvest(state, rules, 0, always, () => true)
+    expect(tick.events).toEqual([{ type: 'gather', node: 'pond', kind: 'Fish', player: 'a' }])
+    state = tick.state
+    expect(state.nodes.pond).toEqual({ left: 0 })
+    expect(isEmpty(nodeRow(state, 'pond', rules.pond), rules.pond)).toBe(false)
+    expect(start(state, 'pond', 'b').accepted).toBe(true)
+  })
+
+  it('uses nothing when the gatherer walks away, leaves, or the hand filled meanwhile', () => {
+    const started = start(freshHarvest(), 'tree').state
+    expect(tickHarvest(started, rules, 500, () => false, () => true).state.nodes.tree).toEqual({ left: 2 })
+    const refused = tickHarvest(started, rules, 2000, always, () => false)
+    expect(refused.events).toEqual([])
+    expect(refused.state.nodes.tree).toEqual({ left: 2 })
+    expect(leaveHarvest(started, 'a').nodes.tree).toEqual({ left: 2 })
+    expect(leaveHarvest(started, 'b')).toBe(started)
+  })
+
+  it('says when an empty node comes back, in the scene words', () => {
+    expect(waitText(24000)).toBe('0:24')
+    expect(waitText(24001)).toBe('0:25')
+    expect(waitText(90000)).toBe('1:30')
+    expect(waitText(-5)).toBe('0:00')
+    const empty = { left: 0, backAt: 30000 }
+    expect(emptyLine(empty, rules.tree, 6000, 'Back in {time}', 'Back next round')).toBe('Back in 0:24')
+    expect(emptyLine(empty, rules.tree, 6000, 'Vuelve en', 'x')).toBe('Vuelve en 0:24')
+    expect(emptyLine({ left: 0 }, rules.rock, 0, 'Back in {time}', 'Back next round')).toBe('Back next round')
+    expect(emptyLine({ left: 1 }, rules.tree, 0, 'Back in {time}', 'Back next round')).toBeNull()
+    expect(emptyLine({ left: 0 }, rules.pond, 0, 'Back in {time}', 'Back next round')).toBeNull()
+  })
+
+  it('reports progress and repairs what came off the wire', () => {
+    const started = start(freshHarvest(), 'tree').state
+    expect(gatherProgress(started.nodes.tree, rules.tree, 1000)).toBe(0.5)
+    expect(gatherProgress(started.nodes.tree, rules.tree, 9000)).toBe(1)
+    expect(gatherProgress(undefined, rules.tree, 1000)).toBe(0)
+    expect(readHarvest({ nodes: { tree: { left: 1.7, by: 'a', since: 5 }, rock: { left: 'x' }, pond: { left: 0, by: 'a' } } }))
+      .toEqual({ nodes: { tree: { left: 1, by: 'a', since: 5 }, pond: { left: 0 } } })
+    expect(readHarvest(null)).toEqual(freshHarvest())
   })
 })

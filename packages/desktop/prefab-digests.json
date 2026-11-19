@@ -71,6 +71,10 @@
     "version": "1.0.1",
     "digest": "e7d4f47118004bac59e2712a3cc577cdc6f1bf19e87a9f660b4cd796bf5a1954"
   },
+  "resource-node": {
+    "version": "1.1.0",
+    "digest": "90ca77e8d15a837536ccfd4f90cd52559a3785474de16285604cb8ed8beac120"
+  },
   "run-progress": {
     "version": "1.4.1",
     "digest": "9b395ac6df5c94b309cfe3d955758665308a67e646dc5af33722f45ec86bdbcc"

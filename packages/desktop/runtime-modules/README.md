@@ -82,6 +82,8 @@ Rules for modules in this folder:
 | `carry` | what players carry: one server-decided holder per item, right-hand display, drop/throw, stations that hold and turn items, and the script API (`heldBy`, `giveItem`, `onStation`…); Pickup Item and Work Station register into it |
 | `pure/carryRules` | the carry rules both sides run: pick, drop, throw, put, take, hold-to-work, timed turns, combines, used-up items coming home |
 | `pure/carryPrediction` | this player's carry actions shown before the server answers, replayed over server state and rolled back on refusal or expiry |
+| `harvest` | resource nodes: one server-decided gatherer per node, a progress bar while they stay beside it, the kind handed over through `carry`'s `giveItem`, uses, respawn, and the script API (`onHarvest`, `usesLeft`, `refillNode`); the Resource Node registers into it |
+| `pure/harvestRules` | the resource-node rules the server runs: start, cancel on walking away or leaving, hand over, run out, come back |
 | `interactPrompt`, `interactHint` | one floating "[E] Verb" label over the nearest usable thing (the bare verb on phones), E/F press and hold dispatch, and the bottom-slot hint and notice; `interactHint` is `.tsx` |
 | `pure/interactPick` | nearest candidate within range, prompt text per device, and where a kind goes in a verb |
 
@@ -113,6 +115,7 @@ importing a module that defines one lists it in its `ai.md` `claims-globals:`.
 | `__dclProtectedSync_v1` | `protectedSync.ts` — the protected-registration ledger |
 | `__dclServerLife_v1` | `serverLife.ts` — the one heartbeat driver and its pending-participant set |
 | `__dclCarry_v1` | `carry.ts` — registered items and stations, rules, server state and client visuals |
+| `__dclHarvest_v1` | `harvest.ts` — registered nodes, rules, server state and client bars |
 | `__dclInteract_v1` | `interactPrompt.ts` — candidate providers, the label entity and the held button |
 | `__dclServerState_v1` | `serverState.ts` — store-key claims |
 | `__dclPlayerStoreKeys_v1` | `playerStore.ts` — store-key claims |
@@ -138,6 +141,7 @@ keys) do not touch the engine's message table but must not collide either:
 | Name | Owner |
 |---|---|
 | request `carry.act`, broadcast `carry.event`, state `game.state.carry` | `carry.ts` (claimed by the Pickup Item guide) |
+| request `harvest.act`, broadcast `harvest.event`, state `game.state.harvest` | `harvest.ts` (claimed by the Resource Node guide) |
 
 Synced-entity ids are hand-allocated and must not collide (admin-tools holds
 8000; the editor allocates scene entities from 8001):

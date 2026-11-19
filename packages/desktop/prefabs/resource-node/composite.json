@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "components": [
+    { "name": "core-schema::Name", "data": { "0": { "json": { "value": "Resource Node" } } } },
+    {
+      "name": "core::Transform",
+      "data": {
+        "0": {
+          "json": {
+            "position": { "x": 0, "y": 0, "z": 0 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "scale": { "x": 1.2, "y": 1, "z": 1.2 }
+          }
+        }
+      }
+    },
+    { "name": "core::MeshRenderer", "data": { "0": { "json": { "mesh": { "$case": "sphere", "sphere": {} } } } } },
+    { "name": "core::MeshCollider", "data": { "0": { "json": { "mesh": { "$case": "sphere", "sphere": {} } } } } },
+    {
+      "name": "core::Material",
+      "data": {
+        "0": {
+          "json": {
+            "material": {
+              "$case": "pbr",
+              "pbr": { "albedoColor": { "r": 0.47, "g": 0.45, "b": 0.42, "a": 1 } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "asset-packs::Script",
+      "data": {
+        "0": {
+          "json": {
+            "value": [
+              { "path": "{assetPath}/scripts/resource-node.ts", "priority": 0, "layout": "{\"params\":{},\"actions\":[]}" }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
