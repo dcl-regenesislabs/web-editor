@@ -1,0 +1,31 @@
+{
+  "id": "41772084-57ed-4dc6-a6f5-5761df651e91",
+  "name": "Resource Node",
+  "description": "A rock, tree or fishing spot players gather from: press E (or the phone's action button), stay beside it while the bar fills, and what it gives lands in their hand. It runs out after a few uses and shows when it comes back. The Multiplayer Server decides. Works with: Pickup Item, Work Station.",
+  "category": "custom",
+  "tags": [
+    "resource",
+    "gather",
+    "harvest",
+    "mine",
+    "chop",
+    "fish",
+    "craft",
+    "multiplayer"
+  ],
+  "requiresSdk": "auth-server",
+  "version": "1.1.0",
+  "changelog": [
+    {
+      "version": "1.1.0",
+      "notes": "An empty node stays in place with a floating countdown (\"Back in 0:24\") instead of vanishing; set whenEmpty to \"hide\" for the old behaviour. The countdown words are params, for the scene's language."
+    },
+    {
+      "version": "1.0.0",
+      "notes": "Initial release: gather by staying beside the node while a bar fills, the item lands in the player's hand through Pickup Item's carry, a number of uses before it runs out, a respawn timer shown as a floating countdown (or hiding the node), one gatherer at a time decided by the Multiplayer Server, and script events for every gather."
+    }
+  ],
+  "origin": {
+    "source": "builtin"
+  }
+}

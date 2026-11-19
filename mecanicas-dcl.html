@@ -1,0 +1,254 @@
+<title>Mecánicas de Decentraland</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: una columna de lectura (~900px); resumen arriba, barras de frecuencia, tabla de veredictos filtrable, plan al final */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --fg: #1b1f2a;
+  --muted: #5d6475;
+  --line: #dde1e8;
+  --accent: #5a3fd6;
+  --accent-soft: #ece8fd;
+  --build: #12805c;  --build-bg: #e3f4ec;
+  --skip: #6b7280;   --skip-bg: #eef0f3;
+  --engine: #b25a07; --engine-bg: #fbeedd;
+  --later: #3b6fb6;  --later-bg: #e4eefa;
+  --bar: #c9c0f5;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12141b; --surface: #1a1d27; --fg: #e8eaf0; --muted: #9aa1b3; --line: #2c3040;
+  --accent: #a593ff; --accent-soft: #2a2546;
+  --build: #4fd1a1; --build-bg: #15332a; --skip: #a3a9b7; --skip-bg: #262a36;
+  --engine: #f0a659; --engine-bg: #3a2a17; --later: #7fb0f0; --later-bg: #1c2a40;
+  --bar: #4b3f8c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12141b; --surface: #1a1d27; --fg: #e8eaf0; --muted: #9aa1b3; --line: #2c3040;
+  --accent: #a593ff; --accent-soft: #2a2546;
+  --build: #4fd1a1; --build-bg: #15332a; --skip: #a3a9b7; --skip-bg: #262a36;
+  --engine: #f0a659; --engine-bg: #3a2a17; --later: #7fb0f0; --later-bg: #1c2a40;
+  --bar: #4b3f8c; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 920px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 72px; display: grid; gap: 44px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(30px, 5vw, 44px); letter-spacing: -0.01em; }
+h2 { font-size: 22px; }
+h3 { font-size: 16px; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.muted { color: var(--muted); }
+section { display: grid; gap: 16px; min-width: 0; }
+header { display: grid; gap: 14px; }
+.lede { font-size: 17px; color: var(--muted); }
+.lede strong { color: var(--fg); font-weight: 600; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
+.stat b { font-family: var(--font-display); font-size: 28px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--muted); }
+@media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.insight { background: var(--accent-soft); border-radius: 12px; padding: 20px 22px; display: grid; gap: 10px; }
+.loop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 13px; }
+.loop span.step { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+.loop span.arr { color: var(--accent); }
+
+.bars { display: grid; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 15em) minmax(0, 1fr) 3.2em; align-items: center; gap: 12px; font-size: 13.5px; }
+.bar-row .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { height: 14px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--bar); border-radius: 4px; }
+.bar-row.hot .bar-fill { background: var(--accent); }
+.bar-row .pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+.bar-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--line); margin-top: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+@media (max-width: 560px) { .bar-row { grid-template-columns: minmax(0, 1fr) 3em; } .bar-row .bar-track { grid-column: 1 / -1; grid-row: 2; } }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 5px 14px; cursor: pointer; }
+.filter[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.filter:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.verdicts { display: grid; gap: 8px; }
+.v { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; }
+.v h3 { font-family: var(--font-body); font-weight: 600; font-size: 15px; }
+.v .meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.v .meta b { color: var(--fg); font-weight: 500; }
+.v .note { grid-column: 1 / -1; font-size: 13.5px; }
+.pill { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; align-self: start; white-space: nowrap; }
+.pill.build { color: var(--build); background: var(--build-bg); }
+.pill.skip { color: var(--skip); background: var(--skip-bg); }
+.pill.engine { color: var(--engine); background: var(--engine-bg); }
+.pill.later { color: var(--later); background: var(--later-bg); }
+.v.is-build { border-left: 3px solid var(--build); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td.n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+.plan { display: grid; gap: 12px; counter-reset: p; }
+.plan li { list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 16px 54px; position: relative; display: grid; gap: 4px; }
+.plan li::before { counter-increment: p; content: counter(p); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--surface); font-family: var(--font-mono); font-size: 13px; display: grid; place-items: center; }
+.plan { padding: 0; margin: 0; }
+
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+summary { cursor: pointer; font-weight: 600; }
+details ul { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; color: var(--muted); }
+code { font-family: var(--font-mono); font-size: 0.9em; }
+a { color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Spike · web-editor #125 · nov 2026</div>
+    <h1>Qué mecánicas se repiten en Decentraland</h1>
+    <p class="lede">Leí el código publicado de <strong>415 escenas</strong> de Genesis City para ver qué mecánicas aparecen una y otra vez, y cuáles valen la pena como prefab. Lo más común ya está cubierto. <strong>Lo que falta es el ciclo que tienen hoy los juegos más activos.</strong></p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b>415</b><span>escenas analizadas</span></div>
+    <div class="stat"><b>295</b><span>etiquetadas como juego</span></div>
+    <div class="stat"><b>173</b><span>hechas con Creator Hub</span></div>
+    <div class="stat"><b>~348</b><span>creadores distintos</span></div>
+  </div>
+
+  <section class="insight">
+    <div class="eyebrow">El hallazgo</div>
+    <h2>El ciclo que no tiene prefab</h2>
+    <p>WonderMine, Portal Lake, PaleoVault, GolfCraft, Antrom RPG y Old McTiger's Farm están entre los lugares más activos, y casi todos se juegan así:</p>
+    <div class="loop" aria-label="Ciclo de juego">
+      <span class="step">juntar recursos</span><span class="arr">→</span>
+      <span class="step">inventario</span><span class="arr">→</span>
+      <span class="step">craftear / subir de nivel</span><span class="arr">→</span>
+      <span class="step">reclamar wearable</span><span class="arr">→</span>
+      <span class="step">volver mañana</span>
+    </div>
+    <p class="muted">Hoy <code>pickup-item</code> y <code>work-station</code> resuelven llevar y transformar un objeto. No resuelven una mochila, recursos que reaparecen ni progreso que se guarde entre visitas.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Frecuencia</div>
+    <h2>Mecánicas de juego en el código</h2>
+    <p class="muted">Porcentaje de los 283 juegos con código cuyo texto propio menciona la mecánica. Es orientativo: los bundles vienen minificados y traen el SDK entero.</p>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Creator Hub · 173 escenas</div>
+    <h2>Lo que colocan los creadores sin código</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tipo</th><th>Más usados (cantidad de escenas)</th></tr></thead>
+        <tbody>
+          <tr><td>Componentes</td><td>Animator 85 · Visibility 73 · Actions 72 · Triggers 70 · VideoPlayer 67 · <b>VideoScreen 63</b> · <b>AdminTools 59</b> · States 46 · PointerEvents 43 · TextShape 22 · Script 18 · Tween 12</td></tr>
+          <tr><td>Triggers</td><td>on_click 46 · on_player_leaves_area 41 · on_input_action 36 · on_player_enters_area 35 · on_spawn 18 · on_state_change 16</td></tr>
+          <tr><td>Acciones</td><td>set_state 46 · batch 38 · play_animation 29 · open_link 29 · <b>move_player_here 28</b> · <b>play_default_emote 28</b> · set_visibility 27 · random 26 · show_text 26 · play_sound 25 · teleport_player 12 · start_tween 12</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">En resumen: un clic o entrar a un área dispara una animación, un texto, un sonido, un teletransporte o un emote, más una pantalla de video y admin tools. Todo eso ya existe.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Veredictos</div>
+    <h2>Mecánica por mecánica</h2>
+    <div class="chips" role="group" aria-label="Filtrar por veredicto">
+      <button class="filter" id="f-all" data-f="all" aria-pressed="true">Todas</button>
+      <button class="filter" id="f-build" data-f="build" aria-pressed="false">Construir</button>
+      <button class="filter" id="f-engine" data-f="engine" aria-pressed="false">Necesita engine</button>
+      <button class="filter" id="f-later" data-f="later" aria-pressed="false">Más adelante</button>
+      <button class="filter" id="f-skip" data-f="skip" aria-pressed="false">Ya cubierto</button>
+    </div>
+    <div class="verdicts" id="verdicts"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Próximos pasos</div>
+    <h2>Qué haría yo</h2>
+    <ol class="plan">
+      <li><h3>Prototipo 1: Recurso + Inventario</h3><p class="muted">Un punto que se cosecha (roca, árbol, lugar de pesca, parcela) manteniendo E: da N ítems y reaparece después de un tiempo. Un inventario por jugador con el conteo en el servidor y un lugar en el HUD. Una receta de Work Station convierte ítems en otro.</p></li>
+      <li><h3>Prototipo 2: Progreso del jugador</h3><p class="muted">XP, nivel, racha diaria y datos que se guardan entre visitas. Le da a cualquier otro prefab un motivo para volver. Antes hay que ver qué puede guardar el auth server por jugador (#41).</p></li>
+      <li><h3>Issues de seguimiento</h3><p class="muted">Seguimiento de misiones, NPC con diálogo (junto con #86), dispensador de recompensas (es una charla con la plataforma) y podio de fin de partida en <code>game-flow</code>.</p></li>
+    </ol>
+  </section>
+
+  <details>
+    <summary>Cómo lo medí</summary>
+    <ul>
+      <li>720 lugares del API público de Places (los mejor votados, los más activos ahora y todos los juegos). De esos, 415 tenían un deploy activo en el Catalyst: 240 en SDK7 y 175 en SDK6.</li>
+      <li>Se leyó el bundle de cada escena (<code>bin/index.js</code> o <code>bin/game.js</code>) y, si existía, el <code>main.composite</code> de Creator Hub.</li>
+      <li>Para el texto, solo conté strings que aparecen en menos de 8 escenas, así se descartan los del SDK y las librerías. Saqué las palabras demasiado genéricas (key, round, match, item).</li>
+      <li>Señales de librerías en SDK7: triggers de <code>@dcl-sdk/utils</code> 58%, MessageBus 35%, auth server (<code>isServer</code>) 27%, runtime de asset-packs 72%, colyseus 6%, cannon 3%.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+const freq = [
+  ["Puntaje / puntos", 28], ["Nivel / XP", 26, 1], ["Misiones / objetivos", 22, 1], ["Recompensa / wearable", 20],
+  ["Tienda / compra con MANA", 20], ["Vida / daño", 19], ["Coleccionables / monedas", 19, 1], ["Caída / reintentar", 17],
+  ["Leaderboard / ranking", 15], ["Timer / cuenta regresiva", 14], ["Ascensor / plataforma", 13], ["Teletransporte / portal", 12],
+  ["Diario / racha / energía", 12, 1], ["Ganar / perder / podio", 11], ["NPC con diálogo", 11, 1], ["Mascotas / criaturas", 11],
+  ["Cartas / dados / casino", 11], ["Cultivo / cosecha", 10, 1], ["Inventario / mochila", 9, 1], ["Enemigos / oleadas", 9],
+  ["Disparos / armas", 9], ["Minería / excavar", 8, 1], ["Trivia / quiz", 8], ["Crafteo / recetas", 7, 1],
+  ["Parkour / obstáculos", 7], ["Juegos de pelota", 6], ["Equipos", 5], ["Pesca", 5, 1], ["Carreras / vehículos", 5], ["Checkpoints", 3]
+];
+const max = 30;
+document.getElementById("bars").innerHTML = freq.map(([l, p, hot]) =>
+  `<div class="bar-row${hot ? " hot" : ""}"><span class="lbl" title="${l}">${l}</span><div class="bar-track"><div class="bar-fill" style="width:${(p / max) * 100}%"></div></div><span class="pct">${p}%</span></div>`
+).join("") + `<div class="bar-legend"><span><i class="sw" style="background:var(--accent)"></i>Parte de los prefabs propuestos</span><span><i class="sw" style="background:var(--bar)"></i>Otras</span></div>`;
+
+const V = [
+  ["Recurso + inventario + crafteo", "build", "WonderMine, Portal Lake, PaleoVault, GolfCraft, Antrom", "8–11% cada una; juntas son el género dominante entre los activos", "L", "pickup-item y work-station, solo en parte", "Prototipo 1. El ciclo principal de los juegos activos."],
+  ["Progreso del jugador (XP, nivel, racha diaria)", "build", "Oasis Arcade, Color Pop, PaleoVault", "26% XP · 12% diario", "L", "nada", "Prototipo 2. Necesita guardar datos por jugador (#41)."],
+  ["Seguimiento de misiones / objetivos", "build", "Oasis Arcade, Recall Rush, Color Pop", "22% de juegos", "M", "nada (run-progress es solo para recorridos)", "Lista de pasos en el HUD, se completa con triggers."],
+  ["NPC con diálogo", "build", "WonderMine, Meta GamiMall, RAGE Parkour", "11% (npc-scene-utils en 29% de SDK6)", "M", "nada", "AvatarShape + diálogo + emote en reposo. Depende de #86 para vestirlos."],
+  ["Podio y pantalla de ganar/perder", "build", "Game Night Arena, Liquid Labyrinth", "11%, gap ya nombrado en #108", "S", "game-flow en parte", "Como extensión de game-flow."],
+  ["Coleccionables / monedas por jugador", "build", "SK8centraLAND, Oasis Arcade", "19%", "S", "run-progress, por recorrido", "Que sea una moneda compartida con el inventario y el progreso."],
+  ["Reclamar wearable / POAP", "engine", "La mayoría de las descripciones de juegos", "20% de juegos", "M", "solo la pestaña de airdrops de admin-tools", "Necesita la plataforma: un dispensador ligado al servicio de Rewards y validado en el servidor."],
+  ["Tienda con MANA", "engine", "WonderMine, Crypto Whale", "20%", "L", "nada", "Necesita transacciones. Una tienda con moneda propia podría salir con el progreso."],
+  ["Ascensores / plataformas móviles", "engine", "Game Night Arena, WonderMine", "13%", "S / L", "tween de asset-packs", "En multiplayer depende de #38 (grounded sync)."],
+  ["Disparos, enemigos, oleadas", "engine", "WOW Nightswarm, Color Pop", "9%", "L", "spawner + health-respawn", "Faltan proyectiles, raycast y física (#36)."],
+  ["Pelotas y lanzamientos", "engine", "GolfCraft, Angry Avatars", "6%", "L", "pickup-item lanza", "Física con dueño (#36)."],
+  ["Vehículos / karts / carreras", "engine", "NFT World City", "5%", "L", "nada", "Depende de #37 (attach)."],
+  ["Trivia / quiz", "later", "Game Night Arena, Grill Master", "8%", "S", "nada", "Barato pero poco frecuente."],
+  ["Teletransportador / portal", "later", "META G, CBD Plaza", "12% + 40 acciones de mover/teleport", "S", "acciones de asset-packs", "Quizás un prefab fino más adelante."],
+  ["Mascotas que te siguen", "later", "Ethermon, Chubs Club", "11% (casi todo una familia de escenas)", "M", "acción follow_player", "Por ahora no."],
+  ["Clic / entrar a un área → acción", "skip", "Acciones de Creator Hub", "40–60%", "S", "asset-packs + trigger-zone", ""],
+  ["Pantalla de video y streams", "skip", "VideoScreen en 63 de 173", "alta", "S", "video-screen", ""],
+  ["Admin y moderación", "skip", "AdminTools en 59 de 173", "alta", "M", "admin-tools", ""],
+  ["Puntaje, ranking, timer, rondas", "skip", "15–28% de juegos", "alta", "M", "leaderboard, game-flow, server-clock", ""],
+  ["Vida, caídas, checkpoints", "skip", "17–19%", "alta", "M", "health-respawn, run-progress", ""],
+  ["Asientos", "skip", "11%", "media", "S", "sit-spot + sillas", ""],
+  ["Casino, cartas, juegos de mesa", "skip", "Euchre, Oasis Arcade", "11%", "L", "nada", "Nicho y regulado."],
+];
+const label = { build: "Construir", engine: "Necesita engine", later: "Más adelante", skip: "Ya cubierto" };
+const box = document.getElementById("verdicts");
+function render(f) {
+  box.innerHTML = V.filter(v => f === "all" || v[1] === f).map(([m, k, seen, often, eff, cov, note]) => `
+    <article class="v${k === "build" ? " is-build" : ""}">
+      <h3>${m}</h3><span class="pill ${k}">${label[k]}</span>
+      <div class="meta"><span>Visto en: <b>${seen}</b></span><span>Frecuencia: <b>${often}</b></span><span>Esfuerzo: <b>${eff}</b></span><span>Hoy: <b>${cov}</b></span></div>
+      ${note ? `<p class="note">${note}</p>` : ""}
+    </article>`).join("");
+}
+let current = "all";
+try { current = localStorage.getItem("dcl-mech-filter") || "all"; } catch (e) {}
+function setFilter(f) {
+  current = f;
+  document.querySelectorAll(".filter").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === f)));
+  render(f);
+  try { localStorage.setItem("dcl-mech-filter", f); } catch (e) {}
+}
+document.querySelectorAll(".filter").forEach(b => b.addEventListener("click", () => setFilter(b.dataset.f)));
+setFilter(current);
+</script>

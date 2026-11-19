@@ -225,6 +225,45 @@ describe('the pickup item and the work station', () => {
   })
 })
 
+// A node hands its kind to the carry module, so what it gives is an ordinary
+// carried item a station or a script already knows how to use.
+describe('the resource node', () => {
+  const FOLDER = 'resource-node'
+
+  it('runs on the Multiplayer Server, needs no permission, and sits beside the carry cards', () => {
+    const value = data(FOLDER)
+    expect(value.requiresSdk).toBe('auth-server')
+    expect(value.requiredPermissions ?? []).toEqual([])
+    expect(value.group).toBeUndefined()
+    const source = read(`${FOLDER}/scripts/${FOLDER}.ts`)
+    expect(source).toContain("from '~runtime/harvest'")
+    expect(source).toContain('declareInteractButtons(')
+    expect(source).not.toContain('IA_SECONDARY')
+    expect(read('../runtime-modules/harvest.ts')).toContain("from './carry'")
+  })
+
+  it('is one solid entity whose own model is what empties and comes back', () => {
+    const layout = prefabLayout(composite(FOLDER))
+    expect(layout.entities.map((entity) => entity.localId)).toEqual(['0'])
+    const names = composite(FOLDER).components.map((component) => component.name)
+    expect(names).toEqual(expect.arrayContaining(['core-schema::Name', 'core::MeshRenderer', 'core::MeshCollider', 'core::Material']))
+    expect(scriptPath(FOLDER, '0')).toBe(`${ASSET_PATH_TOKEN}/scripts/resource-node.ts`)
+  })
+
+  it('exposes the node settings its guide is written against', () => {
+    const { params, error } = getScriptParams(read(`${FOLDER}/scripts/resource-node.ts`))
+    expect(error).toBeUndefined()
+    expect(Object.keys(params)).toEqual([
+      'kind', 'gatherVerb', 'seconds', 'uses', 'respawnSeconds', 'whenEmpty', 'emptyText', 'emptyRoundText', 'range', 'barHeight'
+    ])
+    expect(params.kind.value).toBe('Wood')
+    expect(params.uses.value).toBe(3)
+    expect(params.whenEmpty.options).toEqual(['show timer', 'hide'])
+    expect(params.whenEmpty.value).toBe('show timer')
+    expect(params.emptyText.value).toBe('Back in {time}')
+  })
+})
+
 // Which built-ins say how a creator drives them, and which say nothing.
 //
 // The complaint that produced the field: an Announcer offers hold seconds and
@@ -241,7 +280,7 @@ describe('the line a placed item says it is driven by', () => {
   // an empty row on every one of these cards. Furniture is the bulk of it — you
   // sit on a chair; there is no line to write.
   const SELF_DRIVING = [
-    'run-progress', 'announcer', 'ui-theme', 'camera-rig', 'pickup-item', 'work-station',
+    'run-progress', 'announcer', 'ui-theme', 'camera-rig', 'pickup-item', 'work-station', 'resource-node',
     'game-flow', 'server-clock', 'leaderboard', 'spawner', 'admin-tools', 'video-screen',
     'black-chair', 'classic-bench', 'classic-bench-armrests', 'classroom-chair', 'court-chair',
     'curved-couch', 'high-stool', 'large-couch', 'loveseat', 'modern-sofa', 'outdoor-chair',
