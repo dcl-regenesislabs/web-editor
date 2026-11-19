@@ -99,7 +99,9 @@ The explorer is `dcl-one/rendering/bevy-explorer/source`; the paths below are re
    (`react-web/src`) need no build: vite serves them live. Engine logic that doesn't need a
    browser is quicker to check natively: `cargo test -p <crate>`, `cargo clippy -p <crate>`.
 
-   Either way, once: `cd react-web && npm install && (cd bridge-scene && npm install)`, and after
+   Either way, once: `cd react-web && pnpm install && (cd bridge-scene && pnpm install)` (npm fails
+   there with `EUNSUPPORTEDPROTOCOL` on the `workspace:` dependencies, and without the bridge scene's
+   install it cannot start `@dcl/sdk-commands`), and after
    every checkout `./scripts/gen-ts-bindings.sh` (needs cargo): the HUD imports types generated from
    the Rust structs into the gitignored `react-web/src/engine/generated`, and a stale copy fails the
    page with a missing export such as `LANGUAGES`.
