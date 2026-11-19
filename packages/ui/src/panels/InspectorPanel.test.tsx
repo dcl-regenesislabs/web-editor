@@ -76,3 +76,16 @@ describe('the card titles on a Trigger Area', () => {
     view.unmount()
   })
 })
+
+describe('the inspector with nothing selected', () => {
+  it('says what to select and how, in a block that fills the panel', () => {
+    run(() => {
+      state.activeEntity = null
+    })
+    const view = panel()
+    const empty = view.find('.eui-empty.fill')
+    expect(empty?.textContent).toContain('Select an entity to edit it')
+    expect(empty?.textContent).toContain('Click an object in the scene or in the Scene list.')
+    view.unmount()
+  })
+})
