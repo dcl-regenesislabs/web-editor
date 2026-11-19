@@ -348,6 +348,7 @@
   font-size: 12px; line-height: 1.6;
 }
 .eui-empty-line { margin: 0 0 10px; }
+.eui-root .eui-ds-btn.eui-empty-cta { text-transform: none; }
 /* "3 matches in Prefabs · 1 in Assets" — where the thing probably is, from the
    tab that doesn't have it */
 .eui-empty-hints {
