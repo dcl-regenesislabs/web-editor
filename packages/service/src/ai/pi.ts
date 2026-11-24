@@ -259,10 +259,10 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
           match: Type.Optional(Type.String()),
           label
         }),
-        search_files: Type.Object({ query: Type.String(), regex: Type.Optional(Type.Boolean()), match: Type.Optional(Type.String()), label }),
+        search_files: Type.Object({ query: Type.String({ description: 'Literal text unless regex is true.' }), regex: Type.Optional(Type.Boolean()), match: Type.Optional(Type.String()), label }),
         read_file: Type.Object({
           path: Type.String(), offset: Type.Optional(Type.Integer({ minimum: 1 })), limit: Type.Optional(Type.Integer({ minimum: 1 })),
-          query: Type.Optional(Type.String()), regex: Type.Optional(Type.Boolean()), label
+          query: Type.Optional(Type.String({ description: 'Literal text unless regex is true.' })), regex: Type.Optional(Type.Boolean()), label
         }),
         edit_file: Type.Object({ path: Type.String(), old: Type.String(), new: Type.String(), all: Type.Optional(Type.Boolean()), label }),
         asset_request: Type.Object({
@@ -311,7 +311,7 @@ export async function createPiFactory(authPath: string, preferredModel?: string,
       tools.push({
         name: 'read_skill', label: 'Read SDK skill',
         description: 'Read bundled Decentraland SDK guidance or references. Paths are relative to the skill library, not the project. Follow nextOffset for more; query searches a document and returns matching lines with offsets.',
-        parameters: Type.Object({ path: Type.String(), offset: Type.Optional(Type.Integer({ minimum: 0 })), query: Type.Optional(Type.String()) }),
+        parameters: Type.Object({ path: Type.String(), offset: Type.Optional(Type.Integer({ minimum: 0 })), query: Type.Optional(Type.String({ description: 'Literal text, not a regular expression. Omit to read the guide.' })) }),
         execute: async (_id, args) => {
           if (!object(args) || typeof args.path !== 'string' ||
             (args.offset !== undefined && typeof args.offset !== 'number') ||

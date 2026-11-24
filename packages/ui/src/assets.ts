@@ -174,8 +174,11 @@ function withDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
 const MAX_MODEL_BYTES = 50 * 1024 * 1024
 
 // streamed, so an oversized or lying content-length can't fill memory first
-async function readCapped(res: Response, max: number): Promise<Uint8Array> {
-  if (Number(res.headers.get('content-length')) > max || res.body === null) throw new Error('model exceeds the 50 MB file limit')
+export async function readCapped(res: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
+  if (Number(res.headers.get('content-length')) > max || res.body === null) {
+    await res.body?.cancel()
+    throw new Error(`File exceeds the ${max / 1024 / 1024} MB limit.`)
+  }
   const reader = res.body.getReader()
   const chunks: Uint8Array[] = []
   let size = 0
@@ -184,7 +187,7 @@ async function readCapped(res: Response, max: number): Promise<Uint8Array> {
       const { done, value } = await reader.read()
       if (done) break
       size += value.byteLength
-      if (size > max) throw new Error('model exceeds the 50 MB file limit')
+      if (size > max) throw new Error(`File exceeds the ${max / 1024 / 1024} MB limit.`)
       chunks.push(value)
     }
   } finally {

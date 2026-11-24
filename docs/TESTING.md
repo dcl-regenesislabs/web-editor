@@ -108,3 +108,89 @@ against the real `game` module under a mocked engine.
 It needs a GPU (WebGPU engine), a test scene, and is macOS/Linux-only. It's
 timing-sensitive: green is strong evidence, red means investigate — but the hard
 requirement remains `npm run validate`.
+
+## Custom model generation
+
+The browser probe runs the actual modeling sandbox, GLB exporter, budget checks
+and preview worker with a tree, rock, ceramic planter and curved wooden handle:
+
+```bash
+node packages/web/validate/model-building.mjs --out /tmp/model-building
+# Or connect to an isolated Chromium session with remote debugging enabled:
+node packages/web/validate/model-building.mjs --cdp http://localhost:9222 --out /tmp/model-building
+```
+
+The first form needs a Playwright-compatible Chromium installation. The second
+opens and closes its own test tab, leaving the existing browser running. Inspect
+`models.png` and the individual JPEG contact sheets for shape, material mapping
+and detached parts. `models/` contains the exported GLBs and their shared images;
+copy that whole directory into a test scene to inspect them in Bevy.
+
+`report.json` records triangle/material/texture counts, GLB KB, script length,
+geometry/export time and preview time. GLB size excludes shared texture files;
+the timings use fixed scripts and do not measure assistant response time or
+Bevy frame time. Studio lighting also differs from the scene's lighting.
+
+The geometry unit tests cover outward-facing surfaces, directional UV preservation
+through the production export passes, repeatable shapes, attached leaf bases,
+and the default tree's triangle budget after two-sided leaves are expanded.
+
+### Actual assistant turns in Bevy
+
+`model-assistant.mjs` uses the production assistant provider, prompts and browser
+tools. It creates a fresh temporary scene and conversation for each tree, chair,
+shed and cartoon chest, then captures each result in Bevy at a fixed camera pose.
+Its turn driver and tool queue live alongside it in `packages/web/validate/`, which
+owns the Playwright dependency; the service can typecheck with only its own dependencies.
+It needs an existing editor OAuth session, an isolated Chromium CDP endpoint and
+an installed SDK7 scene to supply its dependencies. It uses that session's model
+allowance. It does not send messages to another person.
+Browser tools use the service's ordering: catalog searches may overlap; other
+calls run sequentially so simultaneous script edits and rebuilds cannot race.
+
+```bash
+node packages/web/validate/model-assistant.mjs --auth /path/to/.auth.json --cdp http://localhost:9222 --sdk /path/to/installed-scene --variant baseline --baseline HEAD --out /tmp/model-turns
+node packages/web/validate/model-assistant.mjs --auth /path/to/.auth.json --cdp http://localhost:9222 --sdk /path/to/installed-scene --variant current --out /tmp/model-turns
+node packages/web/validate/model-report.mjs --baseline /tmp/model-turns/baseline --current /tmp/model-turns/current --out /tmp/model-comparison
+```
+
+Run the variants sequentially; they own local ports 3021, 8024 and 8025. Both
+servers use `--bevy-web --no-browser`, plus `--no-client` where supported, so
+starting SDK content servers cannot auto-launch the native Explorer. Check their
+logs for the absence of `Desktop client:`. `--no-browser` alone is insufficient
+with SDK versions that default to the native client.
+Each temporary scene has a real `node_modules` directory containing links to the
+dependency template. Some SDK versions reinstall when the directory itself is a
+link and ignore `--skip-install` during `start`. The runner checks that the shared
+packages remain linked after startup.
+
+The baseline derives modified TypeScript modules from `git diff --diff-filter=M`
+against `--baseline` and loads their earlier contents. Added modules remain available;
+the new modeling skill is hidden. This is a source overlay, not a whole-repository
+checkout. `revision.json` records the overridden paths. `--cases tree,chair` selects cases. Output directories must be fresh.
+`--build-only` prepares bundles without running a provider; `--skip-build` reuses
+them only when sources have not changed.
+`--effort low|medium|high` overrides reasoning only in the benchmark bundle;
+omitting it uses the production setting. Each effort has a separate bundle, and
+`turn.json` records the actual setting. Keep code, model, prompts and source the
+same when comparing effort, alternate the run order, and inspect every result in
+Bevy before accepting a faster setting. This flag does not change the editor default.
+`--source code` (the default) requests a generated model; `--source catalog`
+requests an existing asset, and `--source auto` lets the assistant choose. Use a
+fresh output directory for each source. Comparisons between sources measure
+different workflows; baseline/current speed comparisons must keep the source and
+prompt identical. Catalog downloads use the desktop host's existing CDN proxy.
+`--follow-up "Make the generated model 20% taller by editing its saved script; keep its width, depth, position and materials."`
+runs another provider turn against the finished scene and records its time, tools
+and screenshot under `revision/`. This turn starts from the current project context,
+without the first conversation's history. Its model files remain in the parent `project/`.
+
+Each `turn.json` records total prompt-to-answer time, first saved model time,
+whether each placement was generated or imported, generated code, tool errors,
+rebuilds and usage. A turn that ends without placing a model fails the run.
+`bevy.png` uses the same case camera
+for both variants; `frames.json` samples engine heartbeats for five seconds after
+the turn. Frame intervals measure the whole capped scene, not isolated model GPU
+cost. `index.html` in the comparison directory puts images beside time and size
+measurements, including shared texture bytes. Single runs reveal failures and
+quality differences; repeated interleaved runs are needed for a speed claim.

@@ -161,58 +161,62 @@ scene_request accepts one request:
 - {type:"deleteEntity",entity:"id or unique name"} deletes it and all under it as the Delete key does (one undo
   step) and answers deleted: each id and name. Refuses code-made entities and shared names. Delete what you
   replaced or redid (an old placement, a test object) in the same batch, or what the creator asks; say what went.
-- {type:"findModels",query:"stone platform",limit:8} searches the model catalog, 5,700 free models, by whole words
-  in name, category, tags and description; answers id, name, category, size in metres, triangles and KB, lightest
-  first among equals; flat:true marks a picture, sign or thin plane, listed last unless the query asks for one.
+- {type:"findModels",query:"stone platform",limit:8} searches 5,700 free models by name, category, tags and
+  description. Returns id, name, category, metre size, triangles, KB and up to eight labelled thumbnails.
+  Equal matches sort lightest first; flat:true pictures/planes sort last unless requested. Choose by
+  silhouette and style from thumbnails before importing.
 - {type:"placeModel",id:"<findModels id>",name:"Platform 1",position:{x:8,y:0,z:8},rotation:{...},scale:{...}}
-  downloads that model into models/ and creates the entity with it (its own meshes collide); with into:"Platform 1"
-  instead of name and position it turns that stand-in into the model in place: MeshRenderer, Material and
-  MeshCollider go, scale resets to 1 unless given. A model's size is its own: pick one near the size you need, or
-  give scale = wanted ÷ size; the model's feet are usually at the entity's origin. The result gives the model's
-  textures and materials and the scene's textures left, with a warning when it takes the scene over: prefer a
-  lighter model then.
+  downloads to models/ and places a colliding model. into:"Platform 1" replaces that entity's stand-in:
+  MeshRenderer, Material and MeshCollider go; scale resets to 1 unless given. height:5 fits a five-metre
+  model from actual rotated bounds, grounded and centred at position. Catalog sizes/pivots can be wrong.
+  Use height or scale, not both. Without height, position uses the original pivot. Returns SDK-local bounds,
+  native size, texture/material cost and remaining scene textures; choose a lighter model if warned over budget.
 - {type:"buildModel",name:"Stone Tower",code:"<script>",position:{x:8,y:0,z:8}} builds a model from a three.js
-  script you write, saves it to models/ (the script to models/src/<name>.js, never published) and creates the entity; into:"Tower"
-  instead of name and position turns that stand-in into it, or replaces an earlier build. code is a function body
-  run as (THREE, addons, root, clips): add meshes to root (a THREE.Group). THREE is three.js r180; addons has
+  script, saving the GLB to models/ and unpublished source to models/src/<name>.js. into:"Tower" updates that
+  entity instead of creating one. code runs as (THREE, addons, root, clips); add meshes to root (THREE.Group).
+  THREE is r180; addons has
   RoundedBoxGeometry, mergeGeometries, mergeVertices, Brush/Evaluator/ADDITION/SUBTRACTION/INTERSECTION
-  (three-bvh-csg; give brushes a MeshStandardMaterial) and canvas(w,h), an OffscreenCanvas for textures drawn in
-  code (CanvasTexture, colorSpace SRGBColorSpace for colour maps) whose sides are each a power of two up to 512
-  (64, 128, 256, 512; any other size is refused). No imports, lights, cameras or async. Metres, base at
-  y=0 centred on x/z, with the scene's axes: +x east, +y up, +z north for a model placed unturned.
+  (three-bvh-csg; brushes need MeshStandardMaterial), plus canvas(w,h): OffscreenCanvas, power-of-two sides
+  up to 512. Use CanvasTexture with SRGBColorSpace for colour maps. No imports, lights, cameras or async.
+  Metres; base y=0, centred on x/z; unturned axes +x east, +y up, +z north.
   MeshStandardMaterial only; emissiveIntensity at most 1. Decentraland draws only front faces: a thin part seen from both sides (a leaf card, a flag, a sign) gets side:THREE.DoubleSide, which the
   build turns into two faces (twice its triangles). Cut-outs (leaves, fences, grates, decals) use alphaTest:0.5 with transparent left
-  off; transparent:true only for glass or water, on its own mesh. Vertex colours are not supported and are
-  removed. Name only the parts you animate or refer to: unnamed parts are named <Model>_Part01… and static
-  parts sharing a material are merged into one mesh. A texture whose sides are not powers of two is refused. Budget per model:
+  off; transparent:true only for glass or water, on its own mesh. Vertex colours are removed.
+  Name only animated or referenced parts; others become <Model>_Part01… . Static parts sharing a material merge.
+  Budget per model:
   8,000 triangles, 6 materials, 4 textures of at most 512 px (shared materials do not count); it is refused over
   that, with the counts. Make it read well from 5–15 m: bevelled edges, varied proportions, details that show,
-  never plain boxes. To change a built model, edit its script and build again into the same entity; the old
+  never plain boxes. To change a built model, read_file/edit_file its saved script, then buildModel with
+  script:"models/src/<name>.js" instead of code, into the same entity. The old
   file stays for undo. After a rebuild, tell the creator the older builds can be deleted from Assets; never
   delete them yourself.
-  For surfaces use addons.material(name,{color,roughness,metalness,relief}): photo-scanned sets, UVs done for
-  you, one shared copy per name for every model in the scene; the same name and settings is one material
-  however many parts use it. name is one of stone-blocks, red-brick, old-brick, cobblestone, rock, mossy-rock,
-  planks, wood, bark, roof-tiles, concrete, marble, floor-tiles, metal, rusty-metal, metal-plate, grass, sand,
-  gravel, snow, ice. color tints the photo (white keeps it; tint for gold, painted wood or darker stone);
-  roughness and metalness default to the scan's. Each material costs the scene 2 textures (colour + relief),
-  counted once however many models use it, and a scene has 10 × log2(parcels + 1) (10 for one parcel, 23 for
-  four). Each different tint, roughness, metalness or relief of a name is another material, and a scene has
-  20 × log2(parcels + 1) materials (20 for one parcel, 46 for four): reuse the materials the scene already has, keep a model to 2–4 of them, and give parts seen from afar
-  (roofs, tops, backs) relief:false, which costs 1. A build that would go over is refused with the count. Draw
-  your own canvas texture only for what the library lacks (a sign, a face, a pattern).
-  Living things and moving props get motion: push THREE.AnimationClip objects into clips (a parameter: never
-  declare it). addons.spin(node,
-  {axis,seconds}), addons.swing(node,{axis,degrees,seconds}) and addons.bob(node,{height,seconds}) return looping
-  tracks for one part, which moves around its own origin, so put a tail, wing or door in a THREE.Group placed at
-  its pivot and animate the group. The first clip loops by itself in the scene; to switch clips, give the
-  entity an Animator {states:[{clip:"Run",playing:true,loop:true}]}. The result lists the clip names.
+  Default to believable game art with realistic proportions; follow the creator's reference and scene style.
+  Use toy, cartoon or deliberately low-poly shapes only when requested.
+  Real-world props need visible grain, brick and mortar, tiles or fabric.
+  Use addons.material(name,{color,roughness,metalness,relief}) for shared scanned surfaces:
+  stone-blocks, red-brick, old-brick, cobblestone, rock, mossy-rock, planks, wood, bark, roof-tiles,
+  concrete, marble, floor-tiles, metal, rusty-metal, metal-plate, grass, sand, gravel, snow, ice.
+  White tint preserves the scan; dark tint multiplies it. For pale oak or another unavailable finish, draw
+  a small canvas texture with subtle grain: tint cannot lighten a dark scan. Explicit cartoons can use flat colours.
+  Keep 2–4 materials; each shared surface uses two scene textures once, or one with relief:false.
+  Reuse built GLBs. addons.tree({height:5,width:3.4,seed:7}) returns a grounded leafy Group. For custom
+  geometry, read model-building/SKILL.md for rock, tube, lathe and foliage options instead of rewriting loops.
+  tube/lathe preserve directional UVs; use addons.keepUVs(geometry) for other authored mapping.
+  RoundedBoxGeometry(w,h,d,1,radius) costs 108 triangles; two corner segments cost 300, three cost 588.
+  Animate living things/moving props: push THREE.AnimationClip objects into clips; do not redeclare it.
+  addons.spin(node,{axis,seconds}), addons.swing(node,{axis,degrees,seconds}) and addons.bob(node,{height,seconds}) return
+  looping tracks. Put a tail/wing/door in a THREE.Group at its pivot and animate that group. The first clip
+  loops automatically; switch with Animator {states:[{clip:"Run",playing:true,loop:true}]}. Results list clip names.
   When the creator asks for one specific thing and has not said whether it should come from the catalog or be
   built, findModels first, then end the turn with one short question and a fenced block tagged models holding up
   to 4 of its ids, one per line: the chat shows them as cards beside a "Build it in code" card, and the creator's
   pick arrives as the next message. Skip the question when the creator already chose, asked you to just build,
   or nothing in the catalog is close (then build it). For many pieces at once, such as a whole game, choose
-  yourself and say which you used. After building, view it and fix what looks off.
+  yourself and say which you used. buildModel returns three studio views: inspect silhouette, proportions,
+  texture direction and disconnected/intersecting parts. Fix defects by rebuilding into the same entity;
+  skip unchanged builds. Then view the placed model for scene scale and lighting. If preview failed, use view
+  before finishing.
+  Say whether the model was generated from code or imported from the catalog.
 - {type:"findSounds",query:"splash",kind:"effect"} searches library sounds; kind (effect, voice, ambience or music,
   the last two loops) narrows it, alone lists it.
 - {type:"addSound",name:"coin"} copies a library sound into assets/audio/library/<name>.mp3 (once) and answers {path,

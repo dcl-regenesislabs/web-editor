@@ -262,10 +262,32 @@ building, fix visible layout problems and recheck. When the preview is closed, i
 **Preview → As a phone** for a mobile check. It reports unavailable checks instead of claiming they passed.
 When nothing in the catalog fits, or you ask for something specific, it builds the model in code (three.js,
 run in a sandbox with no network) and saves the script next to it in `models/src/`, so "make the roof taller"
-edits and rebuilds it. Built models can move (a looping clip plays on its own) and share a library of 21
+edits and rebuilds it. The assistant can patch that saved script and rebuild by path without
+resending all its code; the same sandbox and budget checks apply. Its reply identifies
+generated models and catalog imports. Built models can move (a looping clip plays on its own) and share a library of 21
 photo-scanned materials (stone, brick, wood, metal, grass, snow and more, with relief; CC0 from ambientCG)
 stored once in `models/materials/` as `T_<Name>_D.jpg` / `T_<Name>_N.jpg`; each costs the scene two textures, so a build that would go over the
-parcels' texture limit is refused. For sound it has a library of 25 CC0 sounds from Kenney (coin, jump, win, door,
+parcels' texture limit is refused. Custom models default to believable proportions and natural detail,
+while following an explicitly requested art style. Reusable helpers build branched trees, shaped foliage,
+irregular rocks, curved tapered parts and turned profiles with less modeling code. Curved parts keep their
+directional texture mapping. Each build returns three studio views of the exported model for the assistant
+to inspect, plus its build time and file size; it is instructed to check placement and lighting in the scene. If studio
+preview is unavailable, the saved model remains usable and the assistant is told to inspect it in the scene.
+Each tool answer carries at most four model previews within a shared payload limit;
+other models remain listed and can be inspected with `view`. Script writes and edits
+protect `models/src/` in `.dclignore` even before the first model build.
+The assistant uses medium reasoning effort on web and desktop, with model budgets,
+preview images and visual-check instructions.
+Its core geometry and material guidance is included in every turn, so common models
+can use those helpers and surfaces without another guide lookup.
+Content-map checks stop after ten seconds if Bevy does not confirm a saved file.
+The file stays in the project and can be reused after reloading the preview.
+For catalog models, the assistant can request a height in metres. The editor fits
+the downloaded model and grounds it at the requested spot using its actual bounds,
+so an offset pivot or incorrect catalog dimensions do not require a second placement.
+Catalog searches include descriptions and labelled thumbnail sheets, so the assistant
+can compare shapes and styles before downloading models into the project.
+For sound it has a library of 25 CC0 sounds from Kenney (coin, jump, win, door,
 explosion, a few loops and more; credits in `packages/ui/src/sounds/CREDITS.md`), each copied into
 `assets/audio/library/` the first time a game uses it and played with an AudioSource. For UI and gamepad prompts it
 searches a catalog of about 14,000 free icons (game-icons.net, Tabler, Lucide, Pixelarticons and Kenney's input

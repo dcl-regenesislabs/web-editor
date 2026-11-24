@@ -1,4 +1,4 @@
-import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, BROWSER_TOOLS, editorToolDeadlineMs, editorToolTimeoutMessage, isCatalogSearch, object } from '@dcl-editor/contract'
+import { ASSISTANT_ID, ASSISTANT_PROTOCOL, ASSISTANT_TICKET_PREFIX, BROWSER_TOOLS, createToolQueue, editorToolDeadlineMs, editorToolTimeoutMessage, isCatalogSearch, object } from '@dcl-editor/contract'
 import type { AiEvent, AiProviderInfo, AiSendParams, AssistantClientMessage, AssistantMemoryRef, BrowserToolCall, EditorShell, PhonePreviewState } from '@dcl-editor/contract'
 import { trackCreator } from '@ui/analytics'
 import type { HostFetchInit } from '@ui/engine/hosted'
@@ -30,7 +30,7 @@ export function createBrowserAssistant(options: {
     // for analytics: when it started, which model, and the code of the service's last error event
     started: number; model: string | null; error: string | null
   } | null = null
-  let toolQueue: Promise<void> = Promise.resolve()
+  const toolQueue = createToolQueue()
   // what the conversation has read, across its turns: a new chat, account or project starts over
   let reads: { of: string; files: FileReads } = { of: '', files: new Map() }
   // the connection whose service still holds a conversation a limit paused
@@ -138,13 +138,10 @@ export function createBrowserAssistant(options: {
       const call: BrowserToolCall = typeof label === 'string' ? { ...rest, label } : rest
       if (active === null || active.id !== call.turnId || active.calls.has(call.callId)) return
       active.calls.add(call.callId)
-      const parallel = isCatalogSearch(call.tool, call.args)
-      const result = (parallel ? Promise.resolve() : toolQueue)
-        .then(() => runTool(call)).catch((error: unknown) => {
-          console.error('[assistant] browser tool failed', call.tool, error)
-          if (active?.id === call.turnId) finish(false, 'The browser tool failed.', 'tool_failed')
-        })
-      if (!parallel) toolQueue = result
+      void toolQueue.run(isCatalogSearch(call.tool, call.args), () => runTool(call)).catch((error: unknown) => {
+        console.error('[assistant] browser tool failed', call.tool, error)
+        if (active?.id === call.turnId) finish(false, 'The browser tool failed.', 'tool_failed')
+      })
       return
     }
     if (message.kind !== 'event' || !object(message.event)) return
@@ -239,7 +236,7 @@ export function createBrowserAssistant(options: {
     socket = null
     connecting = null
     old?.close()
-    return toolQueue
+    return toolQueue.idle()
   }
 
   const shell: AssistantShell = {

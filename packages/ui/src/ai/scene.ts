@@ -1,4 +1,4 @@
-import { isReservedEntity, object } from '@dcl-editor/contract'
+import { isModelScriptPath, isReservedEntity, object } from '@dcl-editor/contract'
 import { state, componentKey, isUiEntity, isRuntimeEntity, provenanceBaseline } from '@scene/state'
 import { buildFromSchema, getSchema, toEngineValue, type ComponentSchema } from '@scene/schema'
 import { cmd } from '../engine/cmd'
@@ -19,6 +19,11 @@ import { inspectModel } from '../model-info'
 import { announceBuiltModel } from '../features/ai/built-models'
 import { announceThumbnail, announceThumbnailUsed } from '../features/ai/built-thumbnails'
 import { buildCodeModel, overBudget, MODEL_BUDGET } from './code-model'
+import { previewCodeModel } from './model-preview'
+import { fitModelHeight } from './model-placement'
+import { modelScriptExclusion } from './model-scripts'
+import { previewCatalogModels } from './catalog-preview'
+import { log } from '../log'
 import { MATERIAL_MAPS, materialFile } from '../three/materials'
 import { materialBytes, soundBytes } from './library-bytes'
 import { SOUND_KINDS, findSounds, isSoundKind, isSoundName, soundInfo, soundProjectPath } from '../sounds'
@@ -88,6 +93,7 @@ const sizeOf = (a: ModelAsset) => ({ x: metre(a.width), y: metre(a.height), z: m
 const describe = (a: ModelAsset) => ({
   id: a.id, name: a.name, category: a.subcategory === undefined ? a.category : `${a.category}/${a.subcategory}`, size: sizeOf(a),
   triangles: a.triangles ?? null, kb: Math.round((a.fileSize ?? 0) / 1024), tags: a.tags.slice(0, 6),
+  ...(a.description ? { description: a.description.slice(0, 300) } : {}),
   ...((a.animations?.length ?? 0) > 0 ? { animations: a.animations } : {}),
   ...(isFlatModel(a) ? { flat: true } : {})
 })
@@ -212,7 +218,15 @@ export async function browserSceneRequest(request: unknown, signal: AbortSignal,
     if (typeof request.query !== 'string') throw new Error('findModels needs query: a few words.')
     const limit = Math.min(MAX_MODEL_MATCHES, Math.max(1, Number(request.limit ?? 8) || 8))
     const assets = await loadModelCatalog()
-    return { models: searchModels(assets, request.query, limit).map(describe), total: assets.length }
+    const models = searchModels(assets, request.query, limit)
+    let preview
+    try {
+      preview = await previewCatalogModels(models, signal)
+    } catch (error) {
+      signal.throwIfAborted()
+      log.warn('catalog previews failed', error)
+    }
+    return { models: models.map(describe), total: assets.length, ...(preview ? { preview } : {}) }
   }
   if (request.type === 'findIcons') {
     if (typeof request.query !== 'string') throw new Error('findIcons needs query: a few words.')
@@ -258,13 +272,21 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
   }
   if (request.type === 'placeModel') {
     if (typeof request.id !== 'string') throw new Error('placeModel needs the id of a findModels result.')
+    if (request.height !== undefined && request.scale !== undefined) throw new Error('Choose height or scale, not both.')
     await loadModelCatalog()
     const asset = modelById(request.id)
     if (asset === undefined) throw new Error('No catalog model has that id. Use findModels.')
     const rel = await importCatalogFile(asset)
-    const cost = await catalogTextureCost(rel)
-    const placed = await placeGltf(request, rel, asset.name, signal, settings)
-    return { ...placed, size: sizeOf(asset), ...cost }
+    const info = await dataLayerReadFileBytes(rel).then(inspectModel).catch((error: unknown) => {
+      log.warn('catalog model inspection failed', rel, error)
+      return null
+    })
+    const cost = await catalogTextureCost(rel, info)
+    const previous = request.into === undefined ? undefined : state.snapshot[entity(request.into)]?.Transform
+    const pose = request.height === undefined ? {} : fitModelHeight(info?.bounds ?? null, request.height,
+      request.position ?? (object(previous) ? previous.position : undefined), request.rotation ?? (object(previous) ? previous.rotation : undefined))
+    const placed = await placeGltf({ ...request, ...pose }, rel, asset.name, signal, settings)
+    return { ...placed, size: info?.bounds?.size ?? sizeOf(asset), bounds: info?.bounds ?? null, ...cost }
   }
   if (request.type === 'buildModel') {
     // building into a stand-in may leave out the name: the stand-in's own name is the model's
@@ -272,8 +294,16 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
       : request.into === undefined ? '' : entityName(state.snapshot, entity(request.into)) ?? String(request.into)
     const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     if (slug === '' || slug.length > 60) throw new Error('buildModel needs name (or into): 1–60 letters or digits.')
-    if (typeof request.code !== 'string' || request.code.length > 60_000) throw new Error('buildModel needs code: the model script, under 60,000 characters.')
-    const { bytes, clips, library, warnings } = await buildCodeModel(request.code, name, signal)
+    let code = request.code
+    if (request.script !== undefined) {
+      if (code !== undefined) throw new Error('Give code or script, not both.')
+      if (!isModelScriptPath(request.script)) throw new Error('script must be a saved model script: models/src/<name>.js.')
+      code = new TextDecoder('utf-8', { fatal: true }).decode(await dataLayerReadFileBytes(request.script))
+    }
+    if (typeof code !== 'string' || code.length > 60_000) throw new Error('buildModel needs code or a saved script under 60,000 characters.')
+    const buildStarted = performance.now()
+    const { bytes, clips, library, warnings } = await buildCodeModel(code, name, signal)
+    const modelBuildMs = Math.round(performance.now() - buildStarted)
     // counted from the exported file: the script ran in the worker, so nothing it reports is trusted
     const info = inspectModel(bytes)
     // the only files a built model may point at are the shared materials written beside it
@@ -296,7 +326,7 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
     // a rebuild gets a new path, so the engine loads it instead of a cached copy
     const rel = `models/${slug}-${[...digest.slice(0, 4)].map((b) => b.toString(16).padStart(2, '0')).join('')}.glb`
     await ignoreModelScripts()
-    await dataLayerSaveFileBytes(`models/src/${slug}.js`, new TextEncoder().encode(request.code))
+    await dataLayerSaveFileBytes(`models/src/${slug}.js`, new TextEncoder().encode(code))
     // the shared material files first, so the model never loads without them
     for (const uri of info.sharedImages) {
       const { name, map } = allowed.get(uri)!
@@ -309,10 +339,18 @@ async function editScene(request: Record<string, unknown>, signal: AbortSignal, 
     // the old build stays: undo can still point the entity back at it, and Assets can delete it
     const placed = await placeGltf({ ...request, name: request.into === undefined ? name : undefined }, rel, name, signal, settings)
     announceBuiltModel({ name, path: rel, triangles: stats.triangles })
+    let preview
+    try {
+      preview = await previewCodeModel(bytes, info.sharedImages, signal)
+    } catch (error) {
+      signal.throwIfAborted()
+      log.warn('built model preview failed', error)
+      warnings.push('The model was saved, but its studio preview failed. Use view to inspect the placed entity; do not rebuild just to get a preview.')
+    }
     const scene = await sceneBudget()
     const overMaterials = materialsGrowthWarning(before, scene)
     const told = overMaterials === null ? warnings : [...warnings, overMaterials]
-    return { ...placed, script: `models/src/${slug}.js`, stats, clips, materials: library, ...(told.length > 0 ? { warnings: told } : {}), budget: MODEL_BUDGET, kb: Math.round(bytes.length / 1024), scene }
+    return { ...placed, script: `models/src/${slug}.js`, stats, clips, materials: library, modelBuildMs, preview, ...(told.length > 0 ? { warnings: told } : {}), budget: MODEL_BUDGET, kb: Math.round(bytes.length / 1024), scene }
   }
   if (request.type === 'createEntity') {
     if (typeof request.name !== 'string' || !request.name.trim() || request.name.length > 100) throw new Error('Choose an entity name of 1–100 characters.')
@@ -419,11 +457,8 @@ async function deleteEntity(ref: unknown): Promise<unknown> {
 }
 
 // A catalog model is placed whatever its textures cost: the answer says what it spends of the scene's limit.
-async function catalogTextureCost(rel: string): Promise<Record<string, unknown>> {
-  let info: ReturnType<typeof inspectModel>
-  try {
-    info = inspectModel(await dataLayerReadFileBytes(rel))
-  } catch {
+async function catalogTextureCost(rel: string, info: ReturnType<typeof inspectModel> | null): Promise<Record<string, unknown>> {
+  if (info === null) {
     return { warning: 'Its textures could not be counted; run check to see the scene budget.' }
   }
   const scene = await sceneTextures()
@@ -431,7 +466,7 @@ async function catalogTextureCost(rel: string): Promise<Record<string, unknown>>
   const adds = placedAlready ? 0 : info.textures - info.sharedImages.length + info.sharedImages.filter((uri) => !scene.shared.has(modelImagePath(rel, uri))).length
   const left = scene.limit - scene.used - adds
   return {
-    textures: info.textures, materials: info.materials.length, sceneTexturesLeft: left,
+    textures: info.textures, materials: info.materials.length, triangles: info.triangles, kb: Math.round(info.bytes / 1024), sceneTexturesLeft: left,
     ...(left < 0 ? { warning: `The scene now uses ${scene.used + adds} of its ${scene.limit} textures; explorers warn above that. Swap it for a model with fewer textures, or grow the parcels.` } : {})
   }
 }
@@ -461,8 +496,6 @@ async function placeGltf(request: Record<string, unknown>, rel: string, fallback
   }
 }
 
-const MODEL_SCRIPTS = 'models/src/'
-
 // model scripts are for editing, not for players: keep them out of the published scene
 async function ignoreModelScripts(): Promise<void> {
   // only a missing file counts as empty: any other read error must not overwrite the creator's list
@@ -470,6 +503,6 @@ async function ignoreModelScripts(): Promise<void> {
     if ((await dataLayerListFiles()).includes('.dclignore')) throw error
     return ''
   })
-  if (current.split('\n').some((line) => line.trim() === MODEL_SCRIPTS)) return
-  await dataLayerSaveFile('.dclignore', `${current}${current === '' || current.endsWith('\n') ? '' : '\n'}${MODEL_SCRIPTS}\n`)
+  const next = modelScriptExclusion(current)
+  if (next !== current) await dataLayerSaveFile('.dclignore', next)
 }

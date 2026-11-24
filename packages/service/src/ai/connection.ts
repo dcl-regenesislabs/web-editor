@@ -1,3 +1,4 @@
+import { createToolQueue } from '../../../contract/src/assistant-queue.ts'
 import type { ILoggerComponent } from '@well-known-components/interfaces'
 import { ASSISTANT_ID, ASSISTANT_MAX_IMAGE_BYTES, isCatalogSearch, object } from '../../../contract/src/assistant.ts'
 import type { AssistantServerMessage, BrowserToolName } from '../../../contract/src/assistant.ts'
@@ -120,7 +121,7 @@ export function createConnection(options: {
   let running: Promise<void> | undefined
   let stopping: Promise<void> | undefined
   let saving: Promise<void> = Promise.resolve()
-  let browserCalls: Promise<void> = Promise.resolve()
+  const browserCalls = createToolQueue()
   // the kept agent's last turn was stopped by the creator
   let stoppedBefore = false
   const pending = new Map<string, Pending>()
@@ -142,9 +143,8 @@ export function createConnection(options: {
   function call(tool: BrowserToolName, { label: said, ...args }: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
     const turn = active
     const label = typeof said === 'string' && said.trim() !== '' ? said.trim().slice(0, MAX_LABEL_CHARS) : undefined
-    const parallel = isCatalogSearch(tool, args)
     // The browser serializes edits; queued calls must not spend their timeout waiting for earlier ones.
-    const result = (parallel ? Promise.resolve() : browserCalls).then(() => {
+    return browserCalls.run(isCatalogSearch(tool, args), () => {
       if (turn === null || active !== turn || turn.controller.signal.aborted || signal?.aborted) throw new Error('Turn cancelled')
       const live = turn
       const controller = turn.controller
@@ -188,8 +188,6 @@ export function createConnection(options: {
         send({ kind: 'call', turnId: turn.id, callId, tool, args, ...(label === undefined ? {} : { label }) })
       })
     })
-    if (!parallel) browserCalls = result.then(() => {}, () => {})
-    return result
   }
 
   // the summary runs between steps: its time is neither the model's thinking nor the next tool's
