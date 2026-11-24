@@ -170,6 +170,7 @@ describe('the built-in prefabs', () => {
       'health-respawn',
       'leaderboard',
       'pickup-item',
+      'resource-node',
       'run-progress',
       'server-clock',
       'spawner',

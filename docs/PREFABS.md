@@ -918,6 +918,31 @@ project copy filed to the library cannot vanish with it.
   declaring would otherwise hide). Spawner copies cannot be pickups: they are
   client-local and nameless.
 
+- **resource-node** ("Resource Node") — a rock, tree or fishing spot players
+  gather from, built on `runtime/harvest.ts` over `game` and `carry`, so
+  `requiresSdk: "auth-server"`, ungrouped beside the carry cards and
+  self-driving. A node's id is its entity Name. E (the phone's main button,
+  only while the hand is empty) sends one `harvest.act` request; the server
+  records the one gatherer in `game.state.harvest` and, on a 0.1 s tick, hands
+  the node's kind over with carry's `giveItem` once the player has stayed
+  within range for `seconds`. Walking away or leaving cancels without using
+  anything, and so does a hand that filled meanwhile. After `uses` the node is
+  empty until `respawnSeconds` pass or the next round starts. By default
+  (`whenEmpty: "show timer"`) it stays in place and solid under a billboard
+  `TextShape` counting down from the server's `backAt` (`emptyText`, or
+  `emptyRoundText` when it only returns with a round), because a node that
+  vanished silently read as broken in the first playtest. `"hide"` hides it and
+  drops its own collider (MeshCollider and the GltfContainer masks, restored on
+  return).
+  There is no client prediction: the bar follows the server's `since` on the
+  shared clock, so it starts one round trip after the press. Hold is not used
+  because the prompt only holds the secondary button, and E is the phone's
+  main one. The rules are `pure/harvestRules.ts`; `harvest.event` tells
+  clients about every gather, empty and return. The look in the hand is the
+  kind's Pickup Item (a "look only" one is enough). Params: `kind`,
+  `gatherVerb`, `seconds`, `uses`, `respawnSeconds`, `whenEmpty`, `emptyText`,
+  `emptyRoundText`, `range`, `barHeight`.
+
 **Right-click → Add a spawner.** The one gesture that configures a prefab for
 you (`actions/prefabs.ts` `uiAddSpawnerFor`, the menu item directly under
 *Create prefab…*): it resolves the `spawner` slug through the same

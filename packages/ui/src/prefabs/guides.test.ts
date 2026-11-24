@@ -145,6 +145,7 @@ describe('per-prefab AI guides', () => {
       'health-respawn',
       'leaderboard',
       'pickup-item',
+      'resource-node',
       'run-progress',
       'server-clock',
       'spawner',
