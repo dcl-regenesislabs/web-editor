@@ -68,8 +68,8 @@
     "digest": "0f36ec0c78f0872992ca6ffe3490443d668c92be69c101dbfa49a808f40a0bbe"
   },
   "pickup-item": {
-    "version": "1.0.1",
-    "digest": "e7d4f47118004bac59e2712a3cc577cdc6f1bf19e87a9f660b4cd796bf5a1954"
+    "version": "1.1.0",
+    "digest": "f3489b7cbbdd9507bc38a973735a9a6b38816f4ebcc7abf1c06e8814d814592e"
   },
   "run-progress": {
     "version": "1.4.1",

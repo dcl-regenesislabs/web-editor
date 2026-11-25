@@ -6,7 +6,8 @@
 // has one obvious test to update.
 import { describe, expect, it } from 'vitest'
 import { getScriptParams } from '../script/parser'
-import { prefabFolders, readPrefabFile as read } from './builtin-fixtures'
+import fs from 'node:fs'
+import { PREFABS_ROOT, prefabFolders, readPrefabFile as read } from './builtin-fixtures'
 import {
   ASSET_PATH_TOKEN,
   SCRIPT_COMPONENT,
@@ -199,11 +200,25 @@ describe('the pickup item and the work station', () => {
     const { params, error } = getScriptParams(read('pickup-item/scripts/pickup-item.ts'))
     expect(error).toBeUndefined()
     expect(Object.keys(params)).toEqual([
-      'kind', 'supply', 'pickVerb', 'dropVerb', 'throwable', 'throwVerb', 'range', 'heldScale', 'returnSeconds'
+      'kind', 'supply', 'pickVerb', 'dropVerb', 'throwable', 'throwVerb', 'range', 'heldScale', 'returnSeconds', 'pickAnimation'
     ])
     expect(params.supply.options).toEqual(['one item', 'endless', 'look only'])
+    expect(params.pickAnimation.options).toEqual(['none', 'from a table', 'from the floor'])
+    expect(params.pickAnimation.value).toBe('none')
     expect(params.supply.value).toBe('one item')
     expect(params.pickVerb.value).toBe('Pick up')
+  })
+
+  it('ships every pick animation its script names, as an emote the engine plays', () => {
+    const script = read('pickup-item/scripts/pickup-item.ts')
+    const files = [...script.matchAll(/'(emotes\/[^']+)'/g)].map((m) => m[1])
+    expect(files).toEqual(['emotes/Pickup_Table_emote.glb', 'emotes/Pickup_Floor_emote.glb'])
+    for (const file of files) {
+      const bytes = fs.readFileSync(new URL(`pickup-item/${file}`, PREFABS_ROOT))
+      const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString()) as { animations: Array<{ name: string }> }
+      expect(json.animations.map((a) => a.name)).toEqual([`${file.replace(/^emotes\//, '').replace(/_emote\.glb$/, '')}_Avatar`])
+      expect(bytes.length).toBeLessThan(3 * 1024 * 1024)
+    }
   })
 
   it('keeps the station script on the root and its solid look on a child', () => {

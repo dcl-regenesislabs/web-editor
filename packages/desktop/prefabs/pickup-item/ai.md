@@ -38,6 +38,10 @@ Params (set them in the placePrefab request):
 - `heldScale`: size in the hand relative to the placed size.
 - `returnSeconds`: a "one item" a script used up comes home after this; 0 waits
   for the next round.
+- `pickAnimation`: "none" (default), "from a table" (a short reach forward), or
+  "from the floor" (a squat; the player can't walk or jump for ~2 s while it
+  plays). Set it when the item sits on a counter or lies on the ground and the
+  game is not about speed; leave "none" for anything picked up often or in a race.
 
 The look is the entity's own model: give the Pickup Item entity the GltfContainer
 (or keep the box and set its Material). Child models are copied too. Its Name is
@@ -56,8 +60,9 @@ declared: declare each other button your scripts read with declareTouchButtons
 your own scripts; `touch.visible` is what the phone shows, and an open modal
 hides every button.
 
-No carry pose: the item rides in the right hand. No looping carry emote ships
-with the editor, and the pinned SDK cannot stop a looping emote.
+No carry pose: the item rides in the right hand, and no looping carry emote
+ships with the editor. The pick animation plays once on the picker's avatar;
+never add your own emote on pick.
 
 Script API: `src/scripts/runtime/carry.ts`, imported as `./runtime/carry` —
 read the module header in that file (heldBy, holderOf, onCarry, giveItem,
