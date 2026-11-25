@@ -47,6 +47,10 @@
     "version": "1.2.0",
     "digest": "56d761754ad3f2d9b201c65b6cac6f0f319a6c9690007c8e39905df8b447b56a"
   },
+  "inventory": {
+    "version": "1.0.0",
+    "digest": "bd6cb710380eab0d773b674b8b27bc52c03c81f76d504ee12bcb7a1609a57dc7"
+  },
   "large-couch": {
     "version": "1.2.0",
     "digest": "68f7922adc6d3a820a8092bb3e6f8806306508357829fa9333ee9be6c39ed2f5"

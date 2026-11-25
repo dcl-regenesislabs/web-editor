@@ -69,6 +69,17 @@ import {
 } from '../runtime-modules/pure/carryRules'
 import { CarryPrediction } from '../runtime-modules/pure/carryPrediction'
 import { nearestCandidate, promptText, verbWith } from '../runtime-modules/pure/interactPick'
+import {
+  addToBag,
+  bagTotal,
+  countIn,
+  normalLimits,
+  readBag,
+  readBags,
+  removeFromBag,
+  roomFor,
+  type Bag
+} from '../runtime-modules/pure/inventoryRules'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -759,5 +770,67 @@ describe('_runtime interact prompt', () => {
     expect(verbWith('Coger {item}', 'Tomate')).toBe('Coger Tomate')
     expect(verbWith('{item} aufheben', 'Ball')).toBe('Ball aufheben')
     expect(verbWith('Drop {item}', '')).toBe('Drop')
+  })
+})
+
+describe('_runtime inventory rules', () => {
+  const open = normalLimits(0, 0, '')
+  const fill = (bag: Bag, ...kinds: string[]) => kinds.reduce((acc, kind) => addToBag(acc, kind, 1, open).bag, bag)
+
+  it('counts each kind once, matched trimmed and case-insensitively, in the order it went in', () => {
+    const bag = fill([], 'Wood', ' wood ', 'Stone', 'WOOD')
+    expect(bag).toEqual([{ kind: 'Wood', count: 3 }, { kind: 'Stone', count: 1 }])
+    expect(countIn(bag, 'wOOd')).toBe(3)
+    expect(countIn(bag, 'Fish')).toBe(0)
+    expect(bagTotal(bag)).toBe(4)
+  })
+
+  it('fits what the slots and the stack allow, and says how many went in', () => {
+    const limits = normalLimits(2, 5, '')
+    const two = fill([], 'Wood', 'Stone')
+    expect(addToBag(two, 'Fish', 1, limits)).toEqual({ bag: two, added: 0 })
+    expect(roomFor(two, 'Fish', limits)).toBe(0)
+    expect(roomFor(two, 'Wood', limits)).toBe(4)
+    const topped = addToBag(two, 'Wood', 10, limits)
+    expect(topped.added).toBe(4)
+    expect(countIn(topped.bag, 'Wood')).toBe(5)
+    expect(addToBag(topped.bag, 'Wood', 1, limits).added).toBe(0)
+    expect(roomFor([], 'Wood', open)).toBe(Infinity)
+  })
+
+  it('takes only the kinds it accepts', () => {
+    const limits = normalLimits(0, 0, 'Wood; stone')
+    expect(limits.accepts).toEqual(['wood', 'stone'])
+    expect(addToBag([], 'Stone', 2, limits).added).toBe(2)
+    expect(addToBag([], 'Fish', 1, limits).added).toBe(0)
+    expect(roomFor([], 'Fish', limits)).toBe(0)
+  })
+
+  it('removes exactly that many or nothing, and frees the slot at zero', () => {
+    const bag = addToBag([], 'Stone', 5, open).bag
+    expect(removeFromBag(bag, 'stone', 6)).toBeNull()
+    expect(removeFromBag(bag, 'Stone', 0)).toBeNull()
+    expect(removeFromBag(bag, 'Stone', -2)).toBeNull()
+    expect(removeFromBag(bag, 'Fish', 1)).toBeNull()
+    expect(removeFromBag(bag, 'Stone', 2)).toEqual([{ kind: 'Stone', count: 3 }])
+    expect(removeFromBag(bag, 'Stone', 5)).toEqual([])
+    expect(bag).toEqual([{ kind: 'Stone', count: 5 }])
+  })
+
+  it('refuses counts that are not positive whole numbers', () => {
+    expect(addToBag([], 'Wood', 0, open).added).toBe(0)
+    expect(addToBag([], 'Wood', -3, open).added).toBe(0)
+    expect(addToBag([], 'Wood', Number.NaN, open).added).toBe(0)
+    expect(addToBag([], '  ', 1, open).added).toBe(0)
+    expect(addToBag([], 'Wood', 2.9, open).added).toBe(2)
+  })
+
+  it('repairs a bag from storage or the wire', () => {
+    expect(readBag([{ kind: 'Wood', count: 2.7 }, { kind: 'wood', count: 4 }, { kind: 'Stone', count: -1 }, { kind: 3, count: 1 }, null, { kind: ' Fish ', count: 1 }]))
+      .toEqual([{ kind: 'Wood', count: 2 }, { kind: 'Fish', count: 1 }])
+    expect(readBag({ Wood: 3 })).toEqual([])
+    expect(readBag(undefined)).toEqual([])
+    expect(readBags({ '0xABC': [{ kind: 'Wood', count: 1 }], '0xdef': 'nope' })).toEqual({ '0xabc': [{ kind: 'Wood', count: 1 }], '0xdef': [] })
+    expect(readBags([1, 2])).toEqual({})
   })
 })

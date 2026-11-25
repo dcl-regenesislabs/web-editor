@@ -402,7 +402,7 @@ describe('the action icons a script draws', () => {
     disk.set('src/scripts/kitchen.tsx', HINT)
     const result = await regenerateSpawnables()
     expect(icons()).toContain('assets/images/action-icons/chop.png')
-    expect(icons()).toHaveLength(12)
+    expect(icons()).toHaveLength(13)
     expect(result.vendored).toEqual(expect.arrayContaining(icons()))
     expect(disk.get('assets/images/action-icons/chop.png')).toMatch(/^png:\d+$/)
     expect((await regenerateSpawnables()).vendored).toEqual([])
@@ -413,7 +413,7 @@ describe('the action icons a script draws', () => {
     disk.set('assets/images/action-icons/chop.png', 'my own knife')
     await ensureScriptRuntime()
     expect(disk.get('assets/images/action-icons/chop.png')).toBe('my own knife')
-    expect(icons()).toHaveLength(12)
+    expect(icons()).toHaveLength(13)
   })
 })
 

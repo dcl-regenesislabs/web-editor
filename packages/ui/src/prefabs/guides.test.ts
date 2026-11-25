@@ -143,6 +143,7 @@ describe('per-prefab AI guides', () => {
       'camera-rig',
       'game-flow',
       'health-respawn',
+      'inventory',
       'leaderboard',
       'pickup-item',
       'run-progress',

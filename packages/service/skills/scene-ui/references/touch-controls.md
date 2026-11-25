@@ -113,7 +113,7 @@ action that needs a keyboard key with no button. Desktop keeps its shortcuts as 
 Decentraland Studio projects declare their buttons with `declareTouchButtons` from `./runtime/hudLayout`,
 which writes `TouchScreenControls` itself and restores the declared set after a modal: call that, never the
 component. Give each button its icon there, from the shipped set in `./runtime/actionIcons` (pick-up, drop,
-chop, cook, wash, throw, use, serve, jump, interact, attack, talk; the editor copies the images into
+chop, cook, wash, throw, use, serve, jump, interact, attack, talk, bag; the editor copies the images into
 `assets/images/action-icons/` once a script imports the module):
 `declareTouchButtons([{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') }, { action: InputAction.IA_SECONDARY, icon: actionIcon('chop') }], { main: InputAction.IA_PRIMARY })`.
 Show the same icon in the HUD hint with `ActionHint` from that module: the icon and the word on a phone, the

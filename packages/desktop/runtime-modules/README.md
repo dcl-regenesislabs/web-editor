@@ -63,6 +63,9 @@ Rules for modules in this folder:
 | `spawnPoints` | spawn points by name: `requestSpawn('Crate Spawner')` from any script |
 | `zoneBus` | trigger-zone membership, keyed by entity Name |
 | `respawn` | per-player safe destinations and respawn requests; Health & Respawn owns health and the actual move |
+| `inventory` | each player's bag: a count per kind kept by the server, saved in `game.playerData` under `inventory`, limits on kinds and stack size, store from and take into the hand through `carry`, and the script API (`countOf`, `bagOf`, `roomFor`, `onInventory`, `addItems`, `removeItems`); the Inventory registers into it |
+| `inventoryHud` | the Inventory's Bag button and window: opened with the 1 key or a phone touch button, the desktop cursor freed while it is open; `.tsx` |
+| `pure/inventoryRules` | the bag rules: add what fits, remove all or nothing, slots, stacks, accepted kinds, and repair of what storage or the wire returns |
 | `pure/runPrediction` | provisional run presentation over server state; correlates local actions, rolls back rejection or expiry, and clears pending work on a new attempt |
 | `runs` | validated starts, ordered checkpoints, pickups, timed finishes and personal restarts |
 | `sceneNames` | unique entity lookup and positions composed through parent transforms |
@@ -113,6 +116,7 @@ importing a module that defines one lists it in its `ai.md` `claims-globals:`.
 | `__dclProtectedSync_v1` | `protectedSync.ts` — the protected-registration ledger |
 | `__dclServerLife_v1` | `serverLife.ts` — the one heartbeat driver and its pending-participant set |
 | `__dclCarry_v1` | `carry.ts` — registered items and stations, rules, server state and client visuals |
+| `__dclInventory_v1` | `inventory.ts` — the Inventory's settings, server bags and the client view |
 | `__dclInteract_v1` | `interactPrompt.ts` — candidate providers, the label entity and the held button |
 | `__dclServerState_v1` | `serverState.ts` — store-key claims |
 | `__dclPlayerStoreKeys_v1` | `playerStore.ts` — store-key claims |
@@ -138,6 +142,7 @@ keys) do not touch the engine's message table but must not collide either:
 | Name | Owner |
 |---|---|
 | request `carry.act`, broadcast `carry.event`, state `game.state.carry` | `carry.ts` (claimed by the Pickup Item guide) |
+| request `inventory.act`, broadcast `inventory.event`, state `game.state.inventory`, playerData key `inventory` | `inventory.ts` (claimed by the Inventory guide) |
 
 Synced-entity ids are hand-allocated and must not collide (admin-tools holds
 8000; the editor allocates scene entities from 8001):
