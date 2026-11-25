@@ -6,7 +6,7 @@
 // actionIcon(name) is the image path: give it to declareTouchButtons from ./hudLayout,
 //   declareTouchButtons([{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') }], { main: InputAction.IA_PRIMARY })
 // or to any uiBackground texture. The names: pick-up, drop, chop, cook, wash, throw, use, serve, jump, interact,
-// attack, talk.
+// attack, talk, bag.
 // <ActionIcon name="chop" size={40} color={theme.text} /> draws one in UI (white, tinted by `color`).
 // <ActionHint icon="chop" label="Chop" desktopKey="F" theme={theme} /> is a hint for the same action on both
 // platforms: the icon and the word on a phone, the key and the word on desktop, never "F" on a phone.
@@ -15,7 +15,7 @@ import { isMobile } from '@dcl/sdk/platform'
 import { UiText } from './uiComponents'
 import type { UiColor, UiTheme } from './pure/uiTheme'
 
-export const ACTION_ICONS = ['pick-up', 'drop', 'chop', 'cook', 'wash', 'throw', 'use', 'serve', 'jump', 'interact', 'attack', 'talk'] as const
+export const ACTION_ICONS = ['pick-up', 'drop', 'chop', 'cook', 'wash', 'throw', 'use', 'serve', 'jump', 'interact', 'attack', 'talk', 'bag'] as const
 export type ActionIconName = (typeof ACTION_ICONS)[number]
 export const ACTION_ICON_DIR = 'assets/images/action-icons'
 

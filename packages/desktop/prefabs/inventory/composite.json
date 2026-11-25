@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "components": [
+    { "name": "core-schema::Name", "data": { "0": { "json": { "value": "Inventory" } } } },
+    {
+      "name": "asset-packs::Script",
+      "data": {
+        "0": {
+          "json": {
+            "value": [
+              { "path": "{assetPath}/scripts/inventory.ts", "priority": 0, "layout": "{\"params\":{},\"actions\":[]}" }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

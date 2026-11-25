@@ -168,6 +168,7 @@ describe('the built-in prefabs', () => {
       'camera-rig',
       'game-flow',
       'health-respawn',
+      'inventory',
       'leaderboard',
       'pickup-item',
       'run-progress',

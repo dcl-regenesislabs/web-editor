@@ -918,6 +918,33 @@ project copy filed to the library cannot vanish with it.
   declaring would otherwise hide). Spawner copies cannot be pickups: they are
   client-local and nameless.
 
+- **inventory** ("Inventory") — every player's bag, built on
+  `runtime/inventory.ts` over `game` and `carry`, so `requiresSdk:
+  "auth-server"`, ungrouped beside the carry cards and self-driving. One per
+  scene: a second registration is refused with an error card. The server keeps
+  a bag per present player (an ordered list of `{ kind, count }`, kinds matched
+  like carry kinds) and publishes them in `game.state.inventory`, keyed by
+  wallet. With `keepBetweenVisits` (default) a bag is read from and written to
+  `game.playerData` under the key `inventory`, whose write-behind store loads
+  the record before a player's first handler and flushes it on leave; off, a
+  bag lasts the visit. `emptyEachRound` empties every bag at round start.
+  `slots` (kinds at once), `stackSize` (most of one kind) and `accepts` (a kind
+  list, empty takes anything) bound what fits; the rules are
+  `pure/inventoryRules.ts`, where an add answers how many went in and a remove
+  takes all or nothing. `inventory.act` carries the window's two actions:
+  `store` moves the held item in through carry's `takeItem`, `take` moves one
+  out through `giveItem` into an empty hand, so a Work Station still works on
+  it. `inventory.event` tells clients about every add, remove, store and take.
+  The HUD (`runtime/inventoryHud.tsx`) is a Bag button with the total in the
+  right column and a window in the shared layout's modal slot. Desktop captures
+  the cursor for the camera and scene UI can't be clicked while it is, so the
+  bag opens with the 1 key (`IA_ACTION_3`, declared as a touch button with the
+  `bag` action icon on phones), frees the cursor through `PointerLock` while
+  open and captures it again on close when it was. No client prediction: the
+  window follows the published state. Params: `slots`, `stackSize`, `accepts`,
+  `keepBetweenVisits`, `emptyEachRound`, `title`, `storeVerb`, `takeVerb`,
+  `emptyText`, `fullText`, `handsFullText`, `emptyHandsText`.
+
 **Right-click → Add a spawner.** The one gesture that configures a prefab for
 you (`actions/prefabs.ts` `uiAddSpawnerFor`, the menu item directly under
 *Create prefab…*): it resolves the `spawner` slug through the same

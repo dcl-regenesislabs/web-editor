@@ -1,0 +1,26 @@
+{
+  "id": "f1541479-5d03-4749-970b-23b1d75d74bc",
+  "name": "Inventory",
+  "description": "Every player's bag: a count per kind (\"Wood ×7, Stone ×3\"). Press 1 (a bag button on phones) to open it, store what you carry or take one out into your hand, and it is still there on your next visit. Scripts add and spend items. The Multiplayer Server decides. Works with: Pickup Item, Work Station.",
+  "category": "custom",
+  "tags": [
+    "inventory",
+    "bag",
+    "backpack",
+    "items",
+    "craft",
+    "save",
+    "multiplayer"
+  ],
+  "requiresSdk": "auth-server",
+  "version": "1.0.0",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "notes": "Initial release: one bag per player with a count per kind, limits on kinds and stack size, a Bag window opened with the 1 key or a phone button to store what is carried or take one out into the hand, saving between visits through the player's data, and a script API to add, remove and count items."
+    }
+  ],
+  "origin": {
+    "source": "builtin"
+  }
+}

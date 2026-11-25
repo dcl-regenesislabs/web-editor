@@ -29,7 +29,7 @@
 // one is hidden (an unused button tells the player there is an action that does nothing). Each entry is an
 // InputAction, or { action, icon } where icon is an image in the scene that replaces the button's generic
 // E/F/1-4 glyph: actionIcon('chop') from ./actionIcons (pick-up, drop, chop, cook, wash, throw, use, serve,
-// jump, interact, attack, talk), or your own white-on-transparent square PNG. `main` takes the large button.
+// jump, interact, attack, talk, bag), or your own white-on-transparent square PNG. `main` takes the large button.
 //   declareTouchButtons([{ action: InputAction.IA_PRIMARY, icon: actionIcon('pick-up') },
 //     { action: InputAction.IA_SECONDARY, icon: actionIcon('chop') }], { main: InputAction.IA_PRIMARY })
 // Prefabs and scripts each declare their own and the layout shows the union (the first icon given for an

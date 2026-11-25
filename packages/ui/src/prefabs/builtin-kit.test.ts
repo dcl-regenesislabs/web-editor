@@ -225,6 +225,48 @@ describe('the pickup item and the work station', () => {
   })
 })
 
+// One bag per player, kept by the server and saved with the player's data. On
+// desktop the cursor is captured for the camera, so the bag opens from a key
+// and frees the cursor while its window is open.
+describe('the inventory', () => {
+  const FOLDER = 'inventory'
+
+  it('runs on the Multiplayer Server, needs no permission, and opens from a key as well as a click', () => {
+    const value = data(FOLDER)
+    expect(value.requiresSdk).toBe('auth-server')
+    expect(value.requiredPermissions ?? []).toEqual([])
+    expect(value.group).toBeUndefined()
+    const source = read(`${FOLDER}/scripts/${FOLDER}.ts`)
+    expect(source).toContain("from '~runtime/inventory'")
+    expect(source).toContain("from '~runtime/inventoryHud'")
+    const hud = read('../runtime-modules/inventoryHud.tsx')
+    expect(hud).toContain('InputAction.IA_ACTION_3')
+    expect(hud).toContain("actionIcon('bag')")
+    expect(hud).toContain('isPointerLocked: false')
+  })
+
+  it('is one entity with no look of its own', () => {
+    const layout = prefabLayout(composite(FOLDER))
+    expect(layout.entities.map((entity) => entity.localId)).toEqual(['0'])
+    const names = composite(FOLDER).components.map((component) => component.name)
+    expect(names).toEqual(['core-schema::Name', 'asset-packs::Script'])
+    expect(scriptPath(FOLDER, '0')).toBe(`${ASSET_PATH_TOKEN}/scripts/inventory.ts`)
+  })
+
+  it('exposes the bag settings its guide is written against', () => {
+    const { params, error } = getScriptParams(read(`${FOLDER}/scripts/inventory.ts`))
+    expect(error).toBeUndefined()
+    expect(Object.keys(params)).toEqual([
+      'slots', 'stackSize', 'accepts', 'keepBetweenVisits', 'emptyEachRound',
+      'title', 'storeVerb', 'takeVerb', 'emptyText', 'fullText', 'handsFullText', 'emptyHandsText'
+    ])
+    expect(params.slots.value).toBe(8)
+    expect(params.stackSize.value).toBe(99)
+    expect(params.keepBetweenVisits.value).toBe(true)
+    expect(params.emptyEachRound.value).toBe(false)
+  })
+})
+
 // Which built-ins say how a creator drives them, and which say nothing.
 //
 // The complaint that produced the field: an Announcer offers hold seconds and
@@ -241,7 +283,7 @@ describe('the line a placed item says it is driven by', () => {
   // an empty row on every one of these cards. Furniture is the bulk of it — you
   // sit on a chair; there is no line to write.
   const SELF_DRIVING = [
-    'run-progress', 'announcer', 'ui-theme', 'camera-rig', 'pickup-item', 'work-station',
+    'run-progress', 'announcer', 'ui-theme', 'camera-rig', 'pickup-item', 'work-station', 'inventory',
     'game-flow', 'server-clock', 'leaderboard', 'spawner', 'admin-tools', 'video-screen',
     'black-chair', 'classic-bench', 'classic-bench-armrests', 'classroom-chair', 'court-chair',
     'curved-couch', 'high-stool', 'large-couch', 'loveseat', 'modern-sofa', 'outdoor-chair',
